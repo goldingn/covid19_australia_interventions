@@ -30,19 +30,18 @@ interventions <- tribble(~date, ~stage, ~text,
 #     TRUE ~ 0
 #   ))
 
+# subset to all-australia, and remove the grocery and pharmacy category
+# (affected by panic buying, not interventions)
 aus_data <- data %>%
   filter(is.na(state)) %>%
-  dplyr::select(-state)
-
-# fit the model for one category to start with
-aus_resid <- aus_data %>%
-  filter(category == "Residential")
+  dplyr::select(-state) %>%
+  filter(category != "Grocery & pharmacy")
 
 # get a matrix of days since intervention
-n_dates <- max(aus_resid$date_num) + 1
-n_categories <- n_distinct(aus_resid$category)
+n_dates <- max(aus_data$date_num) + 1
 date_nums <- seq_len(n_dates) - 1
-lags <- outer(date_nums, interventions$date_num, FUN = "-")
+n_categories <- n_distinct(aus_data$category)
+categories <- unique(aus_data$category)
 
 # model the impacts of those interventions on social distancing factor
 library(greta)
@@ -51,36 +50,71 @@ e <- props / sum(props)
 k <- exponential(2, dim = 3)
 weights <- normal(0, 10, dim = n_categories)
 sigma_obs <- normal(0, 1, truncation = c(0, Inf))
+df_obs <- 1 / normal(0, 1, truncation = c(0, Inf))
 
+lags <- outer(date_nums, interventions$date_num, FUN = "-")
 lag_delays <- ilogit(sweep(lags, 2, 2 * k, FUN = "*"))
 epsilon <- 1 - sum(e) + lag_delays %*% e
 
 # multiply epsilon by weights for each category
-trends <- sweep(epsilon, 2, weights, FUN = "*")
+trends <- kronecker(epsilon, t(weights), FUN = "*")
 
 # extract expected trend for each observation and define likelihood
-idx <- match(aus_resid$date_num, date_nums)
+rows <- match(aus_data$date_num, date_nums)
+cols <- match(aus_data$category, categories)
+idx <- cbind(rows, cols)
 trends_mean <- trends[idx]
-distribution(aus_resid$trend) <- normal(trends_mean, sigma_obs)
+distribution(aus_data$trend) <- student(df = df_obs, mu = trends_mean, sigma = sigma_obs)
 
 # fit model
 m <- model(e, k, weights)
 o <- opt(m)
 
-# plot fit
-mle <- calculate(trends, values = o$par)[[1]]
-ylim <- range(c(aus_resid$trend, mle))
-plot(mle ~ date_nums, type = "l",
-     ylim = ylim,
-     lwd = 2)
-abline(h = 0, lty = 2)
-points(trend ~ date_num,
-       data = aus_resid,
-       pch = 16)
+# plot fits
+par(mfrow = c(3, 2))
+dates <- min(aus_data$date) + date_nums
+for (i in seq_len(n_categories)) {
+  category_i <- categories[i]
+  plot_data <- aus_data %>%
+    filter(category == category_i)
+  mle <- calculate(trends[, i], values = o$par)[[1]]
+  ylim <- range(c(plot_data$trend, mle))
+  plot(mle ~ dates,
+       type = "n",
+       ylim = ylim,
+       ylab = "trend",
+       xlab = "")
+  abline(h = 0, col = grey(0.4), lty = 3)
+  abline(v = interventions$date, col = grey(0.6))
+  points(trend ~ dates,
+         data = plot_data,
+         pch = 16,
+         col = grey(0.8))
+  lines(mle ~ dates, lwd = 2)
+  title(main = category_i)
+}
+
+# add social distancing factor plot
+epsilon_est <- calculate(epsilon, values = o$par)[[1]]
+plot(epsilon_est ~ dates,
+     type = "n",
+     ylim = c(0, 1),
+     ylab = "effect",
+     xlab = "")
+abline(h = 0, col = grey(0.4), lty = 3)
+abline(v = interventions$date, col = grey(0.6))
+lines(epsilon_est ~ dates,
+      lwd = 3,
+      col = "darkseagreen"
+)
+title(main = "Social distancing effect",
+      col.main = "darkseagreen")
 
 # add weekend effect (interacting with intervention period and category?)
-# add multiple categories
-# 
+# add a cyclic effect about sunday, with unknown parameters
+# include a weekend weight, and a weekend/social-distancing interaction weight
+
+# do multiple states (use the mean weights for the national-level data!)
 
 
 # n_sim <- 100
