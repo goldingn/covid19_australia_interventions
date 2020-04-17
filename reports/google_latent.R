@@ -49,10 +49,13 @@ categories <- unique(aus_data$category)
 library(greta)
 props <- uniform(0, 1, dim = 3)
 e <- props / sum(props)
-k <- exponential(2, dim = 3)
+k <- 1 / uniform(0, 16, dim = 3)
+
 trend_weights <- normal(0, 10, dim = n_categories)
 weekend_weights <- normal(0, 10, dim = n_categories)
 weekend_trend_weights <- normal(0, 10, dim = n_categories)
+trend_intercepts <- normal(0, 10, dim = n_categories)
+
 sigma_obs <- normal(0, 1, truncation = c(0, Inf))
 df_obs <- 1 / normal(0, 1, truncation = c(0, Inf))
 
@@ -80,7 +83,11 @@ weekend_trend_effect <- kronecker(weekendiness * epsilon,
                                   t(weekend_trend_weights),
                                   FUN = "*")
 
-trends <- trend_effect + weekend_effect + weekend_trend_effect
+intercepts <- kronecker(ones(n_dates),
+                        t(trend_intercepts),
+                        FUN = "*")
+
+trends <- intercepts + trend_effect + weekend_effect + weekend_trend_effect
 
 # extract expected trend for each observation and define likelihood
 rows <- match(aus_data$date_num, date_nums)
@@ -91,7 +98,34 @@ distribution(aus_data$trend) <- student(df = df_obs, mu = trends_mean, sigma = s
 
 # fit model
 m <- model(e, k, trend_weights, weekend_weights, weekend_trend_weights)
-o <- opt(m)
+draws <- mcmc(m, chains = 10)
+
+# check convergence
+r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
+n_effs <- coda::effectiveSize(draws)
+max(r_hats)
+min(n_effs)
+
+# summarise the posterior for a vector greta array
+summarise_vec_posterior <- function(vector, draws) {
+  vector_draws <- calculate(vector, values = draws)[[1]]
+  vector_mat <- as.matrix(vector_draws)
+  posterior_mean <- colMeans(vector_mat)
+  posterior_ci <- t(apply(vector_mat, 2, quantile, c(0.025, 0.975)))
+  cbind(mean = posterior_mean, posterior_ci)
+}
+
+add_ci_poly <- function(posterior_summary,
+                        dates,
+                        col = grey(0.8),
+                        border_col = grey(0.6)) {
+  polygon(x = c(dates, rev(dates)),
+          y = c(posterior_summary[, 2],
+                rev(posterior_summary[, 3])),
+          lwd = 0.5,
+          col = col,
+          border = border_col)
+}
 
 # plot fits
 par(mfrow = c(3, 2))
@@ -99,33 +133,36 @@ for (i in seq_len(n_categories)) {
   category_i <- categories[i]
   plot_data <- aus_data %>%
     filter(category == category_i)
-  mle <- calculate(trends[, i], values = o$par)[[1]]
-  ylim <- range(c(plot_data$trend, mle))
-  plot(mle ~ dates,
+  est <- summarise_vec_posterior(trends[, i], draws)
+  ylim <- range(c(plot_data$trend, est))
+  plot(est[, 1] ~ dates,
        type = "n",
        ylim = ylim,
        ylab = "trend",
        xlab = "")
   abline(h = 0, col = grey(0.4), lty = 3)
   abline(v = interventions$date, col = grey(0.6))
+  add_ci_poly(est, dates)
+  lines(est[, 1] ~ dates, lwd = 2, col = grey(0.4))
   points(trend ~ dates,
          data = plot_data,
          pch = 16,
-         col = grey(0.8))
-  lines(mle ~ dates, lwd = 2)
+         cex = 0.5,
+         col = grey(0.2))
   title(main = category_i)
 }
 
 # add social distancing factor plot
-epsilon_est <- calculate(epsilon, values = o$par)[[1]]
-plot(epsilon_est ~ dates,
+est <- summarise_vec_posterior(epsilon, draws)
+plot(est[, 1] ~ dates,
      type = "n",
      ylim = c(0, 1),
      ylab = "effect",
      xlab = "")
 abline(h = 0, col = grey(0.4), lty = 3)
 abline(v = interventions$date, col = grey(0.6))
-lines(epsilon_est ~ dates,
+add_ci_poly(est, dates, col = "darkseagreen1", border_col = "darkseagreen2")
+lines(est[, 1] ~ dates,
       lwd = 3,
       col = "darkseagreen"
 )
