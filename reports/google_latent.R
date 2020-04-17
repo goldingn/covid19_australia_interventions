@@ -30,7 +30,8 @@ interventions <- tribble(~date, ~stage, ~text,
 #     TRUE ~ 0
 #   ))
 
-# subset to all-australia, and remove the grocery and pharmacy category
+# - subset to all-Australia
+# - remove the grocery and pharmacy category
 # (affected by panic buying, not interventions)
 aus_data <- data %>%
   filter(is.na(state)) %>%
@@ -40,6 +41,7 @@ aus_data <- data %>%
 # get a matrix of days since intervention
 n_dates <- max(aus_data$date_num) + 1
 date_nums <- seq_len(n_dates) - 1
+dates <- min(aus_data$date) + date_nums
 n_categories <- n_distinct(aus_data$category)
 categories <- unique(aus_data$category)
 
@@ -48,16 +50,37 @@ library(greta)
 props <- uniform(0, 1, dim = 3)
 e <- props / sum(props)
 k <- exponential(2, dim = 3)
-weights <- normal(0, 10, dim = n_categories)
+trend_weights <- normal(0, 10, dim = n_categories)
+weekend_weights <- normal(0, 10, dim = n_categories)
+weekend_trend_weights <- normal(0, 10, dim = n_categories)
 sigma_obs <- normal(0, 1, truncation = c(0, Inf))
 df_obs <- 1 / normal(0, 1, truncation = c(0, Inf))
 
+# get the social distancing factor epsilon
 lags <- outer(date_nums, interventions$date_num, FUN = "-")
 lag_delays <- ilogit(sweep(lags, 2, 2 * k, FUN = "*"))
 epsilon <- 1 - sum(e) + lag_delays %*% e
 
-# multiply epsilon by weights for each category
-trends <- kronecker(epsilon, t(weights), FUN = "*")
+# get a vector of weekendiness for each day (lowest on Sundays, average of 0)
+doy <- lubridate::wday(dates)
+weekendiness <- scale(-exp(abs(doy - 4.5)))
+
+# effect of social distancing on each category
+trend_effect <- kronecker(epsilon,
+                          t(trend_weights),
+                          FUN = "*")
+
+# effect of weekends on each category
+weekend_effect <- kronecker(weekendiness,
+                            t(weekend_weights),
+                            FUN = "*")
+
+# interaction between weekends and social distancing for each category
+weekend_trend_effect <- kronecker(weekendiness * epsilon,
+                                  t(weekend_trend_weights),
+                                  FUN = "*")
+
+trends <- trend_effect + weekend_effect + weekend_trend_effect
 
 # extract expected trend for each observation and define likelihood
 rows <- match(aus_data$date_num, date_nums)
@@ -67,12 +90,11 @@ trends_mean <- trends[idx]
 distribution(aus_data$trend) <- student(df = df_obs, mu = trends_mean, sigma = sigma_obs)
 
 # fit model
-m <- model(e, k, weights)
+m <- model(e, k, trend_weights, weekend_weights, weekend_trend_weights)
 o <- opt(m)
 
 # plot fits
 par(mfrow = c(3, 2))
-dates <- min(aus_data$date) + date_nums
 for (i in seq_len(n_categories)) {
   category_i <- categories[i]
   plot_data <- aus_data %>%
@@ -110,10 +132,7 @@ lines(epsilon_est ~ dates,
 title(main = "Social distancing effect",
       col.main = "darkseagreen")
 
-# add weekend effect (interacting with intervention period and category?)
-# add a cyclic effect about sunday, with unknown parameters
-# include a weekend weight, and a weekend/social-distancing interaction weight
-
+# do Bayesian inference
 # do multiple states (use the mean weights for the national-level data!)
 
 
