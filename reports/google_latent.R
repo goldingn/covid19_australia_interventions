@@ -1,9 +1,11 @@
-# model overall movement changes in Australia, with paramneteric latent factor
+# model overall movement changes in Australia, with parameteric latent factor
 # model on Google mobility data
 
 library(dplyr)
 library(readr)
 library(lubridate)
+library(greta)
+source("R/functions.R")
 
 # load Jono Carroll's scraping of Aus mobility data
 file <- "https://raw.githubusercontent.com/jonocarroll/google-location-coronavirus/AUS/2020-04-11-au_state.tsv"
@@ -11,24 +13,10 @@ data <- readr::read_tsv(file) %>%
   dplyr::select(state = sub_region_name,
                 category = category,
                 date = date,
-                trend = trend) %>%
-  mutate(date_num = date - min(date))
+                trend = trend)
 
 # add on the intervention stage
-interventions <- tribble(~date, ~stage, ~text,
-                         "2020-03-16", 1, "public gatherings <= 500 people",
-                         "2020-03-24", 2, "venues closed and advice to stay home except limited essential activities",
-                         "2020-03-29", 3, "public gatherings <= 2 people") %>%
-  mutate(date = lubridate::date(date),
-         date_num = date - min(data$date))
-
-# data <- data %>% 
-#   mutate(stage = case_when(
-#     date >= interventions$date[3] ~ 3,
-#     date >= interventions$date[2] ~ 2,
-#     date >= interventions$date[1] ~ 1,
-#     TRUE ~ 0
-#   ))
+interventions <- intervention_dates()
 
 # - subset to all-Australia
 # - remove the grocery and pharmacy category
@@ -39,14 +27,14 @@ aus_data <- data %>%
   filter(category != "Grocery & pharmacy")
 
 # get a matrix of days since intervention
-n_dates <- max(aus_data$date_num) + 1
-date_nums <- seq_len(n_dates) - 1
-dates <- min(aus_data$date) + date_nums
+first_date <- min(aus_data$date)
+last_date <- max(aus_data$date)
+dates <- seq(first_date, last_date, by = 1)
+n_dates <- length(dates)
 n_categories <- n_distinct(aus_data$category)
 categories <- unique(aus_data$category)
 
 # model the impacts of those interventions on social distancing factor
-library(greta)
 props <- uniform(0, 1, dim = 3)
 e <- props / sum(props)
 k <- 1 / uniform(0, 16, dim = 3)
@@ -56,11 +44,14 @@ weekend_weights <- normal(0, 10, dim = n_categories)
 weekend_trend_weights <- normal(0, 10, dim = n_categories)
 trend_intercepts <- normal(0, 10, dim = n_categories)
 
+# standard deviation and degrees of freedom on the Student T observation model
 sigma_obs <- normal(0, 1, truncation = c(0, Inf))
 df_obs <- 1 / normal(0, 1, truncation = c(0, Inf))
 
 # get the social distancing factor epsilon
-lags <- outer(date_nums, interventions$date_num, FUN = "-")
+date_num <- dates - first_date
+intervention_date_num <- interventions$date - first_date
+lags <- outer(date_num, intervention_date_num, FUN = "-")
 lag_delays <- ilogit(sweep(lags, 2, 2 * k, FUN = "*"))
 epsilon <- 1 - sum(e) + lag_delays %*% e
 
@@ -68,33 +59,23 @@ epsilon <- 1 - sum(e) + lag_delays %*% e
 doy <- lubridate::wday(dates)
 weekendiness <- scale(-exp(abs(doy - 4.5)))
 
-# effect of social distancing on each category
-trend_effect <- kronecker(epsilon,
-                          t(trend_weights),
-                          FUN = "*")
+# intercept terms, and the effects of social distancing, weekends, and the
+# interaction between weekends and social distancing on each category
+intercepts <- ones(n_dates) %*% t(trend_intercepts)
+trend_effect <- epsilon %*% t(trend_weights)
+weekend_effect <- weekendiness %*% t(weekend_weights)
+weekend_trend_effect <- (weekendiness * epsilon) %*% t(weekend_trend_weights)
 
-# effect of weekends on each category
-weekend_effect <- kronecker(weekendiness,
-                            t(weekend_weights),
-                            FUN = "*")
-
-# interaction between weekends and social distancing for each category
-weekend_trend_effect <- kronecker(weekendiness * epsilon,
-                                  t(weekend_trend_weights),
-                                  FUN = "*")
-
-intercepts <- kronecker(ones(n_dates),
-                        t(trend_intercepts),
-                        FUN = "*")
-
+# get expected trends for each category
 trends <- intercepts + trend_effect + weekend_effect + weekend_trend_effect
 
 # extract expected trend for each observation and define likelihood
-rows <- match(aus_data$date_num, date_nums)
+rows <- match(aus_data$date, dates)
 cols <- match(aus_data$category, categories)
 idx <- cbind(rows, cols)
-trends_mean <- trends[idx]
-distribution(aus_data$trend) <- student(df = df_obs, mu = trends_mean, sigma = sigma_obs)
+distribution(aus_data$trend) <- student(df = df_obs,
+                                        mu = trends[idx],
+                                        sigma = sigma_obs)
 
 # fit model
 m <- model(e, k, trend_weights, weekend_weights, weekend_trend_weights)
@@ -105,27 +86,6 @@ r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psr
 n_effs <- coda::effectiveSize(draws)
 max(r_hats)
 min(n_effs)
-
-# summarise the posterior for a vector greta array
-summarise_vec_posterior <- function(vector, draws) {
-  vector_draws <- calculate(vector, values = draws)[[1]]
-  vector_mat <- as.matrix(vector_draws)
-  posterior_mean <- colMeans(vector_mat)
-  posterior_ci <- t(apply(vector_mat, 2, quantile, c(0.025, 0.975)))
-  cbind(mean = posterior_mean, posterior_ci)
-}
-
-add_ci_poly <- function(posterior_summary,
-                        dates,
-                        col = grey(0.8),
-                        border_col = grey(0.6)) {
-  polygon(x = c(dates, rev(dates)),
-          y = c(posterior_summary[, 2],
-                rev(posterior_summary[, 3])),
-          lwd = 0.5,
-          col = col,
-          border = border_col)
-}
 
 # plot fits
 par(mfrow = c(3, 2))
@@ -164,22 +124,11 @@ abline(v = interventions$date, col = grey(0.6))
 add_ci_poly(est, dates, col = "darkseagreen1", border_col = "darkseagreen2")
 lines(est[, 1] ~ dates,
       lwd = 3,
-      col = "darkseagreen"
+      col = "darkseagreen4"
 )
 title(main = "Social distancing effect",
-      col.main = "darkseagreen")
+      col.main = "darkseagreen4")
 
-# do Bayesian inference
-# do multiple states (use the mean weights for the national-level data!)
-
-
-# n_sim <- 100
-# sims <- calculate(epsilon, nsim = n_sim)[[1]][, , 1]
-# plot(sims[1, ] ~ date_nums, type = "n",
-#      ylab = "social distancing effect",
-#      xlab = "time",
-#      ylim = c(0, 1))
-# for (i in 1:n_sim) {
-#   lines(sims[i, ] ~ date_nums, lwd = 0.1)
-# }
-# abline(v = interventions$date_num, lty = 2)
+# - do multiple states with hierarchical weights
+# - account for public holidays in each state
+# - get national estiamte with population weights
