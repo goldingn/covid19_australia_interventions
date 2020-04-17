@@ -7,42 +7,40 @@ library(lubridate)
 library(greta)
 source("R/functions.R")
 
-# load Jono Carroll's scraping of Aus mobility data
-file <- "https://raw.githubusercontent.com/jonocarroll/google-location-coronavirus/AUS/2020-04-11-au_state.tsv"
-data <- readr::read_tsv(file) %>%
-  dplyr::select(state = sub_region_name,
-                category = category,
-                date = date,
-                trend = trend)
-
-# add on the intervention stage
+# load Google mobility data, intervention dates, and public holiday dates
+data <- google_mobility()
 interventions <- intervention_dates()
+holidays <- holiday_dates()
+populations <- state_populations()
 
-# - subset to all-Australia
-# - remove the grocery and pharmacy category
-# (affected by panic buying, not interventions)
-aus_data <- data %>%
-  filter(is.na(state)) %>%
-  dplyr::select(-state) %>%
-  filter(category != "Grocery & pharmacy")
+# # subset to all-Australia
+# data <- data %>%
+#   filter(is.na(state)) %>%
+#   dplyr::select(-state)
 
-# get a matrix of days since intervention
-first_date <- min(aus_data$date)
-last_date <- max(aus_data$date)
+# get vectors of date ranges and categories to model
+first_date <- min(data$date)
+last_date <- max(data$date)
 dates <- seq(first_date, last_date, by = 1)
-n_dates <- length(dates)
-n_categories <- n_distinct(aus_data$category)
-categories <- unique(aus_data$category)
+categories <- unique(data$category)
+n_categories <- n_distinct(data$category)
+n_dates <- n_distinct(dates)
+n_interventions <- n_distinct(interventions)
+n_states <- n_distinct(na.omit(data$state))
 
-# model the impacts of those interventions on social distancing factor
-props <- uniform(0, 1, dim = 3)
+# model the impacts of those interventions on social distancing factor k are
+# length of the tails for early- and late-adopters; e is the relative
+# contribution of the three interventions
+k <- 1 / uniform(0, 16, dim = n_interventions)
+props <- uniform(0, 1, dim = n_interventions)
 e <- props / sum(props)
-k <- 1 / uniform(0, 16, dim = 3)
 
+# get regression weights for each category
 trend_weights <- normal(0, 10, dim = n_categories)
 weekend_weights <- normal(0, 10, dim = n_categories)
 weekend_trend_weights <- normal(0, 10, dim = n_categories)
 trend_intercepts <- normal(0, 10, dim = n_categories)
+holiday_weights <- normal(0, 10, dim = n_categories)
 
 # standard deviation and degrees of freedom on the Student T observation model
 sigma_obs <- normal(0, 1, truncation = c(0, Inf))
@@ -59,15 +57,44 @@ epsilon <- 1 - sum(e) + lag_delays %*% e
 doy <- lubridate::wday(dates)
 weekendiness <- scale(-exp(abs(doy - 4.5)))
 
+# get a matrix of whether each state has a holiday on the given day
+holiday_matrix <- data %>%
+  filter(!is.na(state)) %>%
+  dplyr::select(-category, -trend) %>%
+  left_join(holidays) %>%
+  group_by(state, date) %>%
+  summarise(holiday = !all(is.na(name))) %>%
+  mutate(holiday = as.numeric(holiday)) %>%
+  arrange(state) %>%
+  tidyr::pivot_wider(names_from = state, values_from = holiday) %>%
+  arrange(date) %>%
+  dplyr::select(-date) %>%
+  as.matrix
+
+# compute the fraction of the national population that had a public holiday
+relative_population <- populations %>%
+  arrange(state) %>%
+  mutate(fraction = population / sum(population)) %>%
+  pull(fraction)
+
+population_on_holiday <- holiday_matrix %*% relative_population
+
 # intercept terms, and the effects of social distancing, weekends, and the
 # interaction between weekends and social distancing on each category
 intercepts <- ones(n_dates) %*% t(trend_intercepts)
 trend_effect <- epsilon %*% t(trend_weights)
 weekend_effect <- weekendiness %*% t(weekend_weights)
 weekend_trend_effect <- (weekendiness * epsilon) %*% t(weekend_trend_weights)
+holiday_effect <- population_on_holiday %*% t(holiday_weights)
 
 # get expected trends for each category
-trends <- intercepts + trend_effect + weekend_effect + weekend_trend_effect
+trends <- intercepts +
+  trend_effect +
+  weekend_effect + weekend_trend_effect +
+  holiday_effect
+
+aus_data <- data %>%
+  filter(is.na(state))
 
 # extract expected trend for each observation and define likelihood
 rows <- match(aus_data$date, dates)

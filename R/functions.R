@@ -329,12 +329,198 @@ one_p_value <- function (n_crisis, n_baseline) {
 }
 p_values <- Vectorize(one_p_value, c("n_crisis", "n_baseline"))
 
+
+# load and format Jono Carroll's scraping of Aus mobility data
+# - remove the grocery and pharmacy category
+# (affected by panic buying, not interventions)
+google_mobility <- function() {
+  file <-
+    "https://raw.githubusercontent.com/goldingn/google-location-coronavirus/AUS/2020-04-11-au_state.tsv"
+  data <- readr::read_tsv(file) %>%
+    dplyr::select(
+      state = sub_region_name,
+      category = category,
+      date = date,
+      trend = trend
+    ) %>%
+    filter(category != "Grocery & pharmacy") %>%
+    mutate(category = ifelse(category == "Workplace",
+                             "Workplaces",
+                             category))
+  data
+}
+
 intervention_dates <- function() {
   tibble::tribble(~date, ~stage, ~text,
                   "2020-03-16", 1, "public gatherings <= 500 people",
                   "2020-03-24", 2, "venues closed, advised to stay home",
                   "2020-03-29", 3, "public gatherings <= 2 people") %>%
     mutate(date = lubridate::date(date))
+}
+
+# dates of public holidays by state, from:
+# https://www.australia.gov.au/about-australia/special-dates-and-events/public-holidays
+holiday_dates <- function() {
+  dplyr::bind_rows(
+    tibble::tibble(
+      state = "Australian Capital Territory",
+      tibble::tribble(~date, ~name,
+                      "2020-01-01", "New Year's Day",
+                      "2020-01-27", "Australia Day",
+                      "2020-03-09", "Canberra Day",
+                      "2020-04-10", "Good Friday",
+                      "2020-04-11", "Easter Saturday",
+                      "2020-04-12", "Easter Sunday",
+                      "2020-04-13", "Easter Monday",
+                      "2020-04-25", "ANZAC Day",
+                      "2020-06-01", "Reconciliation Day",
+                      "2020-06-08", "Queen's Birthday",
+                      "2020-10-05", "Labour Day",
+                      "2020-12-25", "Christmas Day",
+                      "2020-12-28", "Boxing Day"
+      )
+    ),
+    tibble::tibble(
+      state = "New South Wales",
+      tibble::tribble(~date, ~name,
+                      "2020-01-01", "New Year's Day",
+                      "2020-01-27", "Australia Day",
+                      "2020-04-10", "Good Friday",
+                      "2020-04-11", "Easter Saturday",
+                      "2020-04-12", "Easter Sunday",
+                      "2020-04-13", "Easter Monday",
+                      "2020-04-25", "ANZAC Day",
+                      "2020-06-01", "Reconciliation Day",
+                      "2020-06-08", "Queen's Birthday",
+                      "2020-08-03", "Bank Holiday",
+                      "2020-10-05", "Labour Day",
+                      "2020-12-25", "Christmas Day",
+                      "2020-12-26", "Christmas Day",
+                      "2020-12-28", "Boxing Day (Additional day)"
+      )
+    ),
+    tibble::tibble(
+      state = "Northern Territory",
+      tibble::tribble(~date, ~name,
+                      "2020-01-01", "New Year's Day",
+                      "2020-01-27", "Australia Day",
+                      "2020-04-10", "Good Friday",
+                      "2020-04-11", "Saturday before Easter Sunday",
+                      "2020-04-13", "Easter Monday",
+                      "2020-04-25", "ANZAC Day",
+                      "2020-05-04", "May Day",
+                      "2020-06-08", "Queen's Birthday",
+                      "2020-08-03", "Picnic Day",
+                      "2020-10-05", "Labour Day",
+                      "2020-12-24", "Christmas Eve",
+                      "2020-12-25", "Christmas Day",
+                      "2020-12-28", "Boxing Day",
+                      "2020-12-31", "New Year's Eve"
+      )
+    ),
+    tibble::tibble(
+      state = "Queensland",
+      tibble::tribble(~date, ~name,
+                      "2020-01-01", "New Year's Day",
+                      "2020-01-27", "Australia Day",
+                      "2020-04-10", "Good Friday",
+                      "2020-04-11", "Easter Saturday",
+                      "2020-04-12", "Easter Sunday",
+                      "2020-04-13", "Easter Monday",
+                      "2020-04-25", "ANZAC Day",
+                      "2020-05-04", "Labour Day",
+                      "2020-10-05", "Queen's Birthday",
+                      "2020-12-25", "Christmas Day",
+                      "2020-12-26", "Boxing Day",
+                      "2020-12-28", "Boxing Day (Additional day)"
+      )
+    ),
+    tibble::tibble(
+      state = "South Australia",
+      tibble::tribble(~date, ~name,
+                      "2020-01-01", "New Year's Day",
+                      "2020-01-26", "Australia Day",
+                      "2020-01-27", "Australia Day (Additional day)",
+                      "2020-03-09", "Adelaide Cup Day",
+                      "2020-04-10", "Good Friday",
+                      "2020-04-11", "Easter Saturday",
+                      "2020-04-13", "Easter Monday",
+                      "2020-04-25", "ANZAC Day",
+                      "2020-06-08", "Queen's Birthday",
+                      "2020-10-05", "Labour Day",
+                      "2020-12-24", "Christmas Eve",
+                      "2020-12-25", "Christmas Day",
+                      "2020-12-28", "Proclamation Day",
+                      "2020-12-31", "New Year's Eve"
+      )
+    ),
+    tibble::tibble(
+      state = "Tasmania",
+      tibble::tribble(~date, ~name,
+                      "2020-01-01", "New Year's Day",
+                      "2020-01-27", "Australia Day",
+                      "2020-03-09", "Eight Hours Day",
+                      "2020-04-10", "Good Friday",
+                      "2020-04-13", "Easter Monday",
+                      "2020-04-14", "Easter Tuesday",
+                      "2020-04-25", "ANZAC Day",
+                      "2020-06-08", "Queen's Birthday",
+                      "2020-12-25", "Christmas Day",
+                      "2020-12-28", "Boxing Day"
+      )
+    ),
+    tibble::tibble(
+      state = "Victoria",
+      tibble::tribble(~date, ~name,
+                      "2020-01-01", "New Year's Day",
+                      "2020-01-27", "Australia Day",
+                      "2020-03-09", "Labour Day",
+                      "2020-04-10", "Good Friday",
+                      "2020-04-11", "Saturday before Easter Sunday",
+                      "2020-04-12", "Easter Sunday",
+                      "2020-04-13", "Easter Monday",
+                      "2020-04-25", "ANZAC Day",
+                      "2020-06-08", "Queen's Birthday",
+                      "2020-09-25", "Friday before AFL Grand Final",
+                      "2020-11-03", "Melbourne Cup",
+                      "2020-12-25", "Christmas Day",
+                      "2020-12-26", "Boxing Day",
+                      "2020-12-28", "Boxing Day (Additional day)"
+      )
+    ),
+    tibble::tibble(
+      state = "Western Australia",
+      tibble::tribble(~date, ~name,
+                      "2020-01-01", "New Year's Day",
+                      "2020-01-27", "Australia Day",
+                      "2020-03-02", "Labour Day",
+                      "2020-04-10", "Good Friday",
+                      "2020-04-13", "Easter Monday",
+                      "2020-04-25", "ANZAC Day",
+                      "2020-04-27", "ANZAC Day",
+                      "2020-06-01", "Western Australia Day",
+                      "2020-09-28", "Queen's Birthday",
+                      "2020-12-25", "Christmas Day",
+                      "2020-12-26", "Boxing Day",
+                      "2020-12-28", "Boxing Day (Additional day)"
+      )
+    )
+  ) %>%
+    mutate(date = lubridate::date(date))
+}
+
+state_populations <- function() {
+  tibble::tribble(
+    ~state, ~population,
+    "Australian Capital Territory", 426709,
+    "New South Wales", 8089526,
+    "Northern Territory", 245869,
+    "Queensland", 5095100,
+    "South Australia", 1751693,	
+    "Tasmania", 534281,
+    "Victoria", 6594804,
+    "Western Australia", 2621680
+  )
 }
 
 # summarise the posterior for a vector greta array
