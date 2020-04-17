@@ -44,7 +44,6 @@ holiday_weights <- normal(0, 10, dim = n_categories)
 
 # standard deviation and degrees of freedom on the Student T observation model
 sigma_obs <- normal(0, 1, truncation = c(0, Inf))
-df_obs <- 1 / normal(0, 1, truncation = c(0, Inf))
 
 # get the social distancing factor epsilon
 date_num <- dates - first_date
@@ -100,9 +99,8 @@ aus_data <- data %>%
 rows <- match(aus_data$date, dates)
 cols <- match(aus_data$category, categories)
 idx <- cbind(rows, cols)
-distribution(aus_data$trend) <- student(df = df_obs,
-                                        mu = trends[idx],
-                                        sigma = sigma_obs)
+distribution(aus_data$trend) <- normal(mean = trends[idx],
+                                       sd = sigma_obs)
 
 # fit model
 m <- model(e, k, trend_weights, weekend_weights, weekend_trend_weights)
