@@ -24,7 +24,7 @@ Whilst these multiple data sources provide varied perspectives on population beh
 
 Moreover, no single one of these types of data fully encompasses the range of behaviours that affect transmission of COVID-19 - those that can be sumamrised in a mathematical modelling framework via the mixing parameter of a transmission model.
 
-The aim of this work is to synthesise these varied measures of population mixing behaviour into a small, quantified set of latent social distancing factors that reflect the underlying changes in behaviour. We consider these latent social distancing factors in a semi-mechanistic way; reflecting knowledge and hypotheses of the events that triggered and influenced these behavioural trends. To do this, we construct a statistical semi-mechanistic latent factor model that considers dates that events, policy measures, and public announcements are made, and estimates how the behaviour of the population responded to each events by calibration against all of the available metrics of population mixing behaviour.
+The aim of this work is to synthesise these varied measures of population mixing behaviour into a small, quantified set of latent social distancing factors that reflect the underlying changes in behaviour. We consider these latent social distancing factors in a semi-mechanistic way; reflecting knowledge and hypotheses of the events that triggered and influenced these behavioural trends. To do this, we construct a statistical semi-mechanistic latent factor model that considers dates that events, policy measures, and public announcements are made, and estimates how the behaviour of the population responded to each event by calibration against all of the available metrics of population mixing behaviour.
 
 We apply this model to 9 separate data streams provided by from two technology companies for Australia, with spatial data varying between national, state and city-levels. This reveals two distinct latent population behavioural factors: a strong social distancing effect in response to national announcements and policies, preceeded by a small and short-lived rise in mixing apparently driven by the population 'stocking up' on supplies.
 
@@ -57,48 +57,80 @@ We construct a mechanistic latent-factor model that relates a series of underlyi
 
 For each data stream $i$, we observe a time series of data values $\mathbf{y}_{i}$, comprising the values of the metric at each time $t$. We model the overall trend $\mathbf{m}_i$ in each of these data streams as a function of $K$ different temporal latent factors $\mathbf{z}_k$.
 
-Each datastream trend is modelled as a linear function of the latent behavioural factors, with intercept term $\alpha_i$ and loading values $\omega_{i,k}$ against each latent factor: 
+Each datastream trend is modelled as a linear function of the latent behavioural factors, with loading values $\omega_{i,k}$ against each latent factor: 
 
 $$
-m_{i,t} = \alpha_i + \sum_{k=1}^K \omega_{i,k} z_{k,t}
+m_{i,t} = \sum_{k=1}^K \omega_{i,k} z_{k,t}
 $$
 The latent factors $\mathbf{z}_k$ quantify general patterns of behaviour, rather than any one specific measurement of behaviour. As such, they are unitless, relative values which for statistical convenience we constrain to be scaled between 0 and 1. The sign and magnitude of the loadings $\omega_{i,k}$ therefore determine whether each behaviour corresponds to an increase or decrease in that metric, and by what magnitude.
 
 #### Mechanistic latent factors
 
-  We model each of these latent behavioural factors in a semi-mechanistic fashion. We compute the degree of behavioural change as a function of the timing, magnitude and early/late adoption of behavioural responses to events. For each latent factor $k$, we model the impact of each event $j$ as a function of: $\tau_{j,k}$ the time when the event took place; $\epsilon_{j,k}$ the relative impact of the event on behaviour; and $\kappa_{j,k}$, the variability among the population in how rapidly individuals responded to these events.
+  We model each of these latent behavioural factors in a semi-mechanistic fashion. We compute the degree of behavioural change as a function of the timing, magnitude and early/late adoption of behavioural responses to triggers - such as announcements or imposed restrictions. For each latent factor $k$, we model the impact of each trigger $j$ as a function of: $\tau_{j,k}$ the time when the trigger occurred; $\epsilon_{j,k}$ the relative impact of the event on behaviour; and $\kappa_{j,k}$, the variability among the population in how rapidly individuals responded to these events.
   
-  For each latent behaviour $k$, these parameters describe the behavioural reponse to each event via a rescaled logistic probability distribution, with distribution location parameter $\tau_{j,k}$ and scale parameter $\kappa_{j,k}$, and a rescaling factor $\epsilon_{j,k}$. This logistic probability distribution can be used in two ways useful for modelling behaviour related to COVID-19. For behaviours that individuals enact at a specific point in time - such as increased grocery shopping, or travelling to a particular residence in preparation for social distancing - the probability density function gives the fraction of the population that enacts these behaviours at a given time. For behavioural states that individuals 'switch' to enacting at some point in time - such as increased social distancing behaviour - the cumulative density function gives the fraction of the population that have switched to this new behavioural state by a given time.
+  For each latent behaviour $k$, these parameters describe the behavioural reponse to each trigger via a rescaled logistic probability distribution, with distribution location parameter $\tau_{j,k}$ and scale parameter $\kappa_{j,k}$, and a rescaling factor $\epsilon_{j,k}$. This logistic probability distribution can be used in two ways for two different types of behaviour related to COVID-19. For behavioural events - behaviours that individuals engage in at a specific point in time (such as bulk grocery shopping, or travelling to a particular residence in preparation for social distancing) the probability density function gives the fraction of the population that engages in the behaviours at a given time. For behavioural shifts - where individuals 'switch' from one behavioural state to another at some point in time (such as shifting from their baseline state to one of increased social distancing behaviour) the cumulative density function gives the fraction of the population that have shifted to this new behavioural state by a given time.
   
-  These probabilities are then rescaled such that their maximum value is the relative event impact parameter $\epsilon_{j,k}$. This parameter is proportional to the fraction of the population that enacts a behaviour $k$ in response to event $j$. However, the data streams considered only provide information on *relative* behavioural changes among a subset of the population, there is therefore no information against which to calibrate an estimate of the *absolute* fraction of the population enacting a behaviour. Parameters $\epsilon_{j,k}$ are therefore constrained so that their sum over all events for a given behaviour is equal to 1; if only a single event is considered, $\epsilon_{j,k}$ is fixed at 1. The contribution of each event $j$ to an episodic behaviour is therefore given by:
+  These probabilities are then rescaled such that their maximum value is the relative event impact parameter $\epsilon_{j,k}$. This parameter is proportional to the fraction of the population that enacts a behaviour $k$ in response to event $j$. However, the data streams considered only provide information on *relative* behavioural changes among a subset of the population - there is therefore no information against which to calibrate an estimate of the *absolute* fraction of the population engaging in a behaviour. Parameters $\epsilon_{j,k}$ are therefore constrained so that their sum over all events for a given behaviour is equal to 1. If only a single event is considered, $\epsilon_{j,k}$ is fixed at 1. With this rescaling, the contribution to latent factor $k$ of behavioural events associated with trigger $j$ is given by:
 
 $$
 f_{j,k}(t) = 4 \epsilon_{j,k} \frac{e^{-(t - \tau_{j,k}) / \kappa_{j,k}}}{(1 + e^{-(t - \tau_{j,k}) / \kappa_{j,k}}) ^ 2}
 $$
 
-and the contribution to a state-switching behaviour is given by:
+and the contribution of behavioural shifts associated with trigger $j$ is given by:
 
 $$
 g_{j,k}(t) = \frac{\epsilon_{j,k}}{1 + e^{-(t - \tau_{j,k}) / \kappa_{j,k}}}
 $$
+The latent factors can then be computed by summing the contributions of all $J$ triggers. For a latent factor representing behavioural events this would be:
+$$
+z_{k,t} = \sum_{j=1}^J  f_{j,k}(t)
+$$
+and for behavioural shifts:
 
+$$
+z_{k,t} = \sum_{j=1}^J g_{j,k}(t)
+$$
 
+#### Observation models
 
+We assume that the temporal trend for each datastream is driven by these latent behavioural states. To complete the model, we define an observation model for the datastreams, comprising sampling error and drivers of patterns in the data stream that are not driven by COVID-19-associated behaviours - such as weekends and public holidays. We assume that each data stream observation $y_{i,t}$ is subject to independent Gaussian error with variance $\sigma^2$ (i.e. common to all data sources) and expected value $\mu_{i,t}$, given by the modelled trend $m_{i,t}$ plus a linear model to account for non-COVID-19 effects:
+<!-- \begin{align} -->
+$$
+y_{i,t} \sim N(\mu_{i,t}, \sigma^2) \\ 
+\mu_{i,t} = m_{i,t} + \alpha_i + \mathbf{x}_t \beta_i
+$$
+<!-- \end{align} -->
 
+where $\alpha_i$ is an intercept term, $\mathbf{x}_t$ is a data vector giving the values of the $M$ covariates (e.g. indicator variables for whether $t$ falls on a weekend or public holiday), and $\beta_i$ is a corresponding vector of datastream-specific regression coefficients for the main effects of these covariates.
 
-#### Data observatrion models
+####
 
-   - observation model (weekends, holidays, and interactions)
-   
-   
-   
-   
+When presented in matrix form, the model can be seen to be a standard linear latent factor model:
+CHANGE e TO \epsilon AND RENAME \epsilon
+$$
+\mathbf{y} =  \mathbf{x} \beta + \mathbf{z} \omega + \mathbf{e}\\
+e_{i,t} \sim N(0, \sigma^2)
+$$
+where $\mathbf{x}$ is an $N$-by-$M+1$ design matrix of covariates, including a column of ones to represent the intercept terms, $\beta$ is an $M-1$-by-$N$ matrix of regression coefficients, $\mathbf{z}$ is a $T$-by-$K$ matrix of behavioural latent factors and $\omega$ is a $K$-by-$N$ matrix of loadings between the latent factors and data streams.
    
    
  - Data availability by source
  - Announcement timeline for Australia
  - Specific model fitting for Australia
     - interaction between distancing and weekends
+    
+<!-- $$ -->
+<!-- y_{i,t} \sim N(\mu_{i,t}, \sigma^2) \\  -->
+<!-- \mu_{i,t} = \alpha_i + m_{i,t} + \mathbf{x}_t \beta_i + m_{i,t} \mathbf{x}_t \gamma_i -->
+<!-- $$ -->
+<!-- $$ -->
+<!-- y_{i,t} \sim N(\mu_{i,t}, \sigma^2) \\  -->
+<!-- \mu_{t} = \alpha + \mathbf{m}_{t} + \mathbf{x}_t \beta + (\mathbf{m}_{t} \odot \mathbf{x}_t) \gamma \\  -->
+<!-- \mathbf{m} = \mathbf{z} \omega -->
+<!-- $$ -->
+
+<!-- $\gamma_i$ is a second vector of coefficints for the interactions between these covariates and the trend. These interaction terms allow the model to reflect the fact that the impact of of these other drivers may diminish or be exacerbated by COVID-19 -related behaviours, for example a reduced difference in behaviours between weekends and weekdays when the population is exhibiting strong social distancing behaviour. -->
+    
     - greta HMC
     - residuals checking
 
