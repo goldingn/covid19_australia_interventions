@@ -1,3 +1,4 @@
-data/*.csv
+data/*
 .Rproj.user
 *.rds
+
