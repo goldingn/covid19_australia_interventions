@@ -346,8 +346,58 @@ google_mobility <- function() {
     filter(category != "Grocery & pharmacy") %>%
     mutate(category = ifelse(category == "Workplace",
                              "Workplaces",
-                             category))
+                             category)) %>%
+    mutate(source = "Google")
+  
   data
+}
+
+# download and format Apple's mobility data - will need to update the url regularly
+apple_mobility <- function() {
+  
+  # a list of the regions we'se ideally be interested in. Apple only provides
+  # data for a handful of these (Australia and the four biggest cities)
+  ideal_regions <- c(
+    "Australia",
+    "New South Wales",
+    "Victoria",
+    "Queensland",
+    "Western Australia",
+    "South Australia",
+    "Australian Capital Territory",
+    "Tasmania",
+    "Northern Territory",
+    "Sydney",
+    "Melbourne",
+    "Brisbane",
+    "Perth",
+    "Adelaide",
+    "Canberra",
+    "Hobart",
+    "Darwin"
+  )
+  
+  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2006HotfixDev8/v1/en-us/applemobilitytrends-2020-04-17.csv"
+  data <- readr::read_csv(url) %>%
+    tidyr::pivot_longer(cols = starts_with("2020-"),
+                        names_to = "date",
+                        values_to = "trend") %>%
+    mutate(date = lubridate::date(date)) %>%
+    filter(region %in% ideal_regions)
+  
+  # add on a state label, rename the transportation type to 'category' to match
+  # google, and add on the data source
+  data <- data %>%
+    mutate(state = case_when(region == "Sydney" ~ "New South Wales",
+                             region == "Melbourne" ~ "Victoria",
+                             region == "Brisbane" ~ "Queensland",
+                             region == "Perth" ~ "Western Australia",
+                             TRUE ~ as.character(NA))) %>%
+    rename(category = transportation_type) %>%
+    mutate(source = "Apple")
+  
+  data
+   
 }
 
 intervention_dates <- function() {
