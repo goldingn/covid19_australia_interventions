@@ -49,10 +49,63 @@ To add:
 
 ## Methods
 
- - General model description
-   - latent factor model structure (weights)
-   - construction of latent factors
-   - observation model (weekends and holidays)
+### General model description
+
+#### Latent factor model
+ 
+We construct a mechanistic latent-factor model that relates a series of underlying ('latent') population behaviours to an array of data streams, and then infer its parameters using statistical inference. This section, gives a general formulation of the model. Details of the specific implementation and data sources for Australia are given in a later section.
+
+For each data stream $i$, we observe a time series of data values $\mathbf{y}_{i}$, comprising the values of the metric at each time $t$. We model the overall trend $\mathbf{m}_i$ in each of these data streams as a function of $K$ different temporal latent factors $\mathbf{z}_k$.
+
+Each datastream trend is modelled as a linear function of the latent behavioural factors, with intercept term $\alpha_i$ and loading values $\omega_{i,k}$ against each latent factor: 
+
+$$
+m_{i,t} = \alpha_i + \sum_{k=1}^K \omega_{i,k} z_{k,t}
+$$
+The latent factors $\mathbf{z}_k$ quantify general patterns of behaviour, rather than any one specific measurement of behaviour. As such, they are unitless, relative values which for statistical convenience we constrain to be scaled between 0 and 1. The sign and magnitude of the loadings $\omega_{i,k}$ therefore determine whether each behaviour corresponds to an increase or decrease in that metric, and by what magnitude.
+
+#### Mechanistic latent factors
+
+  We model each of these latent behavioural factors in a semi-mechanistic fashion. We compute the degree of behavioural change as a function of the timing, magnitude and early/late adoption of behavioural responses to events. For each latent factor $k$, we model the impact of each event $j$ as a function of: $\tau_{j,k}$ the time when the event took place; $\epsilon_{j,k}$ the relative impact of the event on behaviour; and $\kappa_{j,k}$, the variability among the population in how rapidly individuals responded to these events.
+  
+  For each latent behaviour $k$, these parameters describe the behavioural reponse to each event via a logistic distribution. Where the behaviour occurs at a single point in time, these parameters give rise to a logistic distribution over the times at which members of the population exhibit this behaviour, where the fraction of the population exhibiting behaviour $k$ in response to event $j$ at time $t$ is given by the probability density function of the logistic distribution:
+  
+$$
+p_{j,k}(t) = \frac{e^{-(t - \tau_{j,k}) / \kappa_{j,k}}}{\kappa_{j,k} (1 + e^{-(t - \tau_{j,k}) / \kappa_{j,k}}) ^ 2}
+$$
+
+  Where the latent behavioural state is described by individuals switching from one behavioural state to another, the fraction of the population that have made the switch by time $t$ is given by the cumulative density function of the logistic distribution:
+  
+$$
+p_{j,k}(t) = \frac{1}{1 + e^{-(t - \tau_{j,k}) / \kappa_{j,k}}}
+$$
+
+  Since the latent factors are scaled between 0 and 1, we scale these probabilities such that their maximum value is the relative event impact parameter $\epsilon_{j,k}$, and the sum over these parameeters is constrained to 1. Therefore, where the behaviour is a function of only a single event, $\epsilon_{j,k}$ is fixed at 1. The contribution of each event to the behaviour is therefore given by:
+
+<!-- MAKE THIS HAVE DENSITY EPSILON AT THE MEAN -->
+<!-- HAS DENSITY 1/(4 * kappa) AT MEAN -->
+<!-- SO DIVIDE BY THAT AND MULTIPLY BY EPSILON -->
+<!-- MUTIPLY BY epsilon * 4 * kappa -->
+
+<!-- CHECK THIS! -->
+$$
+f_{j,k}(t) = 4 \kappa_{j,k} \epsilon_{j,k} \frac{e^{-(t - \tau_{j,k}) / \kappa_{j,k}}}{\kappa_{j,k} (1 + e^{-(t - \tau_{j,k}) / \kappa_{j,k}}) ^ 2}
+$$
+And the cumulative contribution by:
+
+$$
+f_{j,k}(t) = \frac{\epsilon_{j,k}}{1 + e^{-(t - \tau_{j,k}) / \kappa_{j,k}}}
+$$
+
+#### Data observatrion models
+
+   - observation model (weekends, holidays, and interactions)
+   
+   
+   
+   
+   
+   
  - Data availability by source
  - Announcement timeline for Australia
  - Specific model fitting for Australia
