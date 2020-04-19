@@ -1,0 +1,77 @@
+---
+title: "Quantifying social distancing behaviour across Australia in response to COVID-19"
+author:
+  - Nick Golding$^1$, ...$^2$ & ...$^3$
+  - $^1$ Telethon Kids Institute and Curtin University, Perth WA, Australia
+  - $^2$ ...
+  - $^3$ ...
+bibliography: distancing.bib
+output:
+  pdf_document:
+  word_document:
+    fig_caption: true
+    highlight: null
+header-includes: \usepackage{float}
+---
+
+## Gist (to be split up into a paper format)
+ 
+Social distancing behaviour - advised and enforced by governments around the world - has been a cornerstone of the global response to the COVID-19 pandemic. Quantifying how the behaviour of a population has changed in response to these public health measures, is critical to monitoring the ongoing effectiveness of these measures, identifying which are most impactful, and as inputs to modelling to forecast how the measures will aimpact ont he course of the outbreak.
+
+A variety of data sources have are available that can quantify different aspects of social distancing behaviour at a population level. Aggregated user-tracking data from technology companies provide timeseries of: how often users leave home, the lengths of journeys they undertake when they do, the types of locations they visited, and the locations of those places.
+
+Whilst these multiple data sources provide varied perspectives on population behaviour, they vary significantly in the subset of the population they reflect and the aspects of behaviour being considered. For example, data from route-planning apps is more likely to reflect unfamiliar journeys than trips to places regularly visited, and data on the types of places being visited does not indicate how far users travel to visit them. The different, and often non-overlapping spatial scales and time frames of these data sources also hinders direct comparison and synthesis of them.
+
+Moreover, no single one of these types of data fully encompasses the range of behaviours that affect transmission of COVID-19 - those that can be sumamrised in a mathematical modelling framework via the mixing parameter of a transmission model.
+
+The aim of this work is to synthesise these varied measures of population mixing behaviour into a small, quantified set of latent social distancing factors that reflect the underlying changes in behaviour. We consider these latent social distancing factors in a semi-mechanistic way; reflecting knowledge and hypotheses of the events that triggered and influenced these behavioural trends. To do this, we construct a statistical semi-mechanistic latent factor model that considers dates that events, policy measures, and public announcements are made, and estimates how the behaviour of the population responded to each events by calibration against all of the available metrics of population mixing behaviour.
+
+We apply this model to 9 separate data streams provided by from two technology companies for Australia, with spatial data varying between national, state and city-levels. This reveals two distinct latent population behavioural factors: a strong social distancing effect in response to national announcements and policies, preceeded by a small and short-lived rise in mixing apparently driven by the population 'stocking up' on supplies.
+
+To add:
+ - relative effectiveness of three different policies
+ - relative effect size by state
+
+## Abstract
+
+ - Social distancing 
+ - Data available
+ - Synthesis needed
+ - Findings
+ - Use for monitoring
+ 
+## Introduction
+
+ - COVID-19 background
+ - Social distancing policies
+ - Population mixing/mobility studies
+ - Timeline of data availability
+
+## Methods
+
+ - General model description
+   - latent factor model structure (weights)
+   - construction of latent factors
+   - observation model (weekends and holidays)
+ - Data availability by source
+ - Announcement timeline for Australia
+ - Specific model fitting for Australia
+    - interaction between distancing and weekends
+    - greta HMC
+    - residuals checking
+
+## Results
+
+Figures:
+ - Two latent factors nationally
+ - Latent factors superimposed on different data sources
+ - Loadings for each data type (ordination-style plot of similarities between them? After taking absolute value)
+ - Relative impact of different announcements (summary of ranking in posterior?)
+ - Variation in latent factors by state
+
+## Discussion
+
+ - Use for monitoring adherence.
+ - Use in modelling studies.
+ - Caveat that the population is biased to users of these technologies.
+ - Potential to include more data sources.
