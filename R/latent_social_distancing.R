@@ -155,5 +155,4 @@ title(main = "Social distancing effect",
       col.main = "darkseagreen4")
 
 # - do multiple states with hierarchical weights
-# - account for public holidays in each state
-# - get national estiamte with population weights
+# - get national estimate with population weights

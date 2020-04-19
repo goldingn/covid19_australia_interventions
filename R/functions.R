@@ -334,20 +334,23 @@ p_values <- Vectorize(one_p_value, c("n_crisis", "n_baseline"))
 # - remove the grocery and pharmacy category
 # (affected by panic buying, not interventions)
 google_mobility <- function() {
-  file <-
-    "https://raw.githubusercontent.com/goldingn/google-location-coronavirus/AUS/2020-04-11-au_state.tsv"
-  data <- readr::read_tsv(file) %>%
+  url <- "https://www.gstatic.com/covid19/mobility/Global_Mobility_Report.csv"
+  data <- readr::read_csv(url, ) %>%
+    filter(country_region == "Australia") %>%
+    tidyr::pivot_longer(ends_with("_percent_change_from_baseline"),
+                        names_to = "category",
+                        values_to = "trend") %>%
+    mutate(source = "Google") %>%
     dplyr::select(
-      state = sub_region_name,
+      state = sub_region_1,
       category = category,
       date = date,
       trend = trend
     ) %>%
-    filter(category != "Grocery & pharmacy") %>%
-    mutate(category = ifelse(category == "Workplace",
-                             "Workplaces",
-                             category)) %>%
-    mutate(source = "Google")
+    mutate(category = str_remove_all(category, "_percent_change_from_baseline"),
+           category = str_replace_all(category, "_", " "),
+    ) %>%
+    filter(category != "grocery and pharmacy")
   
   data
 }
