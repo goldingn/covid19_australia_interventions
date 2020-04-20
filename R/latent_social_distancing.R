@@ -7,26 +7,26 @@ library(lubridate)
 library(greta)
 source("R/functions.R")
 
-# load Google mobility data, intervention dates, and public holiday dates
-data <- google_mobility()
+# load mobility streams, and potential drivers
+mobility <- all_mobility()
 interventions <- intervention_dates()
 holidays <- holiday_dates()
 populations <- state_populations()
 
 # # subset to all-Australia
-# data <- data %>%
+# mobility <- mobility %>%
 #   filter(is.na(state)) %>%
 #   dplyr::select(-state)
 
-# get vectors of date ranges and categories to model
-first_date <- min(data$date)
-last_date <- max(data$date)
+# get vectors of date ranges and datastreams to model
+first_date <- min(mobility$date)
+last_date <- max(mobility$date)
 dates <- seq(first_date, last_date, by = 1)
-categories <- unique(data$category)
-n_categories <- n_distinct(data$category)
+datastreams <- unique(mobility$datastream)
+n_datastreams <- n_distinct(mobility$datastream)
 n_dates <- n_distinct(dates)
 n_interventions <- n_distinct(interventions)
-n_states <- n_distinct(na.omit(data$state))
+n_states <- n_distinct(na.omit(mobility$state))
 
 # model the impacts of those interventions on social distancing factor k are
 # length of the tails for early- and late-adopters; lambda is the relative
@@ -35,12 +35,12 @@ k <- 1 / uniform(0, 16, dim = n_interventions)
 props <- uniform(0, 1, dim = n_interventions)
 lambda <- props / sum(props)
 
-# get regression weights for each category
-trend_weights <- normal(0, 10, dim = n_categories)
-weekend_weights <- normal(0, 10, dim = n_categories)
-weekend_trend_weights <- normal(0, 10, dim = n_categories)
-trend_intercepts <- normal(0, 10, dim = n_categories)
-holiday_weights <- normal(0, 10, dim = n_categories)
+# get regression weights for each datastream
+trend_weights <- normal(0, 10, dim = n_datastreams)
+weekend_weights <- normal(0, 10, dim = n_datastreams)
+weekend_trend_weights <- normal(0, 10, dim = n_datastreams)
+trend_intercepts <- normal(0, 10, dim = n_datastreams)
+holiday_weights <- normal(0, 10, dim = n_datastreams)
 
 # standard deviation and degrees of freedom on the Student T observation model
 sigma_obs <- normal(0, 1, truncation = c(0, Inf))
@@ -57,15 +57,19 @@ doy <- lubridate::wday(dates)
 weekendiness <- scale(-exp(abs(doy - 4.5)))
 
 # get a matrix of whether each state has a holiday on the given day
-holiday_matrix <- data %>%
+holiday_matrix <- mobility %>%
   filter(!is.na(state)) %>%
-  dplyr::select(-category, -trend) %>%
+  dplyr::select(-datastream, -trend) %>%
   left_join(holidays) %>%
   group_by(state, date) %>%
   summarise(holiday = !all(is.na(name))) %>%
   mutate(holiday = as.numeric(holiday)) %>%
   arrange(state) %>%
-  tidyr::pivot_wider(names_from = state, values_from = holiday) %>%
+  tidyr::pivot_wider(
+    names_from = state,
+    values_from = holiday,
+    values_fill = list(holiday = 0)
+  ) %>%
   arrange(date) %>%
   dplyr::select(-date) %>%
   as.matrix
@@ -79,27 +83,27 @@ relative_population <- populations %>%
 population_on_holiday <- holiday_matrix %*% relative_population
 
 # intercept terms, and the effects of social distancing, weekends, and the
-# interaction between weekends and social distancing on each category
+# interaction between weekends and social distancing on each datastream
 intercepts <- ones(n_dates) %*% t(trend_intercepts)
 trend_effect <- epsilon %*% t(trend_weights)
 weekend_effect <- weekendiness %*% t(weekend_weights)
 weekend_trend_effect <- (weekendiness * epsilon) %*% t(weekend_trend_weights)
 holiday_effect <- population_on_holiday %*% t(holiday_weights)
 
-# get expected trends for each category
+# get expected trends for each datastream
 trends <- intercepts +
   trend_effect +
   weekend_effect + weekend_trend_effect +
   holiday_effect
 
-aus_data <- data %>%
+aus_mobility <- mobility %>%
   filter(is.na(state))
 
 # extract expected trend for each observation and define likelihood
-rows <- match(aus_data$date, dates)
-cols <- match(aus_data$category, categories)
+rows <- match(aus_mobility$date, dates)
+cols <- match(aus_mobility$datastream, datastreams)
 idx <- cbind(rows, cols)
-distribution(aus_data$trend) <- normal(mean = trends[idx],
+distribution(aus_mobility$trend) <- normal(mean = trends[idx],
                                        sd = sigma_obs)
 
 # fit model
@@ -113,11 +117,11 @@ max(r_hats)
 min(n_effs)
 
 # plot fits
-par(mfrow = c(3, 2))
-for (i in seq_len(n_categories)) {
-  category_i <- categories[i]
-  plot_data <- aus_data %>%
-    filter(category == category_i)
+par(mfrow = n2mfrow(n_datastreams))
+for (i in seq_len(n_datastreams)) {
+  datastream_i <- datastreams[i]
+  plot_data <- aus_mobility %>%
+    filter(datastream == datastream_i)
   est <- summarise_vec_posterior(trends[, i], draws)
   ylim <- range(c(plot_data$trend, est))
   plot(est[, 1] ~ dates,
@@ -129,12 +133,12 @@ for (i in seq_len(n_categories)) {
   abline(v = interventions$date, col = grey(0.6))
   add_ci_poly(est, dates)
   lines(est[, 1] ~ dates, lwd = 2, col = grey(0.4))
-  points(trend ~ dates,
+  points(trend ~ date,
          data = plot_data,
          pch = 16,
          cex = 0.5,
          col = grey(0.2))
-  title(main = category_i)
+  title(main = datastream_i)
 }
 
 # add social distancing factor plot

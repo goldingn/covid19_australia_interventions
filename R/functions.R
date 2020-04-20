@@ -337,21 +337,21 @@ google_mobility <- function() {
   url <- "https://www.gstatic.com/covid19/mobility/Global_Mobility_Report.csv"
   data <- readr::read_csv(url, ) %>%
     filter(country_region == "Australia") %>%
-    tidyr::pivot_longer(ends_with("_percent_change_from_baseline"),
-                        names_to = "category",
-                        values_to = "trend") %>%
-    mutate(source = "Google") %>%
+    tidyr::pivot_longer(
+      ends_with("_percent_change_from_baseline"),
+      names_to = "category",
+      values_to = "trend"
+    ) %>%
     dplyr::select(
       state = sub_region_1,
       category = category,
       date = date,
       trend = trend
     ) %>%
-    mutate(category = str_remove_all(category, "_percent_change_from_baseline"),
-           category = str_replace_all(category, "_", " "),
-    ) %>%
-    filter(category != "grocery and pharmacy")
-  
+    mutate(
+      category = str_remove_all(category, "_percent_change_from_baseline"),
+      category = str_replace_all(category, "_", " ")
+    )
   data
 }
 
@@ -382,25 +382,59 @@ apple_mobility <- function() {
   
   url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2006HotfixDev8/v1/en-us/applemobilitytrends-2020-04-17.csv"
   data <- readr::read_csv(url) %>%
-    tidyr::pivot_longer(cols = starts_with("2020-"),
-                        names_to = "date",
-                        values_to = "trend") %>%
-    mutate(date = lubridate::date(date)) %>%
-    filter(region %in% ideal_regions)
+    tidyr::pivot_longer(
+      cols = starts_with("2020-"),
+      names_to = "date",
+      values_to = "trend"
+    ) %>%
+    mutate(
+      date = lubridate::date(date)
+    ) %>%
+    filter(
+      region %in% ideal_regions
+    )
   
   # add on a state label, rename the transportation type to 'category' to match
   # google, and add on the data source
   data <- data %>%
-    mutate(state = case_when(region == "Sydney" ~ "New South Wales",
-                             region == "Melbourne" ~ "Victoria",
-                             region == "Brisbane" ~ "Queensland",
-                             region == "Perth" ~ "Western Australia",
-                             TRUE ~ as.character(NA))) %>%
-    rename(category = transportation_type) %>%
-    mutate(source = "Apple")
+    mutate(
+      state = case_when(region == "Sydney" ~ "New South Wales",
+                        region == "Melbourne" ~ "Victoria",
+                        region == "Brisbane" ~ "Queensland",
+                        region == "Perth" ~ "Western Australia",
+                        TRUE ~ as.character(NA))
+    )
   
   data
    
+}
+
+# combine all mobility datasets
+all_mobility <- function() {
+  
+  # load datasets and label their datastreams separately
+  google <- google_mobility() %>%
+    mutate(
+      datastream = str_c("google: time spent at ", category)
+    ) %>%
+    dplyr::select(-category)
+  
+  apple <- apple_mobility() %>%
+    mutate(
+      datastream = str_c("apple: direction requests for ", transportation_type)
+    ) %>%
+    dplyr::select(
+      -geo_type,
+      -region,
+      -transportation_type
+    )
+  
+  # combine the datasets
+  bind_rows(
+    google,
+    apple
+  )
+  
 }
 
 intervention_dates <- function() {
