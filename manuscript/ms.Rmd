@@ -66,20 +66,20 @@ The latent factors $\mathbf{z}_k$ quantify general patterns of behaviour, rather
 
 #### Mechanistic latent factors
 
-  We model each of these latent behavioural factors in a semi-mechanistic fashion. We compute the degree of behavioural change as a function of the timing, magnitude and early/late adoption of behavioural responses to triggers - such as announcements or imposed restrictions. For each latent factor $k$, we model the impact of each trigger $j$ as a function of: $\tau_{j,k}$ the time when the trigger occurred; $\epsilon_{j,k}$ the relative impact of the event on behaviour; and $\kappa_{j,k}$, the variability among the population in how rapidly individuals responded to these events.
+  We model each of these latent behavioural factors in a semi-mechanistic fashion. We compute the degree of behavioural change as a function of the timing, magnitude and early/late adoption of behavioural responses to triggers - such as announcements or imposed restrictions. For each latent factor $k$, we model the impact of each trigger $j$ as a function of: $\tau_{j,k}$ the time when the trigger occurred; $\lambda_{j,k}$ the relative impact of the event on behaviour; and $\kappa_{j,k}$, the variability among the population in how rapidly individuals responded to these events.
   
-  For each latent behaviour $k$, these parameters describe the behavioural reponse to each trigger via a rescaled logistic probability distribution, with distribution location parameter $\tau_{j,k}$ and scale parameter $\kappa_{j,k}$, and a rescaling factor $\epsilon_{j,k}$. This logistic probability distribution can be used in two ways for two different types of behaviour related to COVID-19. For behavioural events - behaviours that individuals engage in at a specific point in time (such as bulk grocery shopping, or travelling to a particular residence in preparation for social distancing) the probability density function gives the fraction of the population that engages in the behaviours at a given time. For behavioural shifts - where individuals 'switch' from one behavioural state to another at some point in time (such as shifting from their baseline state to one of increased social distancing behaviour) the cumulative density function gives the fraction of the population that have shifted to this new behavioural state by a given time.
+  For each latent behaviour $k$, these parameters describe the behavioural reponse to each trigger via a rescaled logistic probability distribution, with distribution location parameter $\tau_{j,k}$ and scale parameter $\kappa_{j,k}$, and a rescaling factor $\lambda_{j,k}$. This logistic probability distribution can be used in two ways for two different types of behaviour related to COVID-19. For behavioural events - behaviours that individuals engage in at a specific point in time (such as bulk grocery shopping, or travelling to a particular residence in preparation for social distancing) the probability density function gives the fraction of the population that engages in the behaviours at a given time. For behavioural shifts - where individuals 'switch' from one behavioural state to another at some point in time (such as shifting from their baseline state to one of increased social distancing behaviour) the cumulative density function gives the fraction of the population that have shifted to this new behavioural state by a given time.
   
-  These probabilities are then rescaled such that their maximum value is the relative event impact parameter $\epsilon_{j,k}$. This parameter is proportional to the fraction of the population that enacts a behaviour $k$ in response to event $j$. However, the data streams considered only provide information on *relative* behavioural changes among a subset of the population - there is therefore no information against which to calibrate an estimate of the *absolute* fraction of the population engaging in a behaviour. Parameters $\epsilon_{j,k}$ are therefore constrained so that their sum over all events for a given behaviour is equal to 1. If only a single event is considered, $\epsilon_{j,k}$ is fixed at 1. With this rescaling, the contribution to latent factor $k$ of behavioural events associated with trigger $j$ is given by:
+  These probabilities are then rescaled such that their maximum value is the relative event impact parameter $\lambda_{j,k}$. This parameter is proportional to the fraction of the population that enacts a behaviour $k$ in response to event $j$. However, the data streams considered only provide information on *relative* behavioural changes among a subset of the population - there is therefore no information against which to calibrate an estimate of the *absolute* fraction of the population engaging in a behaviour. Parameters $\lambda_{j,k}$ are therefore constrained so that their sum over all events for a given behaviour is equal to 1. If only a single event is considered, $\lambda_{j,k}$ is fixed at 1. With this rescaling, the contribution to latent factor $k$ of behavioural events associated with trigger $j$ is given by:
 
 $$
-f_{j,k}(t) = 4 \epsilon_{j,k} \frac{e^{-(t - \tau_{j,k}) / \kappa_{j,k}}}{(1 + e^{-(t - \tau_{j,k}) / \kappa_{j,k}}) ^ 2}
+f_{j,k}(t) = 4 \lambda_{j,k} \frac{e^{-(t - \tau_{j,k}) / \kappa_{j,k}}}{(1 + e^{-(t - \tau_{j,k}) / \kappa_{j,k}}) ^ 2}
 $$
 
 and the contribution of behavioural shifts associated with trigger $j$ is given by:
 
 $$
-g_{j,k}(t) = \frac{\epsilon_{j,k}}{1 + e^{-(t - \tau_{j,k}) / \kappa_{j,k}}}
+g_{j,k}(t) = \frac{\lambda_{j,k}}{1 + e^{-(t - \tau_{j,k}) / \kappa_{j,k}}}
 $$
 The latent factors can then be computed by summing the contributions of all $J$ triggers. For a latent factor representing behavioural events this would be:
 $$
@@ -106,12 +106,11 @@ where $\alpha_i$ is an intercept term, $\mathbf{x}_t$ is a data vector giving th
 ####
 
 When presented in matrix form, the model can be seen to be a standard linear latent factor model:
-CHANGE e TO \epsilon AND RENAME \epsilon
 $$
-\mathbf{y} =  \mathbf{x} \beta + \mathbf{z} \omega + \mathbf{e}\\
-e_{i,t} \sim N(0, \sigma^2)
+\mathbf{y} =  \mathbf{x} \beta + \mathbf{z} \omega + \epsilon\\
+\epsilon_{t,i} \sim N(0, \sigma^2)
 $$
-where $\mathbf{x}$ is an $N$-by-$M+1$ design matrix of covariates, including a column of ones to represent the intercept terms, $\beta$ is an $M-1$-by-$N$ matrix of regression coefficients, $\mathbf{z}$ is a $T$-by-$K$ matrix of behavioural latent factors and $\omega$ is a $K$-by-$N$ matrix of loadings between the latent factors and data streams.
+where $\mathbf{x}$ is an $N$-by-$M+1$ design matrix of covariates, including a column of ones to represent the intercept terms, $\beta$ is an $M-1$-by-$N$ matrix of regression coefficients, $\mathbf{z}$ is a $T$-by-$K$ matrix of behavioural latent factors, $\omega$ is a $K$-by-$N$ matrix of loadings between the latent factors and data streams, and $\epsilon$ is a $T$-by-$N$ matrix of independent Gaussian errors.
    
    
  - Data availability by source

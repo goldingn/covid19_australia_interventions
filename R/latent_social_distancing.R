@@ -29,11 +29,11 @@ n_interventions <- n_distinct(interventions)
 n_states <- n_distinct(na.omit(data$state))
 
 # model the impacts of those interventions on social distancing factor k are
-# length of the tails for early- and late-adopters; e is the relative
+# length of the tails for early- and late-adopters; lambda is the relative
 # contribution of the three interventions
 k <- 1 / uniform(0, 16, dim = n_interventions)
 props <- uniform(0, 1, dim = n_interventions)
-e <- props / sum(props)
+lambda <- props / sum(props)
 
 # get regression weights for each category
 trend_weights <- normal(0, 10, dim = n_categories)
@@ -50,7 +50,7 @@ date_num <- dates - first_date
 intervention_date_num <- interventions$date - first_date
 lags <- outer(date_num, intervention_date_num, FUN = "-")
 lag_delays <- ilogit(sweep(lags, 2, 2 * k, FUN = "*"))
-epsilon <- 1 - sum(e) + lag_delays %*% e
+epsilon <- 1 - sum(lambda) + lag_delays %*% lambda
 
 # get a vector of weekendiness for each day (lowest on Sundays, average of 0)
 doy <- lubridate::wday(dates)
@@ -103,7 +103,7 @@ distribution(aus_data$trend) <- normal(mean = trends[idx],
                                        sd = sigma_obs)
 
 # fit model
-m <- model(e, k, trend_weights, weekend_weights, weekend_trend_weights)
+m <- model(lambda, k, trend_weights, weekend_weights, weekend_trend_weights)
 draws <- mcmc(m, chains = 10)
 
 # check convergence
