@@ -91,6 +91,8 @@ $$
 z_{k,t} = \sum_{j=1}^J g_{j,k}(t)
 $$
 
+<!-- the shifts can be a sum, the bumps should be singular -->
+
 #### Observation models
 
 We assume that the temporal trend for each datastream is driven by these latent behavioural states. To complete the model, we define an observation model for the datastreams, comprising sampling error and drivers of patterns in the data stream that are not driven by COVID-19-associated behaviours - such as weekends and public holidays. We assume that each data stream observation $y_{i,t}$ is subject to independent Gaussian error with variance $\sigma^2$ (i.e. common to all data sources) and expected value $\mu_{i,t}$, given by the modelled trend $m_{i,t}$ plus a linear model to account for non-COVID-19 effects:

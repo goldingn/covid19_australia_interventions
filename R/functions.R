@@ -380,7 +380,7 @@ apple_mobility <- function() {
     "Darwin"
   )
   
-  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2006HotfixDev8/v1/en-us/applemobilitytrends-2020-04-17.csv"
+  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2006HotfixDev9/v1/en-us/applemobilitytrends-2020-04-18.csv"
   data <- readr::read_csv(url) %>%
     tidyr::pivot_longer(
       cols = starts_with("2020-"),
@@ -393,6 +393,11 @@ apple_mobility <- function() {
     filter(
       region %in% ideal_regions
     )
+  
+  # transform to percentage change
+  data <- data %>%
+    mutate(trend = trend - 100)
+  
   
   # add on a state label, rename the transportation type to 'category' to match
   # google, and add on the data source
@@ -415,13 +420,13 @@ all_mobility <- function() {
   # load datasets and label their datastreams separately
   google <- google_mobility() %>%
     mutate(
-      datastream = str_c("google: time spent at ", category)
+      datastream = str_c("google: time at\n", category)
     ) %>%
     dplyr::select(-category)
   
   apple <- apple_mobility() %>%
     mutate(
-      datastream = str_c("apple: direction requests for ", transportation_type)
+      datastream = str_c("apple: directions for\n", transportation_type)
     ) %>%
     dplyr::select(
       -geo_type,
@@ -596,6 +601,17 @@ holiday_dates <- function() {
     mutate(date = lubridate::date(date))
 }
 
+# define a latent factor for a single symmetric distribution of behavioural events
+latent_behavioural_event <- function(date_num, tau, kappa = normal(3, 1, truncation = c(0, Inf)), lambda = 1) {
+  # work with logs for numerical stability
+  # e <- exp(-lag / kappa)
+  # lambda * e / kappa * (1 + e) ^ 2
+  lag <- date_num - tau
+  le <- -lag / kappa
+  log_bump <- log(4 * lambda) + le - 2 * log1pe(le)
+  exp(log_bump)
+}
+
 state_populations <- function() {
   tibble::tribble(
     ~state, ~population,
@@ -611,8 +627,19 @@ state_populations <- function() {
 }
 
 # summarise the posterior for a vector greta array
-summarise_vec_posterior <- function(vector, draws) {
-  vector_draws <- calculate(vector, values = draws)[[1]]
+summarise_vec_posterior <- function(vector, draws, sigma = NULL) {
+  
+  # if sigma isn't NULL, add that standard deviation to the CIs, and call this
+  # function recursively
+  if (!is.null(sigma)) {
+    mean_est <- summarise_vec_posterior(vector, draws)
+    lower_est <- summarise_vec_posterior(vector - 1.96 * sigma, draws)
+    upper_est <- summarise_vec_posterior(vector + 1.96 * sigma, draws)
+    est <- cbind(mean_est[, 1], lower_est[, 2], upper_est[, 3])
+    return(est)
+  }
+  
+  vector_draws <- calculate(vector, values = draws)
   vector_mat <- as.matrix(vector_draws)
   posterior_mean <- colMeans(vector_mat)
   posterior_ci <- t(apply(vector_mat, 2, quantile, c(0.025, 0.975)))
@@ -620,14 +647,53 @@ summarise_vec_posterior <- function(vector, draws) {
 }
 
 # add a polygon for a credible interval to a base plot
-add_ci_poly <- function(posterior_summary,
+add_mean_ci <- function(posterior_summary,
                         dates,
                         col = grey(0.8),
-                        border_col = grey(0.6)) {
+                        border_col = grey(0.6),
+                        line_col = grey(0.4),
+                        lwd = 3) {
   polygon(x = c(dates, rev(dates)),
           y = c(posterior_summary[, 2],
                 rev(posterior_summary[, 3])),
           lwd = 0.5,
           col = col,
           border = border_col)
+  lines(posterior_summary[, 1] ~ dates,
+        lwd = lwd,
+        col = line_col)
+}
+
+add_gridlines <- function(key_dates, vertical = TRUE, horizontal = TRUE) {
+  if (horizontal) {
+    abline(h = 0, col = grey(0.4), lty = 3)
+  }
+  if (vertical) {
+    abline(v = key_dates, col = grey(0.6))
+  }
+}
+
+# colours for plotting
+pal <- function(name = "Greens") {
+  idx <- c(2, 5, 6, 7)
+  RColorBrewer::brewer.pal(9, name)[idx]
+}
+
+plot_latent_factor <- function (factor, draws, dates, key_dates, cols = grey(c(0.9, 0.7, 0.5, 0.3)), title = "") {
+  
+  est <- summarise_vec_posterior(factor, draws)
+  plot(est[, 1] ~ dates,
+       type = "n",
+       ylim = c(0, 1),
+       ylab = "effect",
+       xlab = "",
+       las = 1)
+  add_gridlines(key_dates, horizontal = FALSE)
+  add_mean_ci(est,
+              dates,
+              col = cols[1],
+              border_col = cols[2],
+              line_col = cols[3])
+  title(main = title,
+        col.main = cols[4])
 }
