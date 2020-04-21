@@ -104,15 +104,16 @@ col_index <- mobility %>%
   match(datastreams)
 
 # a mean and standard deviation for each latent factor and datastream
-means <- normal(0, 10, dim = c(n_latents + 1, n_datastreams))
-sds <- normal(0, 1, dim = c(n_latents + 1, n_datastreams),
+means <- normal(0, 10, dim = c(n_latents, n_datastreams))
+sds <- normal(0, 1, dim = c(n_latents, n_datastreams),
               truncation = c(0, Inf))
 
 # hierarchical decentring with a 3D array squished into two dimensions
-loadings_raw <- normal(0, 1, dim = c(n_latents + 1, n_state_datastreams))
+loadings_raw <- normal(0, 1, dim = c(n_latents, n_state_datastreams))
 loadings <- means[, col_index] + loadings_raw * sds[, col_index]
 
-z <- cbind(ones(n_dates), latents)
+# z <- cbind(ones(n_dates), latents)
+z <- latents
 trends <- z %*% loadings
 
 # extract expected trend for each observation and define likelihood
@@ -229,7 +230,7 @@ for (j in seq_len(n_states)) {
 
 
 # plot the national mean loadings (removing the intercept column)
-latent_loadings <- means[-1, ]
+latent_loadings <- means  # [-1, ]
 loadings_sim <- calculate(latent_loadings, values = draws, nsim = 1000)[[1]]
 loadings_mean <- apply(loadings_sim, 2:3, mean)
 loadings_lower <- apply(loadings_sim, 2:3, quantile, 0.025)
