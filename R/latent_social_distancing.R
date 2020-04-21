@@ -3,12 +3,11 @@
 
 source("R/functions.R")
 library(dplyr)
-library(readr)
 library(lubridate)
 library(greta)
 library(RColorBrewer)
 
-# load mobility streams, and potential drivers
+# load mobility datastreams, and potential drivers
 mobility <- all_mobility()
 interventions <- intervention_dates()
 holidays <- holiday_dates()
