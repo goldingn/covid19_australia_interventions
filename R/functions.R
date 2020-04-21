@@ -18,10 +18,29 @@ facebook_mobility <- function() {
       names_to = "metric",
       values_to = "trend"
     ) %>%
+    mutate(date = lubridate::date(date))
+  
+  # set the staying home variable against a baseline of the first two weeks
+  baseline <- data %>%
+    filter(date < lubridate::date("2020-03-15")) %>%
+    group_by(state, metric) %>%
+    summarise(baseline = mean(trend))
+  
+  data <- data %>%
+    left_join(baseline) %>%
+    mutate(
+      corrected = (trend - baseline) / abs(baseline)
+    ) %>%
+    mutate(
+      trend = ifelse(metric == "staying still", corrected, trend)
+    ) %>%
+    select(
+      -corrected,
+      -baseline,
+      ) %>%
     mutate(
       trend = trend * 100,
-    ) %>%
-    mutate(date = lubridate::date(date))
+    )
   
   # add a composite national trend with population weights
   relative_population <- state_populations() %>%
@@ -36,8 +55,10 @@ facebook_mobility <- function() {
     ungroup() %>%
     mutate(state = NA)
   
-  bind_rows(national_data,
-            data)
+  bind_rows(
+    national_data,
+    data
+  )
   
 }
 
@@ -319,6 +340,28 @@ holiday_dates <- function() {
   ) %>%
     mutate(date = lubridate::date(date))
 }
+
+# define a latent factor for state-switching behaviour. kappa are lengths of the
+# tails for early- and late-adopters; lambda are the relative contribution of
+# the triggers; tau are dates of triggers
+latent_behaviour_switch <- function(date_num,
+                                    tau,
+                                    kappa = normal(2, 1, truncation = c(0, Inf), dim = length(tau)),
+                                    lambda = uniform(0, 1, dim = length(tau))) {
+  
+  if (length(tau) == 1) {
+    lag <- date_num - tau
+    result <- ilogit(lag / kappa)
+  } else {
+    lambda <- lambda / sum(lambda)
+    lags <- outer(date_num, tau, FUN = "-")
+    lag_delays <- ilogit(sweep(lags, 2, kappa, FUN = "/"))
+    result <- lag_delays %*% lambda
+  }
+  result
+  
+}
+
 
 # define a latent factor for a single symmetric distribution of behavioural events
 latent_behavioural_event <- function(date_num, tau, kappa = normal(3, 1, truncation = c(0, Inf)), lambda = 1) {

@@ -22,38 +22,19 @@ n_datastreams <- n_distinct(mobility$datastream)
 n_dates <- n_distinct(dates)
 n_states <- n_distinct(na.omit(mobility$state))
 
-# model the social distancing latent factoras a funciton of various triggers
-# kappa are length of the tails for early- and late-adopters; lambda are the
-# relative contribution of the triggers; tau are dates of triggers (known)
-n_triggers <- n_distinct(interventions)
-kappa_distancing <- normal(2, 1, truncation = c(0, Inf), dim = n_triggers)
-props_distancing <- uniform(0, 1, dim = n_triggers)
-lambda_distancing <- props_distancing / sum(props_distancing)
-
+# model the social distancing latent factor as a function of behavioural
+# switches triggered by the different interventions
 date_num <- as.numeric(dates - first_date)
-tau_distancing <- as.numeric(interventions$date - first_date)
-lags_distancing <- outer(date_num, tau_distancing, FUN = "-")
-lag_delays <- ilogit(sweep(lags_distancing, 2, kappa_distancing, FUN = "/"))
-distancing <- lag_delays %*% lambda_distancing
+trigger_date_num <- as.numeric(interventions$date - first_date)
+distancing <- latent_behaviour_switch(date_num, trigger_date_num)
 
 # (add terms for the potential waning of distancing, around an unknown date)
 
-# build the pre-distancing surge in mobility 
-
-# prior that timing of pre-distancing bump peak is around time of first
-# restriction - but we aren't sure about that.
-
-# one near the first restriction
-tau_bump <- normal(min(tau_distancing), 1)
+# build the pre-distancing surge in mobility with a prior that it peaks around
+# the time of the first restriction
+tau_bump <- normal(min(trigger_date_num), 1)
 kappa_bump <- normal(3, 1, truncation = c(0, Inf))
 bump <- latent_behavioural_event(date_num, tau_bump, kappa_bump)
-
-# # another bump before this one
-# tau_bump_diff <- normal(10, 7, truncation = c(0, Inf))
-# tau_bump2 <- tau_bump - tau_bump_diff
-# kappa_bump2 <- normal(3, 1, truncation = c(0, Inf))
-# bump2 <- latent_behavioural_event(date_num, tau_bump2, kappa_bump2)
-
 
 # sims <- calculate(bum2, nsim = 100)[[1]][, , 1]
 # plot(sims[1, ] ~ dates, type = "n", ylim = range(sims))
@@ -61,19 +42,28 @@ bump <- latent_behavioural_event(date_num, tau_bump, kappa_bump)
 #   lines(sims[i, ] ~ dates, lwd = 1)
 # }
 
-# roll the covariates for weekends and holidays into latents too.
+# add behaviour switching latent factor for back to work period
+# schools go back from Jan 28 to Feb 3-5, so set the mean to Feb 1
+b2s_datenum <- as.numeric(lubridate::date("2020-02-01") - first_date)
+tau_b2w <- normal(b2s_datenum, 5)
+b2w <- latent_behaviour_switch(date_num, tau_b2w)
 
+# add latent factor for weekend effect
+# add (fixed) latent factor for each weekend
+# remove intercept term and separate covariates
 
 # combine into latent factor matrix
-z <- cbind(distancing, bump)
+z <- cbind(distancing, bump, b2w)
 n_latents <- ncol(z)
 
+latent_names <- c("Social distancing",
+                  "The Quilton bump",
+                  "Back to work")
 
 # get regression weights for each datastream
 loadings <- normal(0, 10, dim = c(n_latents, n_datastreams))
 weekend_weights <- normal(0, 10, dim = n_datastreams)
 weekend_latent_weights <- normal(0, 10, dim = c(n_latents, n_datastreams))
-intercepts <- normal(0, 10, dim = n_datastreams)
 holiday_weights <- normal(0, 10, dim = n_datastreams)
 
 # standard deviation and degrees of freedom on the Student T observation model
@@ -109,9 +99,8 @@ relative_population <- populations %>%
 
 population_on_holiday <- holiday_matrix %*% relative_population
 
-# intercept terms, and the effects of social distancing, weekends, and the
-# interaction between weekends and social distancing on each datastream
-intercepts <- ones(n_dates) %*% t(intercepts)
+# the effects of social distancing, weekends, and the interaction between
+# weekends and social distancing on each datastream
 latent_effect <- z %*% loadings
 weekend_effect <- weekendiness %*% t(weekend_weights)
 weekend_latent_interaction <- sweep(z, 1, weekendiness, FUN = "*")
@@ -119,8 +108,7 @@ weekend_trend_effect <- weekend_latent_interaction %*% weekend_latent_weights
 holiday_effect <- population_on_holiday %*% t(holiday_weights)
 
 # get expected trends for each datastream
-trends <- intercepts +
-  latent_effect +
+trends <- latent_effect +
   weekend_effect + weekend_trend_effect +
   holiday_effect
 
@@ -135,7 +123,7 @@ distribution(aus_mobility$trend) <- normal(mean = trends[idx],
                                            sd = sigma_obs[cols])
 
 # fit model
-m <- model(trends, lambda_distancing)
+m <- model(trends)
 draws <- mcmc(m, chains = 10)
 # draws <- extra_samples(draws, 3000)
 
@@ -150,10 +138,7 @@ min(n_effs)
 
 # plot latent factors
 par(mfrow = c(n_latents, 1))
-latent_names <- c("Social distancing",
-                  "The Quilton Bump")  # ,
-                  # "Pre-distancing travel")
-colours <- c("Greens", "Oranges")  # , "Purples")
+colours <- c("Greens", "Oranges", "Purples")
 
 for (i in 1:n_latents) {
   plot_latent_factor(
@@ -166,10 +151,9 @@ for (i in 1:n_latents) {
   )
 }
 
-
 # plot datastreams and latent factor fit
 
-latent_fit <- intercepts + latent_effect
+latent_fit <- latent_effect
 
 par(mfrow = n2mfrow(n_datastreams))
 for (i in seq_len(n_datastreams)) {
