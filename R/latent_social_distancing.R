@@ -107,10 +107,13 @@ min(n_effs)
 # plot latent factors
 colours <- c("Greens", "Oranges", "Purples", "Blues", "PuRd", "Reds")
 
+png("outputs/figures/latent_factors.png",
+    width = 2000, height = 2000,
+    pointsize = 40)
 par(mfrow = n2mfrow(n_latents))
 for (i in 1:n_latents) {
   plot_latent_factor(
-    factor = z[, i],
+    factor = latents[, i],
     draws = draws,
     dates = dates,
     key_dates = interventions$date,
@@ -118,20 +121,25 @@ for (i in 1:n_latents) {
     latent_names[i]
   )
 }
+dev.off()
 
 # plot datastreams and latent factor fit
 
 # simulate with error variance
 errors <- normal(0, 1, dim = dim(trends))
-latent_fit <- trends + sweep(errors, 2, sigma_obs, FUN = "+")
+latent_fit <- trends + sweep(errors, 2, sigma_obs, FUN = "*")
 sim <- calculate(latent_fit, values = draws, nsim = 1000)[[1]]
 trend_mean <- apply(sim, 2:3, mean)
 trend_lower <- apply(sim, 2:3, quantile, 0.025)
 trend_upper <- apply(sim, 2:3, quantile, 0.975)
 
 
+png("outputs/figures/datastream_model_fit.png",
+    width = 3000, height = 2500,
+    pointsize = 50)
 
-par(mfrow = n2mfrow(n_datastreams))
+par(mfrow = n2mfrow(n_datastreams),
+    mar = c(2, 2, 4, 2))
 for (i in seq_len(n_datastreams)) {
   datastream_i <- datastreams[i]
   plot_data <- aus_mobility %>%
@@ -149,11 +157,11 @@ for (i in seq_len(n_datastreams)) {
        xlim = range(dates),
        type = "n",
        ylim = ylim,
-       ylab = "trend",
+       ylab = "",
        xlab = "")
   add_gridlines(interventions$date)
   add_mean_ci(est, dates_plot,
-              col = grey(0.95),
+              col = grey(0.9),
               border_col = grey(0.8),
               line_col = grey(0.4),
               lwd = 2)
@@ -165,24 +173,26 @@ for (i in seq_len(n_datastreams)) {
   title(main = datastream_i)
   
 }
+dev.off()
 
 # plot the loadings (removing the intercept column)
 latent_loadings <- loadings[-1, ]
-loadings_draws <- calculate(latent_loadings, values = draws)
-loadings_mat <- as.matrix(loadings_draws)
-loadings_mean <- colMeans(loadings_mat)
-loadings_ci <- apply(loadings_mat, 2, quantile, c(0.025, 0.975))
-loadings_significant <- sign(loadings_ci[1, ]) == sign(loadings_ci[2, ])
+loadings_sim <- calculate(latent_loadings, values = draws, nsim = 1000)[[1]]
+loadings_mean <- apply(loadings_sim, 2:3, mean)
+loadings_lower <- apply(loadings_sim, 2:3, quantile, 0.025)
+loadings_upper <- apply(loadings_sim, 2:3, quantile, 0.975)
+loadings_significant <- sign(loadings_upper) == sign(loadings_lower)
 
 # get labels
-latent_id <- as.vector(row(loadings))
-datastream_id <- as.vector(col(loadings))
+latent_id <- as.vector(row(latent_loadings))
+datastream_id <- as.vector(col(latent_loadings))
 
 loadings_plot_data <- tibble(
   latent_factor = latent_names[latent_id],
   datastream = datastreams[datastream_id],
-  value = loadings_mean,
-  significant = loadings_significant)
+  value = as.vector(loadings_mean),
+  significant = as.vector(loadings_significant)
+)
 
 cols <- brewer.pal(3, "Set2")
 
@@ -194,6 +204,10 @@ loadings_plot_data %>%
       !significant ~ grey(0.9),
       value > 0 ~ cols[1],
       value < 0 ~ cols[2]
+    ),
+    latent_factor = factor(
+      latent_factor,
+      levels = unique(loadings_plot_data$latent_factor)
     )
   ) %>%
   ggplot() +
@@ -211,12 +225,11 @@ loadings_plot_data %>%
   theme(strip.text.y.left = element_text(angle = 0, hjust = 1),
         strip.text.x = element_text(angle = 90, hjust = 0),
         plot.margin = unit(rep(0.5, 4), "cm"))
-  
-  # scale_fill_brewer(palette="Spectral")
-# - visualise loadings (coloured matrix with significance included)
 
-
-
+ggsave("outputs/figures/loadings_datastream.png",
+       width = 10,
+       height = 5.5)
 
 # - do multiple states with hierarchical weights
 # - get national estimate with population weights
+# - add separate latent factor for waning social distancing

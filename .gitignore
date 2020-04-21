@@ -1,4 +1,5 @@
 data/*
+outputs/*
 .Rproj.user
 *.rds
 
