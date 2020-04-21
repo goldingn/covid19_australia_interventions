@@ -374,6 +374,16 @@ latent_behavioural_event <- function(date_num, tau, kappa = normal(3, 1, truncat
   exp(log_bump)
 }
 
+latent_spline <- function (x, knots = 3) {
+  # build a spline latent factor for weekly variation constrained to 0-1
+  bases <- splines::bs(x, df = knots)
+  weights <- normal(0, 1, dim = knots)
+  spline <- bases %*% weights
+  spline <- spline - min(spline)
+  spline <- spline / max(spline)
+  spline
+}
+
 state_populations <- function() {
   tibble::tribble(
     ~state, ~population,
