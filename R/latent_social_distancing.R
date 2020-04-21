@@ -7,8 +7,12 @@ library(lubridate)
 library(greta)
 library(RColorBrewer)
 
-# load mobility datastreams, and potential drivers
-mobility <- all_mobility()
+# load mobility datastreams, keeping only state-level data
+mobility <- all_mobility() %>%
+  filter(!is.na(state)) %>%
+  filter(!is.na(trend)) %>%
+  arrange(state, datastream, date) %>%
+  mutate(state_datastream = str_c(state, datastream, sep = " "))
 interventions <- intervention_dates()
 holidays <- holiday_dates()
 populations <- state_populations()
@@ -17,10 +21,25 @@ populations <- state_populations()
 first_date <- min(mobility$date)
 last_date <- max(mobility$date)
 dates <- seq(first_date, last_date, by = 1)
-datastreams <- unique(mobility$datastream)
-n_datastreams <- n_distinct(mobility$datastream)
 n_dates <- n_distinct(dates)
-n_states <- n_distinct(na.omit(mobility$state))
+
+datastreams <- mobility %>%
+  group_by(datastream) %>%
+  summarise() %>%
+  pull(datastream)
+n_datastreams <- length(datastreams)
+
+states <- mobility %>%
+  group_by(state) %>%
+  summarise() %>%
+  pull(state)
+n_states <- length(states)
+
+state_datastreams <- mobility %>%
+  group_by(state_datastream) %>%
+  summarise() %>%
+  pull(state_datastream)
+n_state_datastreams <- length(state_datastreams)
 
 # social distancing latent factor as a function of behavioural switches
 # triggered by the major interventions
@@ -71,28 +90,45 @@ latent_names <- c("Social distancing",
                   "Public holidays",
                   "Week/Social distancing interaction")
 
-# project latent factors onto datastreams - adding an intercept column
-loadings <- normal(0, 10, dim = c(n_latents + 1, n_datastreams))
+# project latent factors onto state-datastreams - adding an intercept column
+
+# hierarchical prior on loadings, so states have similar values, within for each
+# latent factor
+
+# get index to state in the combined state-datastreams (not all states have all
+# datastreams, so this handles mismatch)
+col_index <- mobility %>%
+  group_by(state_datastream) %>%
+  summarise(datastream = first(datastream)) %>%
+  pull(datastream) %>%
+  match(datastreams)
+
+# a mean and standard deviation for each latent factor and datastream
+means <- normal(0, 10, dim = c(n_latents + 1, n_datastreams))
+sds <- normal(0, 1, dim = c(n_latents + 1, n_datastreams),
+              truncation = c(0, Inf))
+
+# hierarchical decentring with a 3D array squished into two dimensions
+loadings_raw <- normal(0, 1, dim = c(n_latents + 1, n_state_datastreams))
+loadings <- means[, col_index] + loadings_raw * sds[, col_index]
+
 z <- cbind(ones(n_dates), latents)
 trends <- z %*% loadings
 
-aus_mobility <- mobility %>%
-  filter(is.na(state))
-
 # extract expected trend for each observation and define likelihood
-rows <- match(aus_mobility$date, dates)
-cols <- match(aus_mobility$datastream, datastreams)
+rows <- match(mobility$date, dates)
+cols <- match(mobility$state_datastream, state_datastreams)
 idx <- cbind(rows, cols)
 
-sigma_obs <- normal(0, 1, truncation = c(0, Inf), dim = n_datastreams)
-distribution(aus_mobility$trend) <- normal(mean = trends[idx],
-                                           sd = sigma_obs[cols])
+sigma_obs <- normal(0, 1, truncation = c(0, Inf), dim = n_state_datastreams)
+distribution(mobility$trend) <- normal(mean = trends[idx], 
+                                       sd = sigma_obs[cols])
 
 # fit model
-m <- model(trends)
+m <- model(means, sds)
 draws <- mcmc(m,
-              sampler = hmc(Lmin = 15, Lmax = 20),
-              chains = 50)
+              sampler = hmc(Lmin = 10, Lmax = 15),
+              chains = 20)
 # draws <- extra_samples(draws, 3000)
 
 # check convergence
@@ -133,50 +169,67 @@ trend_mean <- apply(sim, 2:3, mean)
 trend_lower <- apply(sim, 2:3, quantile, 0.025)
 trend_upper <- apply(sim, 2:3, quantile, 0.975)
 
+# loop through states making multipanel model fit plots
 
-png("outputs/figures/datastream_model_fit.png",
-    width = 3000, height = 2500,
-    pointsize = 50)
-
-par(mfrow = n2mfrow(n_datastreams),
-    mar = c(2, 2, 4, 2))
-for (i in seq_len(n_datastreams)) {
-  datastream_i <- datastreams[i]
-  plot_data <- aus_mobility %>%
-    filter(datastream == datastream_i)
+for (j in seq_len(n_states)) {
+  file <- paste0("outputs/figures/", states[j], "_datastream_model_fit.png")
+  png(file,
+      width = 3000, height = 2500,
+      pointsize = 50)
   
-  rows <- as.numeric(range(plot_data$date) - first_date)
-  date_idx <- seq(rows[1], rows[2]) + 1
-  dates_plot <- dates[date_idx]
-  est <- cbind(mean = trend_mean[date_idx, i],
-               lower = trend_lower[date_idx, i],
-               upper = trend_upper[date_idx, i])
+  state_data <- mobility %>%
+    filter(state == states[j])
   
-  ylim <- range(c(plot_data$trend, est))
-  plot(est[, 1] ~ dates_plot,
-       xlim = range(dates),
-       type = "n",
-       ylim = ylim,
-       ylab = "",
-       xlab = "")
-  add_gridlines(interventions$date)
-  add_mean_ci(est, dates_plot,
-              col = grey(0.9),
-              border_col = grey(0.8),
-              line_col = grey(0.4),
-              lwd = 2)
-  points(trend ~ date,
-         data = plot_data,
-         pch = 16,
-         cex = 0.5,
-         col = "purple")
-  title(main = datastream_i)
+  state_datastreams_j <- state_data %>%
+    group_by(state_datastream) %>%
+    summarise() %>%
+    pull(state_datastream)
+  n_state_datastreams_j <- length(state_datastreams_j)
   
+  par(mfrow = n2mfrow(n_state_datastreams_j),
+      mar = c(2, 2, 4, 2))
+  for (i in seq_len(n_state_datastreams_j)) {
+    datastream_i <- state_datastreams_j[i]
+    plot_data <- state_data %>%
+      filter(state_datastream == datastream_i)
+    
+    rows <- as.numeric(range(plot_data$date) - first_date)
+    col <- match(datastream_i, state_datastreams)
+    date_idx <- seq(rows[1], rows[2]) + 1
+    dates_plot <- dates[date_idx]
+    est <- cbind(mean = trend_mean[date_idx, col],
+                 lower = trend_lower[date_idx, col],
+                 upper = trend_upper[date_idx, col])
+    
+    ylim <- range(c(plot_data$trend, est))
+    plot(est[, 1] ~ dates_plot,
+         xlim = range(dates),
+         type = "n",
+         ylim = ylim,
+         ylab = "",
+         xlab = "")
+    add_gridlines(interventions$date)
+    add_mean_ci(est, dates_plot,
+                col = grey(0.9),
+                border_col = grey(0.8),
+                line_col = grey(0.4),
+                lwd = 2)
+    points(trend ~ date,
+           data = plot_data,
+           pch = 16,
+           cex = 0.5,
+           col = "purple")
+    title(main = datastream_i)
+    
+  }
+  title(outer = states[i])
+  dev.off()  
 }
-dev.off()
 
-# plot the loadings (removing the intercept column)
-latent_loadings <- loadings[-1, ]
+
+
+# plot the national mean loadings (removing the intercept column)
+latent_loadings <- means[-1, ]
 loadings_sim <- calculate(latent_loadings, values = draws, nsim = 1000)[[1]]
 loadings_mean <- apply(loadings_sim, 2:3, mean)
 loadings_lower <- apply(loadings_sim, 2:3, quantile, 0.025)
@@ -230,6 +283,6 @@ ggsave("outputs/figures/loadings_datastream.png",
        width = 10,
        height = 5.5)
 
-# - do multiple states with hierarchical weights
-# - get national estimate with population weights
+# - plot state-by-factor traffic light plots
 # - add separate latent factor for waning social distancing
+# - plot state traffic light plot for waning social distancing

@@ -367,15 +367,15 @@ latent_behaviour_switch <- function(date_num,
 latent_behavioural_event <- function(date_num, tau, kappa = normal(3, 1, truncation = c(0, Inf)), lambda = 1) {
   # work with logs for numerical stability
   # e <- exp(-lag / kappa)
-  # lambda * e / kappa * (1 + e) ^ 2
+  # 4 * lambda * e / (1 + e) ^ 2
   lag <- date_num - tau
   le <- -lag / kappa
   log_bump <- log(4 * lambda) + le - 2 * log1pe(le)
   exp(log_bump)
 }
 
+# a b-spline constrained to 0-1
 latent_spline <- function (x, knots = 3) {
-  # build a spline latent factor for weekly variation constrained to 0-1
   bases <- splines::bs(x, df = knots)
   weights <- normal(0, 1, dim = knots)
   spline <- bases %*% weights
