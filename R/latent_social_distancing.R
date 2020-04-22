@@ -180,14 +180,14 @@ min(n_effs)
 # ~~~~~~~~~
 # plot fits
 
-# plot (nationwide) latent factors
-colours <- c("Purples", "Greens", "Reds", "Blues", "PuRd", "Oranges")
+# plot the first 4 (nationwide) latent factors
 
+colours <- c("pink", "green", "red", "blue")
 png("outputs/figures/latent_factors.png",
-    width = 2000, height = 2000,
-    pointsize = 40)
-par(mfrow = n2mfrow(n_latents_ntnl))
-for (i in 1:n_latents_ntnl) {
+    width = 2000, height = 1500,
+    pointsize = 50)
+par(mfrow = c(2, 2))
+for (i in 1:4) {
   plot_latent_factor(
     factor = latents_ntnl[, i],
     draws = draws,
@@ -267,8 +267,8 @@ for (j in seq_len(n_states)) {
 }
 
 
-# plot the national mean loadings (removing the intercept column)
-latent_loadings <- means_ntnl  # [-1, ]
+# plot the national mean loadings for the first four latent factors
+latent_loadings <- means_ntnl[1:4, ]
 loadings_sim <- calculate(latent_loadings, values = draws, nsim = 1000)[[1]]
 loadings_mean <- apply(loadings_sim, 2:3, mean)
 loadings_lower <- apply(loadings_sim, 2:3, quantile, 0.025)
@@ -324,10 +324,11 @@ loadings_plot_data %>%
 
 ggsave("outputs/figures/loadings_datastream.png",
        width = 10,
-       height = 5.5)
+       height = 4.5)
 
-# - use nicer pastel colours for plots
-# - use different colours for loadings (save red/green for waning traffic light) 
-# - plot state-by-factor traffic light plots
-# - plot state traffic light plot for waning social distancing
+# - plot state-by-factor loading plots
+# - add legend to loading plots
+# - plot state-datastream traffic light plot for waning social distancing
+# - pull more model code out into functions
 # - programatically find Apple download link
+# - programatically find Google download link

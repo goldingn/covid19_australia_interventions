@@ -434,9 +434,29 @@ add_gridlines <- function(key_dates, vertical = TRUE, horizontal = TRUE) {
 }
 
 # colours for plotting
-pal <- function(name = "Greens") {
-  idx <- c(2, 5, 6, 7)
-  RColorBrewer::brewer.pal(9, name)[idx]
+pal <- function(colour = "green") {
+  
+  # look up the base colour
+  brewer_cols <- brewer.pal(8, "Set2")
+  # display.brewer.pal(8, "Set2")
+  colour_names <- c(
+    "green",
+    "red",
+    "blue",
+    "pink",
+    "bright green",
+    "yellow",
+    "beige",
+    "grey"
+  )
+  idx <- match(colour, colour_names)
+  base_colour <- brewer_cols[idx]
+  
+  # create a four-colour palette based on this colour
+  pal <- colorRampPalette(c("white", base_colour, "black"))(10)
+  pal[c(4, 5, 6, 7)]
+  
+  
 }
 
 plot_latent_factor <- function (factor, draws, dates, key_dates, cols = grey(c(0.9, 0.7, 0.5, 0.3)), title = "") {
@@ -455,5 +475,5 @@ plot_latent_factor <- function (factor, draws, dates, key_dates, cols = grey(c(0
               border_col = cols[2],
               line_col = cols[3])
   title(main = title,
-        col.main = cols[4])
+        col.main = grey(0.3))
 }
