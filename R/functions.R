@@ -399,22 +399,10 @@ state_populations <- function() {
 }
 
 # summarise the posterior for a vector greta array
-summarise_vec_posterior <- function(vector, draws, sigma = NULL) {
-  
-  # if sigma isn't NULL, add that standard deviation to the CIs, and call this
-  # function recursively
-  if (!is.null(sigma)) {
-    mean_est <- summarise_vec_posterior(vector, draws)
-    lower_est <- summarise_vec_posterior(vector - 1.96 * sigma, draws)
-    upper_est <- summarise_vec_posterior(vector + 1.96 * sigma, draws)
-    est <- cbind(mean_est[, 1], lower_est[, 2], upper_est[, 3])
-    return(est)
-  }
-  
-  vector_draws <- calculate(vector, values = draws)
-  vector_mat <- as.matrix(vector_draws)
-  posterior_mean <- colMeans(vector_mat)
-  posterior_ci <- t(apply(vector_mat, 2, quantile, c(0.025, 0.975)))
+summarise_vec_posterior <- function(vector, draws, nsim = 1000) {
+  vector_sim <- calculate(vector, values = draws, nsim = nsim)[[1]][, , 1]
+  posterior_mean <- colMeans(vector_sim)
+  posterior_ci <- t(apply(vector_sim, 2, quantile, c(0.025, 0.975)))
   cbind(mean = posterior_mean, posterior_ci)
 }
 

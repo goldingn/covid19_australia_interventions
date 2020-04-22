@@ -47,7 +47,15 @@ date_num <- as.numeric(dates - first_date)
 trigger_date_num <- as.numeric(interventions$date - first_date)
 distancing <- latent_behaviour_switch(date_num, trigger_date_num)
 
-# (add terms for the potential waning of distancing, around an unknown date)
+# add term for recent change to social distancing (some proportion either
+# switching back to baseline behaviour or increasing distancing behaviour), at
+# some which could be from halfway since the last intervention to now, up to one
+# week in the future
+last_intervention <- max(trigger_date_num)
+tau_distancing_start <- last_intervention + (n_dates - last_intervention) / 2
+tau_distancing_change <- uniform(tau_distancing_start, n_dates + 7)
+distancing_change <- latent_behaviour_switch(date_num, tau_distancing_change)
+distancing_change <- distancing_change / distancing_change[n_dates]
 
 # latent factor for pre-distancing surge in mobility with a prior that it peaks
 # around the time of the first restriction
@@ -65,56 +73,84 @@ back_to_work <- latent_behaviour_switch(date_num, tau_back_to_work)
 day_weights <- latent_spline(1:7)
 doy <- lubridate::wday(dates)
 weekday <- day_weights[doy]
-
-# latent factor for public holidays - IID on each date
-is_a_holiday <- dates %in% holidays$date
-n_holidays <- sum(is_a_holiday)
-holiday_weights <- uniform(0, 1, dim = n_holidays)
-holiday_weights <- holiday_weights / max(holiday_weights)
-holiday <- zeros(n_dates)
-holiday[is_a_holiday] <- holiday_weights
-
+  
 # combine into latent factor matrix
-latents <- cbind(distancing,
-                 bump,
-                 back_to_work,
-                 weekday,
-                 holiday,
-                 distancing * weekday)
-n_latents <- ncol(latents)
+latents_ntnl <- cbind(bump,
+                      distancing,
+                      distancing_change,
+                      back_to_work,
+                      weekday,
+                      distancing * weekday)
+n_latents_ntnl <- ncol(latents_ntnl)
 
-latent_names <- c("Social distancing",
-                  "The Quilton bump",
+latent_names <- c("Preparation for distancing",
+                  "Social distancing",
+                  "Change in distancing",
                   "Back to work",
                   "Weekly variation",
-                  "Public holidays",
                   "Week/Social distancing interaction")
-
-# project latent factors onto state-datastreams - adding an intercept column
-
-# hierarchical prior on loadings, so states have similar values, within for each
-# latent factor
 
 # get index to state in the combined state-datastreams (not all states have all
 # datastreams, so this handles mismatch)
-col_index <- mobility %>%
+datastream_index <- mobility %>%
   group_by(state_datastream) %>%
   summarise(datastream = first(datastream)) %>%
   pull(datastream) %>%
   match(datastreams)
 
-# a mean and standard deviation for each latent factor and datastream
-means <- normal(0, 10, dim = c(n_latents, n_datastreams))
-sds <- normal(0, 1, dim = c(n_latents, n_datastreams),
-              truncation = c(0, Inf))
+# hierarchical prior on loadings, so states have similar values, within for each
+# latent factor
+means_ntnl <- normal(0, 10, dim = c(n_latents_ntnl, n_datastreams))
+sds_ntnl <- normal(0, 1, dim = c(n_latents_ntnl, n_datastreams),
+                       truncation = c(0, Inf))
 
 # hierarchical decentring with a 3D array squished into two dimensions
-loadings_raw <- normal(0, 1, dim = c(n_latents, n_state_datastreams))
-loadings <- means[, col_index] + loadings_raw * sds[, col_index]
+loadings_ntnl_raw <- normal(0, 1, dim = c(n_latents_ntnl, n_state_datastreams))
+loadings_ntnl <- means_ntnl[, datastream_index] + loadings_ntnl_raw * sds_ntnl[, datastream_index]
 
-# z <- cbind(ones(n_dates), latents)
-z <- latents
-trends <- z %*% loadings
+trends_ntnl <- latents_ntnl %*% loadings_ntnl
+
+# get state-level latents (only public holidays for now)
+
+# IID effect on each state-holiday, 0s elsewhere
+holiday_matrix <- holidays %>%
+  right_join(
+    tidyr::expand_grid(date = dates,
+                       state = states)
+  ) %>%
+  mutate(is_holiday = !is.na(name)) %>%
+  dplyr::select(-name) %>%
+  tidyr::pivot_wider(names_from = state, values_from = is_holiday) %>%
+  arrange(date) %>%
+  dplyr::select(-date) %>%
+  as.matrix()
+
+is_a_holiday <- which(holiday_matrix)
+n_holidays <- length(is_a_holiday)
+holiday_weights <- uniform(0, 1, dim = n_holidays)
+holiday <- zeros(nrow(holiday_matrix), ncol(holiday_matrix))
+holiday[is_a_holiday] <- holiday_weights
+maxes <- apply(holiday, 2, "max")
+holiday <- sweep(holiday, 2, maxes, "/")
+
+# holiday is date-by-state - get state-datastream weights and apply them to the correct ones
+means_holiday <- normal(0, 10, dim = n_datastreams)
+sds_holiday <- normal(0, 1, dim = n_datastreams, truncation = c(0, Inf))
+
+# hierarchical decentring with a 3D array squished into two dimensions
+loadings_holiday_raw <- normal(0, 1, dim = n_state_datastreams)
+loadings_holiday <- means_holiday[datastream_index] + loadings_holiday_raw * sds_holiday[datastream_index]
+
+# expand out the holiday index to replicate states
+state_index <- mobility %>%
+  group_by(state_datastream) %>%
+  summarise(state = first(state)) %>%
+  pull(state) %>%
+  match(states)
+holiday_latents <- holiday[, state_index]
+trends_holiday <- sweep(holiday_latents, 2, loadings_holiday, FUN = "*")
+
+trends <- trends_ntnl + trends_holiday
 
 # extract expected trend for each observation and define likelihood
 rows <- match(mobility$date, dates)
@@ -126,9 +162,9 @@ distribution(mobility$trend) <- normal(mean = trends[idx],
                                        sd = sigma_obs[cols])
 
 # fit model
-m <- model(means, sds)
+m <- model(loadings_ntnl, loadings_holiday)
 draws <- mcmc(m,
-              sampler = hmc(Lmin = 10, Lmax = 15),
+              sampler = hmc(Lmin = 20, Lmax = 25),
               chains = 20)
 # draws <- extra_samples(draws, 3000)
 
@@ -141,16 +177,16 @@ min(n_effs)
 # ~~~~~~~~~
 # plot fits
 
-# plot latent factors
-colours <- c("Greens", "Oranges", "Purples", "Blues", "PuRd", "Reds")
+# plot (nationwide) latent factors
+colours <- c("Purples", "Greens", "Reds", "Blues", "PuRd", "Oranges")
 
 png("outputs/figures/latent_factors.png",
     width = 2000, height = 2000,
     pointsize = 40)
-par(mfrow = n2mfrow(n_latents))
-for (i in 1:n_latents) {
+par(mfrow = n2mfrow(n_latents_ntnl))
+for (i in 1:n_latents_ntnl) {
   plot_latent_factor(
-    factor = latents[, i],
+    factor = latents_ntnl[, i],
     draws = draws,
     dates = dates,
     key_dates = interventions$date,
@@ -228,9 +264,8 @@ for (j in seq_len(n_states)) {
 }
 
 
-
 # plot the national mean loadings (removing the intercept column)
-latent_loadings <- means  # [-1, ]
+latent_loadings <- means_ntnl  # [-1, ]
 loadings_sim <- calculate(latent_loadings, values = draws, nsim = 1000)[[1]]
 loadings_mean <- apply(loadings_sim, 2:3, mean)
 loadings_lower <- apply(loadings_sim, 2:3, quantile, 0.025)
@@ -248,7 +283,11 @@ loadings_plot_data <- tibble(
   significant = as.vector(loadings_significant)
 )
 
-cols <- brewer.pal(3, "Set2")
+cols <- brewer.pal(8, "Set3")
+go_stop <- cols[c(1, 4)]
+up_down <- cols[c(3, 6)]
+
+pal <- up_down
 
 library(ggplot2)
 library(ggforce)
@@ -256,8 +295,8 @@ loadings_plot_data %>%
   mutate(
     col = case_when(
       !significant ~ grey(0.9),
-      value > 0 ~ cols[1],
-      value < 0 ~ cols[2]
+      value > 0 ~ pal[1],
+      value < 0 ~ pal[2]
     ),
     latent_factor = factor(
       latent_factor,
@@ -284,6 +323,8 @@ ggsave("outputs/figures/loadings_datastream.png",
        width = 10,
        height = 5.5)
 
+# - use nicer pastel colours for plots
+# - use different colours for loadings (save red/green for waning traffic light) 
 # - plot state-by-factor traffic light plots
-# - add separate latent factor for waning social distancing
 # - plot state traffic light plot for waning social distancing
+# - programatically find Apple download link
