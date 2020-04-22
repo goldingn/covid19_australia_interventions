@@ -5,7 +5,7 @@ library(stringr)
 # read in and tidy up Facebook movement data
 facebook_mobility <- function() {
   
-  file <- "data/fb_data/au_gadm_mobility_statistics.20200416.csv"
+  file <- "data/fb_data/au_gadm_mobility_statistics.20200420.csv"
   data <- readr::read_csv(file) %>%
     dplyr::select(
       state = polygon_name,
@@ -111,7 +111,7 @@ apple_mobility <- function() {
     "Hobart",
     "Darwin"
   )
-  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2006HotfixDev10/v1/en-us/applemobilitytrends-2020-04-19.csv"
+  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2006HotfixDev11/v1/en-us/applemobilitytrends-2020-04-20.csv"
   data <- readr::read_csv(url) %>%
     tidyr::pivot_longer(
       cols = starts_with("2020-"),
