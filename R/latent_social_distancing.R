@@ -82,9 +82,12 @@ back_to_work <- latent_behaviour_switch(date_num,
                                         tau_back_to_work,
                                         kappa = kappa_back_to_work)
 
+# fixed latent factor on weekendiness
+doy <- lubridate::wday(dates)
+weekendiness <- scale(-exp(abs(doy - 4.5)))
+
 # spline latent factor for weekly variation and expand out to dates
 day_weights <- latent_spline(1:7)
-doy <- lubridate::wday(dates)
 weekday <- day_weights[doy]
   
 # combine into latent factor matrix
@@ -92,16 +95,16 @@ latents_ntnl <- cbind(bump,
                       distancing,
                       distancing_change,
                       back_to_work,
-                      weekday,
-                      distancing * weekday)
+                      weekendiness,
+                      weekday)
 n_latents_ntnl <- ncol(latents_ntnl)
 
 latent_names <- c("Preparation",
                   "Social distancing",
                   "Waning distancing",
                   "Back to work",
-                  "Weekly variation",
-                  "Week/Social distancing interaction")
+                  "Weekends",
+                  "Weekly variation")
 
 # hierarchical prior on loadings, so states have similar values, within for each
 # latent factor
@@ -164,7 +167,7 @@ distribution(mobility$trend) <- normal(mean = trends[idx],
 # fit model
 m <- model(loadings_ntnl, loadings_holiday)
 draws <- mcmc(m,
-              sampler = hmc(Lmin = 20, Lmax = 25),
+              sampler = hmc(Lmin = 25, Lmax = 30),
               chains = 20)
 # draws <- extra_samples(draws, 3000)
 
@@ -178,8 +181,6 @@ min(n_effs)
 # plot fits
 
 # plot the first 4 (nationwide) latent factors
-
-
 
 colours <- c("pink", "green", "red", "blue")
 png("outputs/figures/latent_factors.png",
@@ -326,7 +327,7 @@ loadings_plot_data %>%
   scale_size_area(
     breaks = c(100, 50, 10),
     labels = c("100%", "50%", "10%"),
-    limits = c(0, 100),
+    # limits = c(0, 100),
     max_size = 10,
     guide = guide_legend(
       title = "",
@@ -368,7 +369,7 @@ ggsave("outputs/figures/loadings_datastream.png",
 # opposite direction from social distancing
 
 # get state-dataset loadings for the distancing change factor
-change_loadings <- loadings_ntnl[latent_names == "Change in distancing", ]
+change_loadings <- loadings_ntnl[latent_names == "Waning distancing", ]
 
 # set direction relative to the direction of the social distancing factor for
 # that state-dataset (negative implies regression of the distancing effect), and
@@ -376,6 +377,9 @@ change_loadings <- loadings_ntnl[latent_names == "Change in distancing", ]
 distancing_loadings <- loadings_ntnl[latent_names == "Social distancing", ]
 distancing_change <- change_loadings * sign(distancing_loadings)
 distancing_change_relative <- distancing_change / abs(distancing_loadings)
+
+distancing_change_relative_draws <- calculate(distancing_change_relative, values = draws, nsim = 10000)[[1]]
+
 
 # summarise posterior, and add state and datastream info
 est <- summarise_vec_posterior(
@@ -398,7 +402,7 @@ pal <- go_stop
 # get positive value for proportional reduction in distancing
 distancing_change_data %>%
   mutate(
-    value = pmin(value, -0.01),
+    value = pmax(pmin(value, -0.01), -1),
     value = -value,
     col = case_when(
       !significant ~ grey(0.9),
@@ -456,6 +460,7 @@ ggsave("outputs/figures/state_distancing_waning_warning.png",
 
 # - add a second week latent factor
 # - plot state-by-factor loading plots
+# - work out where the posterior is correlated and try to soothe it
 # - pull more model code out into functions
 # - programatically find Apple download link
 # - programatically find Google download link
