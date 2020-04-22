@@ -23,23 +23,31 @@ last_date <- max(mobility$date)
 dates <- seq(first_date, last_date, by = 1)
 n_dates <- n_distinct(dates)
 
-datastreams <- mobility %>%
-  group_by(datastream) %>%
-  summarise() %>%
-  pull(datastream)
+# get a lookup for the state and datastream in the state_datastreams vector
+state_datastream_lookup <- mobility %>%
+  group_by(state_datastream) %>%
+  summarise(state = first(state),
+            datastream = first(datastream))
+
+state_datastreams <- unique(state_datastream_lookup$state_datastream)
+n_state_datastreams <- length(state_datastreams)
+
+datastreams <- unique(state_datastream_lookup$datastream)
 n_datastreams <- length(datastreams)
 
-states <- mobility %>%
-  group_by(state) %>%
-  summarise() %>%
-  pull(state)
+states <- unique(state_datastream_lookup$state)
 n_states <- length(states)
 
-state_datastreams <- mobility %>%
-  group_by(state_datastream) %>%
-  summarise() %>%
-  pull(state_datastream)
-n_state_datastreams <- length(state_datastreams)
+# get indices to datastream and state in the combined state-datastream vector
+# (not all states have all datastreams, so this handles mismatch)
+datastream_index <- state_datastream_lookup %>%
+  pull(datastream) %>%
+  match(datastreams)
+
+state_index <- state_datastream_lookup %>%
+  pull(state) %>%
+  match(states)
+
 
 # social distancing latent factor as a function of behavioural switches
 # triggered by the major interventions
@@ -93,14 +101,6 @@ latent_names <- c("Preparation for distancing",
                   "Weekly variation",
                   "Week/Social distancing interaction")
 
-# get index to state in the combined state-datastreams (not all states have all
-# datastreams, so this handles mismatch)
-datastream_index <- mobility %>%
-  group_by(state_datastream) %>%
-  summarise(datastream = first(datastream)) %>%
-  pull(datastream) %>%
-  match(datastreams)
-
 # hierarchical prior on loadings, so states have similar values, within for each
 # latent factor
 means_ntnl <- normal(0, 10, dim = c(n_latents_ntnl, n_datastreams))
@@ -145,11 +145,6 @@ loadings_holiday_raw <- normal(0, 1, dim = n_state_datastreams)
 loadings_holiday <- means_holiday[datastream_index] + loadings_holiday_raw * sds_holiday[datastream_index]
 
 # expand out the holiday index to replicate states
-state_index <- mobility %>%
-  group_by(state_datastream) %>%
-  summarise(state = first(state)) %>%
-  pull(state) %>%
-  match(states)
 holiday_latents <- holiday[, state_index]
 trends_holiday <- sweep(holiday_latents, 2, loadings_holiday, FUN = "*")
 
@@ -325,6 +320,78 @@ loadings_plot_data %>%
 ggsave("outputs/figures/loadings_datastream.png",
        width = 10,
        height = 4.5)
+
+# create a warning light panel for states and datasets on the change in
+# distancing latent factor, turning red when it seems to be pushing it in the
+# opposite direction from social distancing
+
+# get state-dataset loadings for the distancing change factor
+change_loadings <- loadings_ntnl[latent_names == "Change in distancing", ]
+
+# set direction relative to the direction of the social distancing factor for
+# that state-dataset (negative implies regression of the distancing effect), and
+# scale it to be relative to the amount of social distancing change
+distancing_loadings <- loadings_ntnl[latent_names == "Social distancing", ]
+distancing_change <- change_loadings * sign(distancing_loadings)
+distancing_change_relative <- distancing_change / abs(distancing_loadings)
+
+# summarise posterior, and add state and datastream info
+est <- summarise_vec_posterior(
+  t(distancing_change_relative),
+  draws,
+  quantiles = c(0.05, 0.995)
+)
+
+distancing_change_data <- tibble(
+  state_datastream = state_datastreams,
+  value = est[, "mean"],
+  significant = sign(est[, "5%"]) == sign(est[, "99.5%"])
+) %>%
+  left_join(state_datastream_lookup)
+
+# - reshape to a matrix, with missing entries
+# - plot, in red-green-grey
+
+pal <- go_stop
+
+library(ggplot2)
+library(ggforce)
+
+# create a dummy row to set a maximum circle size
+dummy <- distancing_change_data[1, ] %>%
+  mutate(value = -1,
+         significant = NA)
+
+distancing_change_data %>%
+  bind_rows(dummy) %>%
+  mutate(
+    col = case_when(
+      is.na(significant) ~ "transparent",
+      !significant ~ grey(0.9),
+      value > 0 ~ pal[1],
+      value < 0 ~ pal[2]
+    )
+  ) %>%
+  ggplot() +
+  geom_circle(aes(x0 = 1,
+                  y0 = 1,
+                  r = sqrt(abs(value)),
+                  fill = col,
+                  colour = col),
+              show.legend = FALSE) +
+  scale_fill_identity(aesthetics = c("fill", "colour")) +
+  facet_grid(state ~ datastream,
+             switch = "y") +
+  coord_fixed() +
+  theme_void() +
+  theme(strip.text.y.left = element_text(angle = 0, hjust = 1),
+        strip.text.x = element_text(angle = 90, hjust = 0),
+        plot.margin = unit(rep(0.5, 4), "cm"))
+
+ggsave("outputs/figures/state_distancing_waning_warning.png",
+       width = 6,
+       height = 4.5)
+
 
 # - plot state-by-factor loading plots
 # - add legend to loading plots
