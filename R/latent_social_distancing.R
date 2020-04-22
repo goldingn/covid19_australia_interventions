@@ -6,6 +6,8 @@ library(dplyr)
 library(lubridate)
 library(greta)
 library(RColorBrewer)
+library(ggplot2)
+library(ggforce)
 
 # load mobility datastreams, keeping only state-level data
 mobility <- all_mobility() %>%
@@ -94,9 +96,9 @@ latents_ntnl <- cbind(bump,
                       distancing * weekday)
 n_latents_ntnl <- ncol(latents_ntnl)
 
-latent_names <- c("Preparation for distancing",
+latent_names <- c("Preparation",
                   "Social distancing",
-                  "Change in distancing",
+                  "Waning distancing",
                   "Back to work",
                   "Weekly variation",
                   "Week/Social distancing interaction")
@@ -177,11 +179,15 @@ min(n_effs)
 
 # plot the first 4 (nationwide) latent factors
 
+
+
 colours <- c("pink", "green", "red", "blue")
 png("outputs/figures/latent_factors.png",
     width = 2000, height = 1500,
     pointsize = 50)
-par(mfrow = c(2, 2))
+par(mfrow = c(2, 2),
+    mar = c(3, 4, 3, 1),
+    oma = c(0, 0, 2, 0))
 for (i in 1:4) {
   plot_latent_factor(
     factor = latents_ntnl[, i],
@@ -192,6 +198,9 @@ for (i in 1:4) {
     latent_names[i]
   )
 }
+mtext("Inferred latent factors of mobility",
+      side = 3, 
+      outer = TRUE, col = grey(0.3), adj = 0.1, cex = 1.3)
 dev.off()
 
 # plot datastreams and latent factor fit
@@ -216,20 +225,26 @@ for (j in seq_len(n_states)) {
     filter(state == states[j])
   
   state_datastreams_j <- state_data %>%
-    group_by(state_datastream) %>%
-    summarise() %>%
-    pull(state_datastream)
+    pull(state_datastream) %>%
+    unique()
+  datastreams_j <- state_data %>%
+    pull(datastream) %>%
+    unique()
   n_state_datastreams_j <- length(state_datastreams_j)
   
   par(mfrow = n2mfrow(n_state_datastreams_j),
-      mar = c(2, 2, 4, 2))
+      mar = c(2, 2, 4, 2),
+      oma = c(0, 0, 2, 0))
   for (i in seq_len(n_state_datastreams_j)) {
-    datastream_i <- state_datastreams_j[i]
+    
+    state_datastream_i <- state_datastreams_j[i]
+    datastream_i <- datastreams_j[i]
+    
     plot_data <- state_data %>%
-      filter(state_datastream == datastream_i)
+      filter(state_datastream == state_datastream_i)
     
     rows <- as.numeric(range(plot_data$date) - first_date)
-    col <- match(datastream_i, state_datastreams)
+    col <- match(state_datastream_i, state_datastreams)
     date_idx <- seq(rows[1], rows[2]) + 1
     dates_plot <- dates[date_idx]
     est <- cbind(mean = trend_mean[date_idx, col],
@@ -254,10 +269,13 @@ for (j in seq_len(n_states)) {
            pch = 16,
            cex = 0.5,
            col = "purple")
-    title(main = datastream_i)
+    title(main = datastream_i,
+          col = grey(0.3))
     
   }
-  title(outer = states[i])
+  mtext(paste(states[j], "- data and model fit"),
+        side = 3,  outer = TRUE,
+        col = grey(0.2), cex = 1.3)
   dev.off()  
 }
 
@@ -287,8 +305,6 @@ up_down <- cols[c(3, 6)]
 
 pal <- up_down
 
-library(ggplot2)
-library(ggforce)
 loadings_plot_data %>%
   mutate(
     col = case_when(
@@ -302,24 +318,50 @@ loadings_plot_data %>%
     )
   ) %>%
   ggplot() +
-  geom_circle(aes(x0 = 1,
-                  y0 = 1,
-                  r = sqrt(abs(value)),
-                  fill = col,
-                  colour = col),
-              show.legend = FALSE) +
-  scale_fill_identity(aesthetics = c("fill", "colour")) +
+  geom_point(aes(x = 1,
+                 y = 1,
+                 size = abs(value),
+                 fill = col,
+                 colour = col)) +
+  scale_size_area(
+    breaks = c(100, 50, 10),
+    labels = c("100%", "50%", "10%"),
+    limits = c(0, 100),
+    max_size = 10,
+    guide = guide_legend(
+      title = "",
+      override.aes = list(
+        col = grey(0.6)
+      ),
+      order = 2
+    )
+  ) +
+  scale_fill_identity(
+    aesthetics = c("fill", "colour"),
+    breaks = c(pal, grey(0.9)),
+    labels = c("increase", "decrease", "no evidence"),
+    guide = guide_legend(
+      title = "",
+      order = 1
+    )
+  ) +
   facet_grid(latent_factor ~ datastream,
              switch = "y") +
   coord_fixed() +
   theme_void() +
-  theme(strip.text.y.left = element_text(angle = 0, hjust = 1),
-        strip.text.x = element_text(angle = 90, hjust = 0),
-        plot.margin = unit(rep(0.5, 4), "cm"))
+  ggtitle("Average change in datastreams due each latent factor",
+          "percent change compared to pre-COVID-19 baseline") +
+  theme(
+    plot.title = element_text(hjust = 0, vjust = 6, size = 16),
+    plot.subtitle = element_text(hjust = 0, vjust = 8, size = 10),
+    strip.text.y.left = element_text(angle = 0, hjust = 1, size = 10),
+    strip.text.x = element_text(angle = 90, hjust = 0, size = 8),
+    plot.margin = unit(rep(0.5, 4), "cm")
+  )
 
 ggsave("outputs/figures/loadings_datastream.png",
        width = 10,
-       height = 4.5)
+       height = 5)
 
 # create a warning light panel for states and datasets on the change in
 # distancing latent factor, turning red when it seems to be pushing it in the
@@ -349,53 +391,71 @@ distancing_change_data <- tibble(
 ) %>%
   left_join(state_datastream_lookup)
 
-# - reshape to a matrix, with missing entries
-# - plot, in red-green-grey
-
 pal <- go_stop
 
-library(ggplot2)
-library(ggforce)
+# write a function to create these plots
 
-# create a dummy row to set a maximum circle size
-dummy <- distancing_change_data[1, ] %>%
-  mutate(value = -1,
-         significant = NA)
-
+# get positive value for proportional reduction in distancing
 distancing_change_data %>%
-  bind_rows(dummy) %>%
   mutate(
+    value = pmin(value, -0.01),
+    value = -value,
     col = case_when(
-      is.na(significant) ~ "transparent",
       !significant ~ grey(0.9),
-      value > 0 ~ pal[1],
-      value < 0 ~ pal[2]
+      TRUE ~ pal[2]
     )
   ) %>%
   ggplot() +
-  geom_circle(aes(x0 = 1,
-                  y0 = 1,
-                  r = sqrt(abs(value)),
-                  fill = col,
-                  colour = col),
-              show.legend = FALSE) +
-  scale_fill_identity(aesthetics = c("fill", "colour")) +
+  # change this back to geom_circle, now there's scale_size?
+  geom_point(aes(x = 1,
+                 y = 1,
+                 size = abs(value),
+                 fill = col,
+                 colour = col),
+             show.legend = NA) +
+  scale_size_area(
+    breaks = c(1, 0.5, 0.1),
+    labels = c("100%", "50%", "10%"),
+    limits = c(0, 1),
+    guide = guide_legend(
+      title = "reduction:",
+      title.vjust = 5,
+      override.aes = list(
+        col = pal[2]
+      ),
+      order = 1
+    )
+  ) +
+  scale_fill_identity(
+    aesthetics = c("fill", "colour"),
+    breaks = c(grey(0.9)),
+    labels = c("no evidence"),
+    guide = guide_legend(
+      title = "",
+      order = 2
+    )
+  ) +
   facet_grid(state ~ datastream,
              switch = "y") +
   coord_fixed() +
+  ggtitle("Warning signs of reduced social distancing",
+          "NB: prone to false-positives") +
   theme_void() +
-  theme(strip.text.y.left = element_text(angle = 0, hjust = 1),
-        strip.text.x = element_text(angle = 90, hjust = 0),
-        plot.margin = unit(rep(0.5, 4), "cm"))
+  theme(
+    plot.title = element_text(hjust = 0, vjust = 6, size = 16),
+    plot.subtitle = element_text(hjust = 0, vjust = 8, size = 10),
+    strip.text.y.left = element_text(angle = 0, hjust = 1, size = 10),
+    strip.text.x = element_text(angle = 90, hjust = 0, size = 8),
+    plot.margin = unit(rep(0.5, 4), "cm"),
+    legend.spacing.y = unit(-0.1, "cm")
+  )
 
 ggsave("outputs/figures/state_distancing_waning_warning.png",
-       width = 6,
-       height = 4.5)
+       width = 8,
+       height = 5)
 
-
+# - add a second week latent factor
 # - plot state-by-factor loading plots
-# - add legend to loading plots
-# - plot state-datastream traffic light plot for waning social distancing
 # - pull more model code out into functions
 # - programatically find Apple download link
 # - programatically find Google download link
