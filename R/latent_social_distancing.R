@@ -66,8 +66,11 @@ bump <- latent_behavioural_event(date_num, tau_bump, kappa_bump)
 # behaviour-switching latent factor for back to work period. schools go back
 # from Jan 28 to Feb 3-5, so set mean to Feb 1
 back_to_school_datenum <- as.numeric(lubridate::date("2020-02-01") - first_date)
-tau_back_to_work <- normal(back_to_school_datenum, 5)
-back_to_work <- latent_behaviour_switch(date_num, tau_back_to_work)
+tau_back_to_work <- normal(back_to_school_datenum, 1)
+kappa_back_to_work <- normal(1, 0.25, truncation = c(0, Inf))
+back_to_work <- latent_behaviour_switch(date_num,
+                                        tau_back_to_work,
+                                        kappa = kappa_back_to_work)
 
 # spline latent factor for weekly variation and expand out to dates
 day_weights <- latent_spline(1:7)
