@@ -411,7 +411,11 @@ latent_behavioural_event <- function(date_num, tau, kappa = normal(3, 1, truncat
 # a b-spline constrained to 0-1
 latent_spline <- function (x, knots = 3) {
   bases <- splines::bs(x, df = knots)
-  weights <- normal(0, 1, dim = knots)
+  # for identifiability, make one weight positive. That way the rest can define
+  # their sign relative to this, and the loading defines the overall sign
+  weights1 <- normal(0, 1, truncation = c(0, Inf))
+  weights2 <- normal(0, 1, dim = knots - 1)
+  weights <- c(weights1, weights2)
   spline <- bases %*% weights
   spline <- spline - min(spline)
   spline <- spline / max(spline)
