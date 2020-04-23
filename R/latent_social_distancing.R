@@ -300,14 +300,14 @@ cols <- brewer.pal(8, "Set3")
 go_stop <- cols[c(1, 4)]
 up_down <- cols[c(3, 6)]
 
-pal <- up_down
+palette <- up_down
 
 loadings_plot_data %>%
   mutate(
     col = case_when(
       !significant ~ grey(0.9),
-      value > 0 ~ pal[1],
-      value < 0 ~ pal[2]
+      value > 0 ~ palette[1],
+      value < 0 ~ palette[2]
     ),
     latent_factor = factor(
       latent_factor,
@@ -335,7 +335,7 @@ loadings_plot_data %>%
   ) +
   scale_fill_identity(
     aesthetics = c("fill", "colour"),
-    breaks = c(pal, grey(0.9)),
+    breaks = c(palette, grey(0.9)),
     labels = c("increase", "decrease", "no evidence"),
     guide = guide_legend(
       title = "",
@@ -391,7 +391,7 @@ distancing_change_data <- tibble(
 ) %>%
   left_join(state_datastream_lookup)
 
-pal <- go_stop
+palette <- go_stop
 
 # write a function to create these plots
 
@@ -402,7 +402,7 @@ distancing_change_data %>%
     value = -value,
     col = case_when(
       !significant ~ grey(0.9),
-      TRUE ~ pal[2]
+      TRUE ~ palette[2]
     )
   ) %>%
   ggplot() +
@@ -418,10 +418,10 @@ distancing_change_data %>%
     labels = c("100%", "50%", "10%"),
     limits = c(0, 1),
     guide = guide_legend(
-      title = "reduction:",
+      title = "reduction\nin adherence:",
       title.vjust = 5,
       override.aes = list(
-        col = pal[2]
+        col = palette[2]
       ),
       order = 1
     )
@@ -429,7 +429,7 @@ distancing_change_data %>%
   scale_fill_identity(
     aesthetics = c("fill", "colour"),
     breaks = c(grey(0.9)),
-    labels = c("no evidence"),
+    labels = c("uncertain"),
     guide = guide_legend(
       title = "",
       order = 2
@@ -438,7 +438,7 @@ distancing_change_data %>%
   facet_grid(state ~ datastream,
              switch = "y") +
   coord_fixed() +
-  ggtitle("Warning signs of reduced social distancing",
+  ggtitle("Indicators of reduced adherence to social distancing",
           "NB: prone to false-positives") +
   theme_void() +
   theme(
