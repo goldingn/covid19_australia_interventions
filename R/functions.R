@@ -90,28 +90,7 @@ google_mobility <- function() {
 # download and format Apple's mobility data - will need to update the url regularly
 apple_mobility <- function() {
   
-  # a list of the regions we'se ideally be interested in. Apple only provides
-  # data for a handful of these (Australia and the four biggest cities)
-  ideal_regions <- c(
-    "Australia",
-    "New South Wales",
-    "Victoria",
-    "Queensland",
-    "Western Australia",
-    "South Australia",
-    "Australian Capital Territory",
-    "Tasmania",
-    "Northern Territory",
-    "Sydney",
-    "Melbourne",
-    "Brisbane",
-    "Perth",
-    "Adelaide",
-    "Canberra",
-    "Hobart",
-    "Darwin"
-  )
-  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2006HotfixDev11/v1/en-us/applemobilitytrends-2020-04-20.csv"
+  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2006HotfixDev12/v1/en-us/applemobilitytrends-2020-04-21.csv"
   data <- readr::read_csv(url) %>%
     tidyr::pivot_longer(
       cols = starts_with("2020-"),
@@ -122,7 +101,7 @@ apple_mobility <- function() {
       date = lubridate::date(date)
     ) %>%
     filter(
-      region %in% ideal_regions
+      region %in% ideal_regions()
     )
   
   # transform to percentage change
@@ -143,6 +122,29 @@ apple_mobility <- function() {
   
   data
    
+}
+
+# load the Citymapper index (direction requests) for a couple of cities
+citymapper_mobility <- function() {
+  
+  url <- "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20200422.csv"
+  data <- readr::read_csv(url, skip = 3) %>%
+    tidyr::pivot_longer(cols = -Date,
+                        names_to = "region",
+                        values_to = "trend") %>%
+    filter(region %in% ideal_regions()) %>%
+    filter(!is.na(trend)) %>%
+    rename(date = Date) %>%
+    mutate(trend = 100 * (trend - 1),
+           state = case_when(
+             region == "Sydney" ~ "New South Wales",
+             region == "Melbourne" ~ "Victoria",
+             region == "Brisbane" ~ "Queensland",
+             region == "Perth" ~ "Western Australia",
+             TRUE ~ as.character(NA)
+           )
+    )
+  
 }
 
 # combine all mobility datasets
@@ -173,13 +175,43 @@ all_mobility <- function() {
       -metric
     )
   
+  citymapper <- citymapper_mobility() %>%
+    mutate(
+      datastream = str_c("citymapper: direction requests")
+    )
+  
   # combine the datasets
   bind_rows(
     google,
     apple,
-    facebook
+    facebook,
+    citymapper
   )
   
+}
+
+# a list of the regions we'se ideally be interested in. Apple only provides
+# data for a handful of these (Australia and the four biggest cities)
+ideal_regions <- function() {
+  c(
+    "Australia",
+    "New South Wales",
+    "Victoria",
+    "Queensland",
+    "Western Australia",
+    "South Australia",
+    "Australian Capital Territory",
+    "Tasmania",
+    "Northern Territory",
+    "Sydney",
+    "Melbourne",
+    "Brisbane",
+    "Perth",
+    "Adelaide",
+    "Canberra",
+    "Hobart",
+    "Darwin"
+  )
 }
 
 intervention_dates <- function() {
