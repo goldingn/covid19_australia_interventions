@@ -58,14 +58,15 @@ trigger_date_num <- as.numeric(interventions$date - first_date)
 distancing <- latent_behaviour_switch(date_num, trigger_date_num)
 
 # add term for recent change to social distancing (some proportion either
-# switching back to baseline behaviour or increasing distancing behaviour), at
-# some which could be from halfway since the last intervention to now, up to one
-# week in the future
-last_intervention <- max(trigger_date_num)
-tau_distancing_start <- last_intervention + (n_dates - last_intervention) / 2
-tau_distancing_change <- uniform(tau_distancing_start, n_dates + 7)
-distancing_change <- latent_behaviour_switch(date_num, tau_distancing_change)
-distancing_change <- distancing_change / distancing_change[n_dates]
+# switching back to baseline behaviour or increasing distancing behaviour) Fix
+# the parameters to an exponential function, since it's barely identified.
+last_date_num <- n_dates - 1
+kappa_distancing_change <- 2
+tau_distancing_change <- last_date_num
+distancing_change <- latent_behaviour_switch(date_num,
+                                             tau = tau_distancing_change,
+                                             kappa = kappa_distancing_change)
+distancing_change <- distancing_change * 2
 
 # latent factor for pre-distancing surge in mobility with a prior that it peaks
 # around the time of the first restriction
@@ -156,13 +157,13 @@ cols <- match(mobility$state_datastream, state_datastreams)
 idx <- cbind(rows, cols)
 
 sigma_obs <- normal(0, 1, truncation = c(0, Inf), dim = n_state_datastreams)
-distribution(mobility$trend) <- normal(mean = trends[idx], 
+distribution(mobility$trend) <- normal(mean = trends[idx],
                                        sd = sigma_obs[cols])
 
 # fit model
 m <- model(loadings_ntnl, loadings_holiday)
 draws <- mcmc(m,
-              sampler = hmc(Lmin = 25, Lmax = 30),
+              sampler = hmc(Lmin = 10, Lmax = 15),
               chains = 20)
 # draws <- extra_samples(draws, 3000)
 
@@ -453,9 +454,7 @@ ggsave("outputs/figures/state_distancing_waning_warning.png",
        width = 8,
        height = 5)
 
-# - add a second week latent factor
 # - plot state-by-factor loading plots
-# - work out where the posterior is correlated and try to soothe it
 # - pull more model code out into functions
 # - programatically find Apple download link
 # - programatically find Google download link
