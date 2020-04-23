@@ -82,11 +82,8 @@ back_to_work <- latent_behaviour_switch(date_num,
                                         tau_back_to_work,
                                         kappa = kappa_back_to_work)
 
-# fixed latent factor on weekendiness
-doy <- lubridate::wday(dates)
-weekendiness <- scale(-exp(abs(doy - 4.5)))
-
 # spline latent factor for weekly variation and expand out to dates
+doy <- lubridate::wday(dates)
 day_weights <- latent_spline(1:7)
 weekday <- day_weights[doy]
   
@@ -95,7 +92,6 @@ latents_ntnl <- cbind(bump,
                       distancing,
                       distancing_change,
                       back_to_work,
-                      weekendiness,
                       weekday)
 n_latents_ntnl <- ncol(latents_ntnl)
 
@@ -103,7 +99,6 @@ latent_names <- c("Preparation",
                   "Social distancing",
                   "Waning distancing",
                   "Back to work",
-                  "Weekends",
                   "Weekly variation")
 
 # hierarchical prior on loadings, so states have similar values, within for each

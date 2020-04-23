@@ -104,10 +104,12 @@ apple_mobility <- function() {
       region %in% ideal_regions()
     )
   
-  # transform to percentage change
+  # transform to percentage change, and correct dates (they are agreegated
+  # midnight-midnight in pacific central time, for which Australian daylight
+  # hours fall on the next calendar day in Australia)
   data <- data %>%
-    mutate(trend = trend - 100)
-  
+    mutate(trend = trend - 100,
+           date = date + 1)
   
   # add on a state label, rename the transportation type to 'category' to match
   # google, and add on the data source
