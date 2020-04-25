@@ -66,6 +66,7 @@ facebook_mobility <- function() {
 # - remove the grocery and pharmacy category
 # (affected by panic buying, not interventions)
 google_mobility <- function() {
+  # get link from: https://www.google.com/covid19/mobility/index.html?hl=en
   url <- "https://www.gstatic.com/covid19/mobility/Global_Mobility_Report.csv"
   data <- readr::read_csv(url, ) %>%
     filter(country_region == "Australia") %>%
@@ -89,8 +90,8 @@ google_mobility <- function() {
 
 # download and format Apple's mobility data - will need to update the url regularly
 apple_mobility <- function() {
-  
-  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2006HotfixDev12/v1/en-us/applemobilitytrends-2020-04-21.csv"
+  # get link from: https://www.apple.com/covid19/mobility
+  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2006HotfixDev14/v1/en-us/applemobilitytrends-2020-04-23.csv"
   data <- readr::read_csv(url) %>%
     tidyr::pivot_longer(
       cols = starts_with("2020-"),
@@ -129,7 +130,8 @@ apple_mobility <- function() {
 # load the Citymapper index (direction requests) for a couple of cities
 citymapper_mobility <- function() {
   
-  url <- "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20200422.csv"
+  # get link from: https://citymapper.com/cmi/about
+  url <- "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20200424.csv"
   data <- readr::read_csv(url, skip = 3) %>%
     tidyr::pivot_longer(cols = -Date,
                         names_to = "region",
