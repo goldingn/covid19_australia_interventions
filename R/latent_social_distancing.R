@@ -70,7 +70,9 @@ distancing_change <- distancing_change * 2
 
 # latent factor for pre-distancing surge in mobility with a prior that it peaks
 # around the time of the first restriction
-tau_bump <- normal(min(trigger_date_num), 1)
+tau_bump_mean <- min(trigger_date_num)
+tau_bump <- normal(tau_bump_mean, 1,
+                   truncation = tau_bump_mean + c(-7, 7))
 kappa_bump <- normal(3, 1, truncation = c(0, Inf))
 bump <- latent_behavioural_event(date_num, tau_bump, kappa_bump)
 
@@ -165,9 +167,9 @@ distribution(mobility$trend) <- normal(mean = trends[idx],
 # fit model
 m <- model(loadings_ntnl, loadings_holiday)
 draws <- mcmc(m,
-              sampler = hmc(Lmin = 10, Lmax = 15),
+              sampler = hmc(Lmin = 20, Lmax = 25),
               chains = 20)
-# draws <- extra_samples(draws, 3000)
+draws <- extra_samples(draws, 4000)
 
 # check convergence
 r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
