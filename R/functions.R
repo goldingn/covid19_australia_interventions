@@ -2,6 +2,53 @@ library(readr)
 library(dplyr)
 library(stringr)
 
+# read in nbn data and format as a daily mobility index (slow, so run once and
+# save this intermediate step)
+prep_nbn_mobility <- function() {
+  
+  load("data/nbn/tidiedNBNdata.RData")
+  
+  # get mean of up/downloads during daytime (10-3) hours for each date and
+  # (known) state, convert to gigabytes and put in long form for up/down stream
+  data <- df %>%
+    filter(hour >= 10 & hour < 15) %>%
+    filter(!is.na(state)) %>%
+    group_by(date, state) %>%
+    summarise(uploading = mean(sum_upstream_bytes, na.rm = TRUE),
+              downloading = mean(sum_downstream_bytes, na.rm = TRUE)) %>%
+    tidyr::pivot_longer(cols = all_of(c("uploading", "downloading")),
+                        names_to = "direction", 
+                        values_to = "bytes") %>%
+    mutate(GB = bytes * 1e-9) %>%
+    select(-bytes)
+
+  # compute baseline values for Jan 3 - Feb 6 (same as Google)
+  baseline_period <- as.Date(c("2020-01-03", "2020-02-06"))
+  baseline <- data %>%
+    mutate(in_baseline = date >= baseline_period[1] &
+             date <= baseline_period[2]) %>%
+    group_by(direction, state) %>%
+    summarise(baseline = median(GB[in_baseline]))
+  
+  # compute percentage change on this baseline and remove data in the baseline
+  data <- data %>%
+    left_join(baseline) %>%
+    mutate(trend = 100 * (GB - baseline)/ abs(baseline)) %>%
+    filter(date > baseline_period[1])
+  
+  # rename states, drop unnecessary columns, and save to disk
+  data %>%
+    mutate(state = expand_states(state)) %>%
+    select(state, date, direction, trend) %>%
+    saveRDS("data/nbn/nbn_index.RDS")
+  
+}
+
+# read in the nbn mobility index
+nbn_mobility <- function() {
+  readRDS("data/nbn/nbn_index.RDS")
+}
+
 # read in and tidy up Facebook movement data
 facebook_mobility <- function() {
   
@@ -184,12 +231,21 @@ all_mobility <- function() {
       datastream = str_c("Citymapper: directions")
     )
   
+  nbn <- nbn_mobility() %>%
+    mutate(
+      datastream = str_c("NBN: ", direction)
+    ) %>%
+    dplyr::select(
+      -direction
+    )
+  
   # combine the datasets
   bind_rows(
     google,
     apple,
     facebook,
-    citymapper
+    citymapper,
+    nbn
   )
   
 }
@@ -204,6 +260,19 @@ abbreviate_states <- function(state_names) {
     state_names == "Tasmania" ~ "TAS",
     state_names == "Victoria" ~ "VIC",
     state_names == "Western Australia" ~ "WA"
+  )
+}
+
+expand_states <- function(state_abbreviations) {
+  case_when(
+    state_abbreviations == "ACT" ~ "Australian Capital Territory",
+    state_abbreviations == "NSW" ~ "New South Wales",
+    state_abbreviations == "NT" ~ "Northern Territory",
+    state_abbreviations == "QLD" ~ "Queensland",
+    state_abbreviations == "SA" ~ "South Australia",
+    state_abbreviations == "TAS" ~ "Tasmania",
+    state_abbreviations == "VIC" ~ "Victoria",
+    state_abbreviations == "WA" ~ "Western Australia"
   )
 }
 
