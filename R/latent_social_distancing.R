@@ -88,9 +88,9 @@ back_to_work <- latent_behaviour_switch(date_num,
 # spline latent factor for weekly variation and expand out to dates fix Sunday
 # (day 1) at 1 so that the sign is constrained and there's no identifiability
 # issue against the loadings
-doy <- lubridate::wday(dates)
+wday <- lubridate::wday(dates)
 day_weights <- latent_spline()
-weekday <- day_weights[doy]
+weekday <- day_weights[wday]
   
 # combine into latent factor matrix
 latents_ntnl <- cbind(bump,
@@ -169,7 +169,7 @@ m <- model(loadings_ntnl, loadings_holiday)
 draws <- mcmc(m,
               sampler = hmc(Lmin = 20, Lmax = 25),
               chains = 20)
-draws <- extra_samples(draws, 4000)
+# draws <- extra_samples(draws, 4000)
 
 # check convergence
 r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
@@ -288,7 +288,7 @@ for (j in seq_len(n_states)) {
 # same for a subset of datastreams, by all states
 target_datastreams <- c("Apple: directions for driving",
                         "Google: time at residential",
-                        "Facebook: movement range")
+                        "NBN: uploading")
 
 # get the vector of state-datastreams to plot
 state_datastreams_plot <- mobility %>%

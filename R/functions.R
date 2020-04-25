@@ -19,18 +19,19 @@ prep_nbn_mobility <- function() {
     tidyr::pivot_longer(cols = all_of(c("uploading", "downloading")),
                         names_to = "direction", 
                         values_to = "bytes") %>%
+    mutate(weekday = lubridate::wday(date)) %>%
     mutate(GB = bytes * 1e-9) %>%
     select(-bytes)
 
-  # compute baseline values for Jan 3 - Feb 6 (same as Google)
+  # compute baseline values for each day of the week Jan 3 - Feb 6 (same as Google)
   baseline_period <- as.Date(c("2020-01-03", "2020-02-06"))
   baseline <- data %>%
     mutate(in_baseline = date >= baseline_period[1] &
              date <= baseline_period[2]) %>%
-    group_by(direction, state) %>%
+    group_by(direction, state, weekday) %>%
     summarise(baseline = median(GB[in_baseline]))
   
-  # compute percentage change on this baseline and remove data in the baseline
+  # compute percentage change, and remove pre-baseline data
   data <- data %>%
     left_join(baseline) %>%
     mutate(trend = 100 * (GB - baseline)/ abs(baseline)) %>%
@@ -65,13 +66,14 @@ facebook_mobility <- function() {
       names_to = "metric",
       values_to = "trend"
     ) %>%
-    mutate(date = lubridate::date(date))
+    mutate(date = lubridate::date(date)) %>%
+    mutate(weekday = lubridate::wday(date))
   
   # set the staying home variable against a baseline of the first two weeks
   baseline <- data %>%
     filter(date < lubridate::date("2020-03-15")) %>%
-    group_by(state, metric) %>%
-    summarise(baseline = mean(trend))
+    group_by(state, metric, weekday) %>%
+    summarise(baseline = median(trend))
   
   data <- data %>%
     left_join(baseline) %>%
@@ -84,6 +86,7 @@ facebook_mobility <- function() {
     select(
       -corrected,
       -baseline,
+      -weekday
       ) %>%
     mutate(
       trend = trend * 100,
