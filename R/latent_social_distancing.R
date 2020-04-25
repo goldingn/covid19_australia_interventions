@@ -83,9 +83,11 @@ back_to_work <- latent_behaviour_switch(date_num,
                                         tau_back_to_work,
                                         kappa = kappa_back_to_work)
 
-# spline latent factor for weekly variation and expand out to dates
+# spline latent factor for weekly variation and expand out to dates fix Sunday
+# (day 1) at 1 so that the sign is constrained and there's no identifiability
+# issue against the loadings
 doy <- lubridate::wday(dates)
-day_weights <- latent_spline(1:7)
+day_weights <- latent_spline()
 weekday <- day_weights[doy]
   
 # combine into latent factor matrix
