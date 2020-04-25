@@ -237,7 +237,7 @@ for (j in seq_len(n_states)) {
     state_datastream_i <- state_datastreams_j[i]
     datastream_i <- datastreams_j[i]
     
-    plot_data <- state_data %>%
+    plot_data <- mobility %>%
       filter(state_datastream == state_datastream_i)
     
     rows <- as.numeric(range(plot_data$date) - first_date)
@@ -266,15 +266,133 @@ for (j in seq_len(n_states)) {
            pch = 16,
            cex = 0.5,
            col = "purple")
+    abline(v = last_date, lty = 2)
     title(main = datastream_i,
           col = grey(0.3))
     
   }
-  mtext(paste(states[j], "- data and model fit"),
+  
+  main_title <- paste(states[j],
+                      "- data and model fit up to",
+                      format(last_date, format = "%B %d"))
+  mtext(main_title,
         side = 3,  outer = TRUE,
         col = grey(0.2), cex = 1.3)
   dev.off()  
 }
+
+# same for a subset of datastreams, by all states
+target_datastreams <- c("Apple: directions for driving",
+                        "Google: time at residential",
+                        "Facebook: movement range")
+
+# get the vector of state-datastreams to plot
+state_datastreams_plot <- mobility %>%
+  filter(datastream %in% target_datastreams) %>%
+  pull(state_datastream) %>%
+  unique()
+
+# output A4 @ 600DPI
+png("outputs/figures/multistate_model_fit.png",
+    width = 4962, height = 7014,
+    pointsize = 70)
+
+par(mfrow = c(8, 3),
+    mar = c(2, 2, 1, 1),
+    oma = c(1, 4, 6, 1),
+    las = 1)
+
+for(this_state in states) {
+  for (this_datastream in target_datastreams) {
+    
+    # subset data for plotting
+    plot_data <- mobility %>%
+      filter(state == this_state,
+             datastream == this_datastream)
+
+    if (nrow(plot_data) == 0) {
+      
+      plot(1, 1,
+           type = "n",
+           axes = FALSE,
+           ylab = "",
+           xlab = "")
+      
+      text(1, 1,
+           labels = "no data",
+           cex = 3,
+           col = grey(0.8))
+      
+    } else {
+      
+      this_state_datastream <- plot_data$state_datastream[1]
+      
+      rows <- as.numeric(range(plot_data$date) - first_date)
+      col <- match(this_state_datastream, state_datastreams)
+      date_idx <- seq(rows[1], rows[2]) + 1
+      dates_plot <- dates[date_idx]
+      est <- cbind(mean = trend_mean[date_idx, col],
+                   lower = trend_lower[date_idx, col],
+                   upper = trend_upper[date_idx, col])
+      
+      ylim <- range(c(plot_data$trend, est))
+      
+      plot(est[, 1] ~ dates_plot,
+           xlim = range(dates),
+           type = "n",
+           ylim = ylim,
+           ylab = "",
+           xlab = "")
+      add_gridlines(interventions$date)
+      add_mean_ci(est, dates_plot,
+                  col = grey(0.9),
+                  border_col = grey(0.8),
+                  line_col = grey(0.4),
+                  lwd = 2)
+      points(trend ~ date,
+             data = plot_data,
+             pch = 16,
+             cex = 0.5,
+             col = "purple")
+      abline(v = last_date, lty = 2)
+      
+    }
+
+    # add facet labels
+    if (this_state == states[1]) {
+      
+      datastream_name_formatted <- gsub("\n", " ", this_datastream)
+      mtext(text = datastream_name_formatted,
+            side = 3,
+            line = 0.5,
+            cex = 1.4,
+            xpd = NA)
+      
+    }
+    
+    if (this_datastream == target_datastreams[1]) {
+      
+      state_name_formatted <- abbreviate_states(this_state)
+      mtext(text = state_name_formatted,
+            side = 2,
+            line = 3,
+            cex = 1.6,
+            xpd = NA,
+            las = 0)
+      
+    }
+    
+  }
+}
+
+mtext(text = paste("Percentage change in selected mobility datastreams up to",
+                   format(last_date, format = "%B %d")),
+      cex = 2,
+      line = 3,
+      adj = 0,
+      outer = TRUE)
+
+dev.off()
 
 
 # plot the national mean loadings for the first four latent factors
@@ -452,7 +570,7 @@ distancing_change_data %>%
 
 ggsave("outputs/figures/state_distancing_waning_warning.png",
        width = 8,
-       height = 5)
+       height = 6)
 
 # - plot state-by-factor loading plots
 # - pull more model code out into functions

@@ -157,13 +157,13 @@ all_mobility <- function() {
   # load datasets and label their datastreams separately
   google <- google_mobility() %>%
     mutate(
-      datastream = str_c("google: time at\n", category)
+      datastream = str_c("Google: time at ", category)
     ) %>%
     dplyr::select(-category)
   
   apple <- apple_mobility() %>%
     mutate(
-      datastream = str_c("apple: directions for\n", transportation_type)
+      datastream = str_c("Apple: directions for ", transportation_type)
     ) %>%
     dplyr::select(
       -geo_type,
@@ -173,7 +173,7 @@ all_mobility <- function() {
   
   facebook <- facebook_mobility() %>%
     mutate(
-      datastream = str_c("facebook:\n", metric)
+      datastream = str_c("Facebook: ", metric)
     ) %>%
     dplyr::select(
       -metric
@@ -181,7 +181,7 @@ all_mobility <- function() {
   
   citymapper <- citymapper_mobility() %>%
     mutate(
-      datastream = str_c("citymapper: direction requests")
+      datastream = str_c("Citymapper: directions")
     )
   
   # combine the datasets
@@ -192,6 +192,19 @@ all_mobility <- function() {
     citymapper
   )
   
+}
+
+abbreviate_states <- function(state_names) {
+  case_when(
+    state_names == "Australian Capital Territory" ~ "ACT",
+    state_names == "New South Wales" ~ "NSW",
+    state_names == "Northern Territory" ~ "NT",
+    state_names == "Queensland" ~ "QLD",
+    state_names == "South Australia" ~ "SA",
+    state_names == "Tasmania" ~ "TAS",
+    state_names == "Victoria" ~ "VIC",
+    state_names == "Western Australia" ~ "WA"
+  )
 }
 
 # a list of the regions we'se ideally be interested in. Apple only provides
@@ -472,7 +485,7 @@ add_gridlines <- function(key_dates, vertical = TRUE, horizontal = TRUE) {
     abline(h = 0, col = grey(0.4), lty = 3)
   }
   if (vertical) {
-    abline(v = key_dates, col = grey(0.6))
+    abline(v = key_dates, col = grey(0.6), lwd = 2)
   }
 }
 
