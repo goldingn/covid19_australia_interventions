@@ -23,20 +23,48 @@ prep_nbn_mobility <- function() {
     mutate(GB = bytes * 1e-9) %>%
     select(-bytes)
 
-  # compute baseline values for each day of the week in Novembr 2019
-  # similarly a non-holiday period, 
-  baseline_period <- as.Date(c("2019-11-01", "2019-11-30"))
-  baseline <- data %>%
-    mutate(in_baseline = date >= baseline_period[1] &
-             date <= baseline_period[2]) %>%
+  # subset to fully observed days, since there's a trend within the 10-3 period,
+  # so curtailing it early would bias the metric
+  last_reliable_day <- df %>%
+    filter(!is.na(date)) %>%
+    group_by(date) %>%
+    summarise(latest_hour = max(hour, na.rm = TRUE)) %>%
+    filter(latest_hour > 15) %>%
+    pull(date) %>%
+    max()
+    
+  data <- data %>%
+    filter(date <= last_reliable_day)
+  
+  # compute baseline values based on the daily pattern in November 2019
+  # (similarly a non-holiday period), but the man usage from Jan 3 - Feb 6 (the
+  # same as Google)
+  nov_baseline_period <- as.Date(c("2019-11-01", "2019-11-30"))
+  jan_baseline_period <- as.Date(c("2020-01-03", "2020-02-06"))
+  
+  # relevel against November baseline first to remove day effect
+  nov_baseline <- data %>%
+    mutate(in_baseline = date >= nov_baseline_period[1] &
+             date <= nov_baseline_period[2]) %>%
     group_by(direction, state, weekday) %>%
-    summarise(baseline = median(GB[in_baseline]))
+    summarise(nov_baseline = median(GB[in_baseline]))
+  
+  data <- data %>%
+    left_join(nov_baseline) %>%
+    mutate(GB_diff = GB - nov_baseline)
+  
+  # now relevel differences against Jan baseline, to match google
+  jan_baseline <- data %>%
+    mutate(in_baseline = date >= jan_baseline_period[1] &
+             date <= jan_baseline_period[2]) %>%
+    group_by(direction, state) %>%
+    summarise(jan_baseline = median(GB_diff[in_baseline]))
   
   # compute percentage change, and remove pre-baseline data
   data <- data %>%
-    left_join(baseline) %>%
-    mutate(trend = 100 * (GB - baseline)/ abs(baseline)) %>%
-    filter(date > as.Date("2020-02-01"))
+    left_join(jan_baseline) %>%
+    mutate(trend = 100 * (GB_diff - jan_baseline)/ abs(jan_baseline)) %>%
+    filter(date > jan_baseline_period[2])
   
   # rename states, drop unnecessary columns, and save to disk
   data %>%
