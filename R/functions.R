@@ -23,8 +23,9 @@ prep_nbn_mobility <- function() {
     mutate(GB = bytes * 1e-9) %>%
     select(-bytes)
 
-  # compute baseline values for each day of the week Jan 3 - Feb 6 (same as Google)
-  baseline_period <- as.Date(c("2020-01-03", "2020-02-06"))
+  # compute baseline values for each day of the week in Novembr 2019
+  # similarly a non-holiday period, 
+  baseline_period <- as.Date(c("2019-11-01", "2019-11-30"))
   baseline <- data %>%
     mutate(in_baseline = date >= baseline_period[1] &
              date <= baseline_period[2]) %>%
@@ -35,7 +36,7 @@ prep_nbn_mobility <- function() {
   data <- data %>%
     left_join(baseline) %>%
     mutate(trend = 100 * (GB - baseline)/ abs(baseline)) %>%
-    filter(date > baseline_period[1])
+    filter(date > as.Date("2020-02-01"))
   
   # rename states, drop unnecessary columns, and save to disk
   data %>%
