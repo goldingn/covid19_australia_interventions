@@ -18,13 +18,14 @@ facebook_mobility <- function() {
       names_to = "metric",
       values_to = "trend"
     ) %>%
-    mutate(date = lubridate::date(date))
+    mutate(date = lubridate::date(date)) %>%
+    mutate(weekday = lubridate::wday(date))  
   
   # set the staying home variable against a baseline of the first two weeks
   baseline <- data %>%
     filter(date < lubridate::date("2020-03-15")) %>%
-    group_by(state, metric) %>%
-    summarise(baseline = mean(trend))
+    group_by(state, metric, weekday) %>%
+    summarise(baseline = median(trend))
   
   data <- data %>%
     left_join(baseline) %>%
@@ -37,6 +38,7 @@ facebook_mobility <- function() {
     select(
       -corrected,
       -baseline,
+      -weekday
       ) %>%
     mutate(
       trend = trend * 100,
