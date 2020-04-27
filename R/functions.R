@@ -514,7 +514,6 @@ pal <- function(colour = "green") {
   pal <- colorRampPalette(c("white", base_colour, "black"))(10)
   pal[c(4, 5, 6, 7)]
   
-  
 }
 
 plot_latent_factor <- function (factor, draws, dates, key_dates, cols = grey(c(0.9, 0.7, 0.5, 0.3)), title = "") {
@@ -523,7 +522,7 @@ plot_latent_factor <- function (factor, draws, dates, key_dates, cols = grey(c(0
   plot(est[, 1] ~ dates,
        type = "n",
        ylim = c(0, 1),
-       ylab = "effect",
+       ylab = "relative effect",
        xlab = "",
        las = 1)
   add_gridlines(key_dates, horizontal = FALSE)
