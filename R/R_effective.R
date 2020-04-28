@@ -112,9 +112,11 @@ local_cases <- date_by_state %>%
 
 library(greta.gp)
 
+idx <- which(states == "VIC")
+
 # summarise nationally to start with
-local_cases <- as_data(rowSums(local_cases))
-imported_cases <- as_data(rowSums(imported_cases))
+local_cases <- local_cases[, idx, drop = FALSE]
+imported_cases <- imported_cases[, idx, drop = FALSE]
 
 # the relative contribution of imported cases (relative to locally-acquired
 # cases) to transmission. I.e. one minus the effectiveness of quarantine
@@ -125,12 +127,13 @@ import_contribution <- 1
 # the expected number of infectious people in each state and time
 n_dates <- length(dates)
 
-serial_interval_disaggregation <- disaggregation_matrix(seq_len(n_dates),
-                                                        serial_interval_probability)
+serial_interval_disaggregation <- disaggregation_matrix(n_dates,
+                                                        serial_interval_probability,
+                                                        max_days = 46)
 
-imported_infectious <- serial_interval_disaggregation %*% imported_cases
-local_infectious <- serial_interval_disaggregation %*% local_cases
-lambda <- local_infectious + imported_infectious * import_contribution
+case_contribution <- local_cases + imported_cases * import_contribution
+
+lambda <- serial_interval_disaggregation %*% case_contribution
 
 # define a GP on dates, using subset of regressors approximation
 lengthscale <- lognormal(4, 0.5)
@@ -157,3 +160,25 @@ m <- model(log_R_eff)
 
 draws <- mcmc(m, one_by_one = TRUE)
 
+r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
+n_eff <- coda::effectiveSize(draws)
+max(r_hats)
+min(n_eff)
+
+R_eff <- exp(log_R_eff)
+
+R_eff_draws <- calculate(R_eff, values = draws)
+R_eff_mat <- as.matrix(R_eff_draws)
+mean <- colMeans(R_eff_mat)
+ci <- apply(R_eff_mat, 2, quantile, c(0.025, 0.975))
+
+plot(mean ~ dates,
+     type = "n",
+     ylim = range(c(ci, 0, 1)))
+polygon(x = c(dates, rev(dates)),
+        y = c(ci[1, ], rev(ci[2, ])),
+        lty = 0,
+        col = "lightskyblue1")
+lines(mean ~ dates,
+      col = "blue",
+      lwd = 2)

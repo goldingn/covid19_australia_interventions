@@ -704,29 +704,32 @@ fake_linelist <- function() {
   
 }
 
-# given a positive integer vector of day differences and a discrete probability
-# function that takes as input day differences and returns a vector of
-# probabilities that a day should actually be assigned that number of days into
-# the future, return a symmetric matrix that can be used in a matrix multiply to
+# given a positive integer 'n_days' of the number of days for which to compute
+# values, a discrete probability function 'probability_function' that takes as
+# input day differences and returns a vector of probabilities that a day should
+# actually be assigned that number of days into the future, and an optional
+# upper limit of days 'max_days' beyond which the probability is assumed to be 0
+# return a symmetric matrix that can be used in a matrix multiply to
 # disaggregate daily count data into the future according to that probability
 # distribution. Doing this disaggregation using a circulant matrix of
 # probabilities with masked lower values, is more efficient in greta than
 # looping since it can easily be parallelised. Note this is the same operation
 # as cases_known_outcome_matrix() in goldingn/australia_covid_ascertainment
-disaggregation_matrix <- function (day_differences, probability_function) {
+disaggregation_matrix <- function (n_days, probability_function, max_days = Inf) {
   
-  n_days <- length(day_differences)
+  # get a range of days ahead to consider
+  days <- seq_len(min(n_days, max_days))
   
-  # get a probability of delaying each of these number of days (starting from 0)
-  disaggregation_probs <- probability_function(day_differences - 1)
+  # get a probability of delaying by each of these number of days (starting from 0)
+  disaggregation_probs <- probability_function(days - 1)
   
   # build an upper-triangular circulant matrix (contribution of each day's cases
   # to each other's)
   mat <- zeros(n_days, n_days)
-  indices <- col(mat) - row(mat) + 1
-  mask <- indices > 0
+  indices <- row(mat) - col(mat) + 1
+  mask <- indices > 0 & indices <= max_days
   mat[mask] <- disaggregation_probs[indices[mask]]
-  t(mat)
+  mat
   
 }
 
