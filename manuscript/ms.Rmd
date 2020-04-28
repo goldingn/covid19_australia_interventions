@@ -26,11 +26,12 @@ Moreover, no single one of these types of data fully encompasses the range of be
 
 The aim of this work is to synthesise these varied measures of population mixing behaviour into a small, quantified set of latent social distancing factors that reflect the underlying changes in behaviour. We consider these latent social distancing factors in a semi-mechanistic way; reflecting knowledge and hypotheses of the events that triggered and influenced these behavioural trends. To do this, we construct a statistical semi-mechanistic latent factor model that considers dates that events, policy measures, and public announcements are made, and estimates how the behaviour of the population responded to each event by calibration against all of the available metrics of population mixing behaviour.
 
-We apply this model to 9 separate data streams provided by from two technology companies for Australia, with spatial data varying between national, state and city-levels. This reveals two distinct latent population behavioural factors: a strong social distancing effect in response to national announcements and policies, preceeded by a small and short-lived rise in mixing apparently driven by the population 'stocking up' on supplies.
+We apply this model to 12 separate data streams provided by 4 technology companies for Australia, with spatial data varying between national, state and city-levels. This reveals two distinct latent population behavioural factors: a strong social distancing effect in response to national announcements and policies, preceeded by a small and short-lived rise in mixing apparently driven by the population 'stocking up' on supplies.
 
 To add:
  - relative effectiveness of three different policies
  - relative effect size by state
+ - impact of the latent factors on R_eff
 
 ## Abstract
 
@@ -49,9 +50,88 @@ To add:
 
 ## Methods
 
+*NB. this is currently a lot of copy-pasta from reports etc. which will be massaged into a report*
+
+A number of datastreams provide information on mobility before and in response to COVID-19 across the states and territories. Each of these datastreams represents a different aspect of population mobility, but they show some common trends - reflecting underlying changes in behaviour. We use a latent factor statistical model to simultaneously analyse these datastreams and quantify these underlying behavioural factors.
+
+### Mobility datastreams
+
+We currently consider 12 different datastreams, provided by four different technology companies: Apple and Citymapper provide regularly-updated data on direction requests, whilst Facebook and Google provide less regularly-updated data on different measures of mobility from users' GPS data. Each datastream is encoded as a percentage change in the mobility metric, relative to a pre-COVID-19 baseline.
+
+#### Apple
+
+Apple provide 3 datastreams from their Apple Maps app of the total number of user requests for directions, one each for driving, walking, and public transport. No further details are provided on the nature of these journeys. Separate versions of these datastreams are provided for Sydney, Melbourne, Brisbane, Perth, and for all of Australia. We use the city-level data as representative of mobility within that state, and do not currently use the national composite data. Apple's proportional change data is relative to a baseline of the metric in each location on January 13th 2020. Daily counts are calculated using Pacific Standard Time (i.e. the time in California), which largely but not entirely overlaps with the subsequent day in Australia. We therefore assign mobility data to the subsequent date. These data are updated daily and can be accessed at: https://www.apple.com/covid19/mobility.
+
+#### Citymapper
+
+Citymapper provide a composite index based on the numbers of requests for directions using the Citymapper app. This is a composite metric of requests for different transport mode, though Citymapper does not provide driving directions and is primarily used for public transport directions, with some use for walking, cycling, and cab directions. No further details are provided on the nature of these journeys. Separate versions of these datastreams are provided for Sydney, Melbourne, and for all of Australia. We use the city-level data as representative of mobility within that state, and do not currently use the national composite data. Citymapper's proportional change data are relative to a baseline of the metric between January 6th and February 2nd, 2020. Daily counts are calculated using UTC (i.e. the time in London), which largely but not entirely overlaps with the same day in Australia. We therefore assign mobility data to the date provided. These data are updated daily and can be accessed at: https://citymapper.com/CMI.
+
+#### Google
+
+Google provide GPS-derived indices of the amount of time spent (a combination of visits and lengths of stay) in locations of one of 6 types. The following are Google's descriptions of these places:
+- retail and recreation: “places like restaurants, cafes, shopping centers, theme parks, museums, libraries, and movie theaters”
+- grocery & pharmacy: “places like grocery markets, food warehouses, farmers markets, specialty food shops, drug stores, and pharmacies”
+- parks: “places like national parks, public beaches, marinas, dog parks, plazas, and public gardens”
+- transit stations: “places like public transport hubs such as subway, bus, and train stations”
+- workplaces: “places of work”
+- residential: “places of residence”
+This visitation information is derived from the aggregated GPS tracks of users with the Location History setting enabled (off by default). No further details are provided on the users or the nature of these visits. Separate versions of these datastreams are provided for each state and territory, and for all of Australia. We do not currently use the national composite data. Google's proportional change data are relative to a baseline of the metric between January 3rd and February 6th, 2020. Daily counts are calculated using UTC (i.e. the time in London), which largely but not entirely overlaps with the same day in Australia. We therefore assign mobility data to the date provided. These data are updated intermittently. Recently the data have been released every week, but providing data only up to about a week before the release date so that data are typically between 1 and 2 weeks out of date. The data can be accessed at: https://www.google.com/covid19/mobility/.
+
+#### Facebook
+
+Facebook provide two GPS-derived indices on user movement: how far users travel per day, and the proportion staying in the same location. These indices are calculated from GPS location data that is first aggregated to grid cells with dimensions 600x600 metres, to protect user privacy. Users remaining in these grid cells throughout the day are considered to have ‘stayed still'. For users who have travelled outside that cell, the movement range is the number of unique cells in which the user was present on that date. Only Facebook users using the Facebook smartphone app and who have opted in to their GPS locations being recorded are represented in these data. No further details are provided on these users or the nature of their journeys. Separate versions of these datastreams are provided for each state. The movement range datastream is provided by Facebook as a percentage change, relative to a baseline of average values of the metric throughout February 2020. The proportion of users staying still is provided as an absolute value, and we convert it into a percentage change from a baseline of the median daily value between March 1st and 15th. Daily metrics are calculated using UTC (i.e. the time in London), which largely but not entirely overlaps with the same day in Australia. The data are described here: https://dataforgood.fb.com/tools/disease-prevention-maps/ and researchers (but not governments) can request access.
+
+#### NBN
+
+The National Broadband Network Co. (NBN) is the Australian national wholesale open-access data network, providing broadband access to retail service providers. The majority of its traffic is through wired broadband connections. As such, these connections are static in place, and they offer internet access to a broad mixture of users. NBN provided a time series (with a temporal resolution of 15 minutes) to aggregated data relating to mean upload and download traffic volume generated by houshold customers, aggregated spatiall by ABS Statistical Area 2 (SA2) region, and excluding data points generated by less than 600 customers. 
+
+Full-day NBN data for the period from September 1, 2019, until March 24th, 2020 have been used.
+
+
+#### Representativeness
+
+All of these datastreams are derived from apps that are primarily smartphone-based. As such they overrepresent demographics that are more likely to own smartphones and have account with these technology companies. Data on the demographics of the users that contributed to these particular datastreams are not available. However rough public estimates suggest that 90% of Facebook users are aged between 18 and 64. Younger and older demographics are underrepresented, with 4.5% facebook users vs 16% in the general population over the age of 65, and 5.6% vs 20% under the age of 18. Given that school-age children are underrepresented in COVID-19 cases in Australia, and that those over 65 are likely to be less mobile, these data may be unintentionally biased towards those contributing most strongly to transmission.
+Apple's and Citymapper's direction requests likely represent deliberate visits to a specific location, and a location that the user either does not usually visit (and therefore requires directions) or would benefit from live traffic updates for.
+Whilst Google's index of the time spent in residential places is likely to be a good proxy for people staying at home, it does not exclude the possibility that this time is spent in another person's household.
+
+#### Access and privacy
+
+The datastreams provided by Apple, Citymapper and Google are all publicly available for the express purpose of supporting public heath bodies in their response to COVID-19. The datastreams provided by Facebook are provided to researchers via Facebook's Data for Good  programme. All of these datasets are fully anonymised and aggregated at the level of either states and territories or Australia's 4 largest cities, over each day. The large-scale aggregation of these datasets ensures the privacy of users - the smallest population is that of the Northern Territory: over 245,000.
+ 
+### Timeline of Physical Distancing Measures
+ 
+Governmental controls in response to COVID-19 in Australia started in January 2020. On January 20th, 2020, the Australian government imposed restrictions on flights from the Wuhan region of China. The first case was identified in Australia shortly after, on January 25th. Queensland declared a *State of emergency* on January 29th, and travel restrictions from China were imposed on February 1st. Enforced measures were imposed from March 16th, with a ban on non-essential gatherings, with Victoria declaring a *State of emergency* on the same day, and closing schools from March 22nd. From the 22th of March, Stage 1 restricitons were mandated (closures of pubs, restaurants, except takeaway, and adivsing on social distancing). This was escalated to Stage 2 from March 26th, with mandatory social distancing and closures of museums, galleries, and additional services. On March 31st, Stage 3 restrictions were imposed, with enforcdeable stay at home measures. 
+
+ 
 ### General model description
 
+We simultaneously analyse all of these datastreams using a statistical latent factor model. The timeseries of values for each datastream is regressed against a set of ‘latent factors'. All datastreams share the same latent factors, but have their own regression coefficients. Rather than using known values for these common latent factors (as would be the case in a regression analysis), each of the latent factors is itself a function of some unknown parameters that we infer during model fitting. This enables us to statistically infer a set of common temporal patterns that are shared - each to a different extent - by all of the datastreams.
+
+We use prior knowledge to define the different latent functions, so that they represent known or hypothesised effects. Two of these latent factors are related to COVID-19, and three describe non-COVID-19-related trends. The three COVID-19 related latent factors considered are: ‘preparation' - a surge of behaviours is preparation of social distancing, ‘social distancing' - a switch to social distancing behaviour, and ‘waning distancing' - a partial reversion to a non-social-distancing behavioural state. The three non-COVID-19-related latent factors are: ‘back to work' - a behavioural switch associated with the start of school term one (and return to work for many parents), ‘day of the week' - different behaviours on each day of the week, including weekday vs weekend behaviours, and ‘public holidays' - different behaviours associated with public holidays. The model fits for each datastream incorporate the impacts of all of these latent factors, though we are most interested in the COVID-19 related factors.
+
+Because each datastream weights the different latent factors differently, these latent factors are considered only as relative effects - they have no absolute magnitude or sign. We therefore define each of them as functions with values constrained between 0 and 1. The functions reflect prior knowledge of the behaviours they represent:
+
+Preparation
+A smooth, symmetric unimodal peak representing behaviours in advance of anticipated social distancing behaviour. The date and width of the peak are estimated from the data.
+
+Social Distancing
+A smooth monotone increasing function representing the population switching to a behavioural state of increased social distance. We assume that the switching happens in bursts around each of three major non-pharmaceutical interventions (NPIs) introduced at the national level: restriction of gatherings to 500 or fewer people on March 16th; closure of restaurants, bars, and cafes on March 24th; restriction of gatherings to 2 or fewer people in most states and territories on March 29th. The relative magnitudes of the behavioural switches associated with each of these NPIS, as well as the rate of change around each, are estimated from the data.
+
+Waning Distancing
+A smooth monotone increasing function representing a waning of social distancing behaviour as the population switches back to a socially non-distant behavioural state. Currently the parameters of this latent factor are fixed - implying a steady increase starting two weeks before the most recent date. The relative impact of (and evidence for) this behaviour on each datastream is estimated from the data. As more up-to-date data become available for the Google and Facebook datastreams the timing and slope of this effect will be estimated from the data.
+
+Back to Work
+An increasing sigmoid function representing a switch from one behavioural state during the school holidays to another during term one. The location (date by which 50% of people have switched) and slope of this sigmoid are estimated from the data.
+
+Day of the Week
+A flexible curve over the day of the week, representing a gradient of behaviour between the peak of activity in the work week, and the trough at the weekend. The curve is constrained between 0 and 1, with a value of 1 constrained to fall on a Sunday. The three parameters describing the shape of the curve are estimated from the data.
+
+Public Holidays
+A series of independent offsets applied to each public holiday in each state to represent different behavioural states on these days. The value offset for each holiday is estimated from the data, and scaled to between 0 and 1.
+
 #### Latent factor model
+
+*Note: this will be overhauled shortly, since in the current version of the model, everything is now a latent factor.*
  
 We construct a mechanistic latent-factor model that relates a series of underlying ('latent') population behaviours to an array of data streams, and then infer its parameters using statistical inference. This section, gives a general formulation of the model. Details of the specific implementation and data sources for Australia are given in a later section.
 
@@ -114,23 +194,17 @@ $$
 $$
 where $\mathbf{x}$ is an $N$-by-$M+1$ design matrix of covariates, including a column of ones to represent the intercept terms, $\beta$ is an $M-1$-by-$N$ matrix of regression coefficients, $\mathbf{z}$ is a $T$-by-$K$ matrix of behavioural latent factors, $\omega$ is a $K$-by-$N$ matrix of loadings between the latent factors and data streams, and $\epsilon$ is a $T$-by-$N$ matrix of independent Gaussian errors.
 
-### Data
+### Latent factor mobility model for Australian states and Territories
 
-#### NBN
-
-The National Broadband Network Co. (NBN) is the Australian national wholesale open-access data network, providing broadband access to retail service providers. The majority of its traffic is through wired broadband connections. As such, these connections are static in place, and they offer internet access to a broad mixture of users. NBN provided a time series (with a temporal resolution of 15 minutes) to aggregated data relating to mean upload and download traffic volume generated by houshold customers, aggregated spatiall by ABS Statistical Area 2 (SA2) region, and excluding data points generated by less than 600 customers. 
-
-Full-day NBN data for the period from September 1, 2019, until March 24th, 2020 have been used.
-
-#### Announcement timeline for Australia
-
-Governmental controls in response to COVID-19 in Australia started in January 2020. On January 20th, 2020, the Australian government imposed restrictions on flights from the Wuhan region of China. The first case was identified in Australia shortly after, on January 25th. Queensland declared a *State of emergency* on January 29th, and travel restrictions from China were imposed on February 1st. Enforced measures were imposed from March 16th, with a ban on non-essential gatherings, with Victoria declaring a *State of emergency* on the same day, and closing schools from March 22nd. From the 22th of March, Stage 1 restricitons were mandated (closures of pubs, restaurants, except takeaway, and adivsing on social distancing). This was escalated to Stage 2 from March 26th, with mandatory social distancing and closures of museums, galleries, and additional services. On March 31st, Stage 3 restrictions were imposed, with enforcdeable stay at home measures. 
-
- - Data availability by source
- - Announcement timeline for Australia
  - Specific model fitting for Australia
     - interaction between distancing and weekends
+    - greta HMC
+    - residuals checking
     
+### Estimating changes to the effective reproduction number due to physical distancing
+
+ - model to estimate timeseries of R_eff with the distancing factor as a covariate
+
 <!-- $$ -->
 <!-- y_{i,t} \sim N(\mu_{i,t}, \sigma^2) \\  -->
 <!-- \mu_{i,t} = \alpha_i + m_{i,t} + \mathbf{x}_t \beta_i + m_{i,t} \mathbf{x}_t \gamma_i -->
@@ -143,8 +217,6 @@ Governmental controls in response to COVID-19 in Australia started in January 20
 
 <!-- $\gamma_i$ is a second vector of coefficints for the interactions between these covariates and the trend. These interaction terms allow the model to reflect the fact that the impact of of these other drivers may diminish or be exacerbated by COVID-19 -related behaviours, for example a reduced difference in behaviours between weekends and weekdays when the population is exhibiting strong social distancing behaviour. -->
     
-    - greta HMC
-    - residuals checking
 
 ## Results
 
