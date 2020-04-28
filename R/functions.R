@@ -534,3 +534,199 @@ plot_latent_factor <- function (factor, draws, dates, key_dates, cols = grey(c(0
   title(main = title,
         col.main = grey(0.3))
 }
+
+# greta function for the lognormal CDF (equivalent to plnorm(x, meanlog, sdlog))
+# x must not be a greta array, though meanlog and sdlog can be. A greta array of
+# CDF values is returned, equal to 0 wherex was 0 or lower.
+lognormal_cdf <- function(x, meanlog, sdlog) {
+  
+  # filter out any invalid dates, to replace their CDF with 0
+  valid <- x > 0
+  x <- x[valid]
+  
+  p <- iprobit((log(x) - meanlog) / sdlog)
+  
+  # if any were missing, replace their cumulative density with 0
+  if (any(!valid)) {
+    result <- zeros(length(valid))
+    result[valid] <- p
+    p <- result
+  }
+  
+  p
+  
+}
+
+exponential_cdf <- function (x, rate) {
+  
+  # filter out any invalid dates, to replace their CDF with 0
+  valid <- x > 0
+  x <- x[valid]
+  
+  p <- 1 - exp(-rate * x)
+  
+  # if any were missing, replace their cumulative density with 0
+  if (any(!valid)) {
+    result <- zeros(length(valid))
+    result[valid] <- p
+    p <- result
+  }
+  
+  p
+  
+}
+
+# Given samples 'x' of a parameter, approximate the distribution by a (possibly
+# truncated) normal distribution, and return a variable greta array following
+# that distribution
+parameter <- function(x, truncation = c(-Inf, Inf)) {
+  normal(mean(x), sd(x), truncation = truncation)
+}
+
+# given a positive integer vector of (days since a case became symptomatic,
+# compute the probability that the serial interval values falls in that day
+serial_interval_probability <- function(days) {
+  
+  # priors for the parameters of the lognormal distribution over the serial interval from Nishiura et
+  # al., as stored in the EpiNow source code 
+  si_param_samples <- read_csv(
+    file = "https://raw.githubusercontent.com/epiforecasts/EpiNow/758b706599244a545d6b07f7be4c10ffe6c8cf50/data-raw/nishiura-lognormal-truncated.csv",
+    col_types = cols(param1 = col_double(),
+                     param2 = col_double())
+  )
+  
+  # cdf(x) under a lognormal distribution is just pnorm() of (log(x) - mu) / sd ?
+  
+  # create greta arrays for the parameters, with these priors
+  meanlog <- parameter(si_param_samples$param1)
+  sdlog <- parameter(si_param_samples$param2, c(0, Inf))
+  
+  # exclude missing values and replace them later
+  missing <- days <= 0
+  
+  # compute the CDF of the lognormal distribution, for this and the next day
+  days_lower <- days
+  days_upper <- days + 1
+  
+  # get the integral of the density over this day
+  p_upper <- lognormal_cdf(days_upper, meanlog, sdlog)
+  p_lower <- lognormal_cdf(days_lower, meanlog, sdlog)
+  p_upper - p_lower
+  
+}
+
+# given a positive integer vector (of days between a case becoming symptomatic
+# and being reported) compute the probability that the delay falls in that day
+delay_probability <- function(days) {
+  
+  # define the parameter of the exponential distribution via samples provided by
+  # David
+  delay_samples <- read_csv("data/cases/sampled_report_delay.csv",
+                            col_types = cols(x = col_double())) %>%
+    pull(x)
+
+  rate <- lognormal(0, 1)
+  distribution(delay_samples) <- exponential(rate)
+  
+  # compute the CDF of the lognormal distribution, for this and the next day
+  days_lower <- days
+  days_upper <- days + 1
+  
+  # get the integral of the density over this day
+  p_upper <- exponential_cdf(days_upper, rate)
+  p_lower <- exponential_cdf(days_lower, rate)
+  p_upper - p_lower
+  
+}
+
+fake_linelist <- function() {
+  
+  library(readr)
+  library(dplyr)
+  library(lubridate)
+  library(tidyr)
+  
+  # create a synthetic linelist from data provided by David and Freya
+  cases <- read_csv(
+    file = "data/cases/cases.csv",
+    col_types = cols(
+      date = col_date(format = ""),
+      import_status = col_character(),
+      region = col_character(),
+      cases = col_double()
+    )
+  ) %>%
+    mutate(
+      date = ymd(date),
+      import_status = recode(
+        import_status, 
+        "Unknown origin" = "local",  # conservative approach assuming all unknown cases are locally acquired
+        "Locally acquired" = "local",
+        "Overseas acquired" = "imported"
+      )
+    ) %>% 
+    group_by(date, region, import_status) %>%
+    tally(wt = cases) %>%
+    rename(cases = n) %>%
+    ungroup()
+  
+  # Load gamma distributed reporting delays
+  delay_samples <- read_csv(
+    file = "data/cases/sampled_report_delay.csv",
+    col_types = cols(x = col_integer())
+  ) %>%
+    pull(x)
+  
+  # Create a "linelist" from the data, as input into EpiNow::regional_rt_pipeline
+  linelist <- cases %>%
+    group_by(date, import_status, region) %>% 
+    expand(count = seq(1:cases)) %>%
+    select(-count) %>% 
+    ungroup() %>% 
+    mutate(
+      report_delay = sample(
+        x = delay_samples,
+        size = nrow(.),
+        replace = TRUE)
+    ) %>% 
+    mutate(date_onset = ymd(date) - report_delay) %>% 
+    rename(date_confirmation = date)
+  
+  # remove delay column and throw away some of the true onset dates
+  linelist <- linelist %>%
+    select(-report_delay)
+  
+  n_cases <- nrow(linelist)
+  remove <- sample.int(n_cases, floor(n_cases * 0.06))
+  linelist$date_onset[remove] <- NA
+  
+  linelist
+  
+}
+
+# given a positive integer vector of day differences and a discrete probability
+# function that takes as input day differences and returns a vector of
+# probabilities that a day should actually be assigned that number of days into
+# the future, return a symmetric matrix that can be used in a matrix multiply to
+# disaggregate daily count data into the future according to that probability
+# distribution. Doing this disaggregation using a circulant matrix of
+# probabilities with masked lower values, is more efficient in greta than
+# looping since it can easily be parallelised. Note this is the same operation
+# as cases_known_outcome_matrix() in goldingn/australia_covid_ascertainment
+disaggregation_matrix <- function (day_differences, probability_function) {
+  
+  n_days <- length(day_differences)
+  
+  # get a probability of delaying each of these number of days (starting from 0)
+  disaggregation_probs <- probability_function(day_differences - 1)
+  
+  # build an upper-triangular circulant matrix (contribution of each day's cases
+  # to each other's)
+  mat <- zeros(n_days, n_days)
+  indices <- col(mat) - row(mat) + 1
+  mask <- indices > 0
+  mat[mask] <- disaggregation_probs[indices[mask]]
+  t(mat)
+  
+}
+
