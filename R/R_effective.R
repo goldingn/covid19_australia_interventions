@@ -37,6 +37,7 @@
 library(dplyr)
 library(readr)
 library(tidyr)
+library(RColorBrewer)
 source("R/functions.R")
 
 # return a fake linelist based on the real case counts and samples of the
@@ -214,7 +215,7 @@ distribution(local_cases[valid]) <- poisson(expected_infections)
 
 m <- model(log_R_eff)
 
-draws <- mcmc(m, one_by_one = TRUE)
+draws <- mcmc(m, chains = 10, one_by_one = TRUE)
 
 r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
 n_eff <- coda::effectiveSize(draws)
@@ -231,7 +232,6 @@ ci50 <- apply(R_eff_mat, 2, quantile, c(0.25, 0.75))
 
 df <- tibble(date = rep(dates, n_states),
              state = rep(states, each = n_dates),
-             social_distance = X[, 3],
              R_eff_mean = mean,
              R_eff_50_lo = ci50[1, ],
              R_eff_50_hi = ci50[2, ],
@@ -284,6 +284,141 @@ df %>%
 ggsave("outputs/figures/R_eff.png",
        width = 10,
        height = 16, scale = 0.8)
+
+# plot fixed effect trend in Rt (common to all states)
+X_one_state <- X[1:n_dates, ]
+distancing_effect <- project(zero_mean_gp,
+                             x_new = X_one_state,
+                             kernel = distancing_kernel)
+
+noise <- normal(0, sigma_noise, dim = n_dates)
+log_R_eff_trend <- R0_prior$mean + noise + distancing_effect
+R_eff_trend <- exp(log_R_eff_trend)
+
+R_eff_trend_sim <- calculate(R_eff_trend, values = draws, nsim = 10000)[[1]][, , 1]
+mean <- colMeans(R_eff_trend_sim)
+ci90 <- apply(R_eff_trend_sim, 2, quantile, c(0.05, 0.95))
+ci50 <- apply(R_eff_trend_sim, 2, quantile, c(0.25, 0.75))
+
+df_trend <- tibble(date = dates,
+                   R_eff_mean = mean,
+                   R_eff_50_lo = ci50[1, ],
+                   R_eff_50_hi = ci50[2, ],
+                   R_eff_90_lo = ci90[1, ],
+                   R_eff_90_hi = ci90[2, ])
+
+base_colour <- brewer.pal(8, "Set2")[1]
+y_max <- max(c(3, df_trend$R_eff_50_hi))
+df_trend %>%
+  filter(date >= as.Date("2020-03-01")) %>%
+  mutate(type = "Nowcast") %>%
+  
+  ggplot() + 
+  aes(date, R_eff_mean, fill = type) +
+  
+  ylab(expression(R["eff"])) +
+  xlab("Date") +
+  
+  coord_cartesian(ylim = c(0, y_max)) +
+  scale_y_continuous(position = "right") +
+  scale_x_date(date_breaks = "2 weeks", date_labels = "%b %d") +
+  scale_alpha(range = c(0, 0.5)) +
+  scale_fill_manual(values = c("Nowcast" = base_colour)) +
+  
+  geom_ribbon(aes(ymin = R_eff_90_lo,
+                  ymax = R_eff_90_hi),
+              alpha = 0.2) +
+  geom_ribbon(aes(ymin = R_eff_50_lo,
+                  ymax = R_eff_50_hi),
+              alpha = 0.5) +
+  geom_line(aes(y = R_eff_90_lo),
+            colour = base_colour,
+            alpha = 0.8) + 
+  geom_line(aes(y = R_eff_90_hi),
+            colour = base_colour,
+            alpha = 0.8) + 
+  
+  geom_hline(yintercept = 1, linetype = "dotted") +
+  geom_hline(yintercept = 2.6, linetype = "dashed") +
+  
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  theme(legend.position = "none",
+        strip.background = element_blank(),
+        strip.text = element_text(hjust = 0, face = "bold"),
+        axis.title.y.right = element_text(vjust = 0.5, angle = 0))
+
+ggsave("outputs/figures/R_eff_trend.png",
+       width = 5,
+       height = 4, scale = 0.8)
+
+
+# plot random effect trends in Rt (different in each state)
+error_kernel <- state_kernel + national_kernel
+error_effect <- project(zero_mean_gp,
+                        x_new = X,
+                        kernel = error_kernel)
+
+error_effect_sim <- calculate(error_effect, values = draws, nsim = 10000)[[1]][, , 1]
+mean <- colMeans(error_effect_sim)
+ci90 <- apply(error_effect_sim, 2, quantile, c(0.05, 0.95))
+ci50 <- apply(error_effect_sim, 2, quantile, c(0.25, 0.75))
+
+df_error <- tibble(date = rep(dates, n_states),
+                   state = rep(states, each = n_dates),
+                   R_eff_mean = mean,
+                   R_eff_50_lo = ci50[1, ],
+                   R_eff_50_hi = ci50[2, ],
+                   R_eff_90_lo = ci90[1, ],
+                   R_eff_90_hi = ci90[2, ])
+
+base_colour <- brewer.pal(8, "Set2")[4]
+y_lim <- range(c(df_error$R_eff_90_lo, df_error$R_eff_90_hi))
+df_error %>%
+  filter(date >= as.Date("2020-03-01")) %>%
+  mutate(type = "Nowcast") %>%
+  
+  ggplot() + 
+  aes(date, R_eff_mean, fill = type) +
+  
+  ylab(expression(Temporal~variation~around~trend~of~ln(R["eff"]))) +
+  xlab("Date") +
+  
+  coord_cartesian(ylim = y_lim) +
+  scale_y_continuous(position = "right") +
+  scale_x_date(date_breaks = "2 weeks", date_labels = "%b %d") +
+  scale_alpha(range = c(0, 0.5)) +
+  scale_fill_manual(values = c("Nowcast" = base_colour)) +
+  
+  geom_ribbon(aes(ymin = R_eff_90_lo,
+                  ymax = R_eff_90_hi),
+              alpha = 0.2) +
+  geom_ribbon(aes(ymin = R_eff_50_lo,
+                  ymax = R_eff_50_hi),
+              alpha = 0.5) +
+  geom_line(aes(y = R_eff_90_lo),
+            colour = base_colour,
+            alpha = 0.8) + 
+  geom_line(aes(y = R_eff_90_hi),
+            colour = base_colour,
+            alpha = 0.8) + 
+  
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  facet_wrap(~ state, ncol = 2, scales = "free") +
+  
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  theme(legend.position = "none",
+        strip.background = element_blank(),
+        strip.text = element_text(hjust = 0, face = "bold"),
+        axis.title.y.right = element_text(vjust = 0.5, angle = 90))
+
+ggsave("outputs/figures/R_eff_error.png",
+       width = 10,
+       height = 16, scale = 0.8)
+
+
+
 # - output plots of GP components:
 #    - prior on Rt (mean & white kernel & distancing factor)
 #    - state-level deviation from those trends
