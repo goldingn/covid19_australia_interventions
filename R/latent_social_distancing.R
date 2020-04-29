@@ -576,6 +576,20 @@ ggsave("outputs/figures/state_distancing_waning_warning.png",
        width = 8,
        height = 6)
 
+# output posterior summaries for the different latent factors
+for(i in 1:4) {
+  filename <- latent_names[i] %>%
+    tolower() %>%
+    gsub(" ", "_", .) %>%
+    paste0("_latent.RDS") %>%
+    file.path("outputs", .)
+  summarise_vec_posterior(latents_ntnl[, i],
+                          draws) %>%
+    as_tibble() %>%
+    mutate(date = dates) %>%
+    saveRDS(filename)
+}
+
 # - plot state-by-factor loading plots
 # - pull more model code out into functions
 # - programatically find Apple download link
