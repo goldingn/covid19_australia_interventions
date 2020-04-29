@@ -113,13 +113,7 @@ local_cases <- date_by_state %>%
 
 library(greta.gp)
 
-# idx <- which(states == "VIC")
-# 
-# # summarise nationally to start with
-# local_cases <- local_cases[, idx, drop = FALSE]
-# imported_cases <- imported_cases[, idx, drop = FALSE]
-
-# prior on R0
+# lognormal prior on R0 (normal prior on log(R0))
 R0_prior <- lognormal_prior(2.6, 2)
 
 # the relative contribution of imported cases (relative to locally-acquired
@@ -143,7 +137,7 @@ lambda <- apply_serial_interval(case_contribution, fixed = TRUE)
 # but since this implies a MVN prior over log(R_eff), we can marginalise all of
 # these separate parameters and make the posterior much more nicely behaved:
 
-#  log(R0) ~ R0_mean + GP(0, bias())
+#  log(R0) ~ R0_mean + GP(0, white())
 #  gamma ~ GP(0, rbf(time))
 #  epsilon_i ~ GP(0, rbf1(time))
 #  epsilon ~ GP(0, rbf2(time) * iid(state))
@@ -152,7 +146,7 @@ lambda <- apply_serial_interval(case_contribution, fixed = TRUE)
 # These GPs can be combined as:
 
 #  log(R0) + b * social-distancing-index + gamma + epsilon = GP(0.723, K)
-#  K = bias() +
+#  K = white() +
 #      lin(social-distancing-index)
 #      rbf1(time) +
 #      rbf2(time) * iid(state) +
@@ -171,23 +165,35 @@ X <- cbind(date_vec,
 # define a GP on dates, using subset of regressors approximation
 l_ntnl <- lognormal(1, 0.5)
 l_state <- lognormal(1, 0.5)
-sigma_ntnl <- lognormal(-1, 1)
-sigma_state <- lognormal(-1, 1)
+
+# magnitude of the national error trend
+sigma_ntnl <- normal(0, 1, truncation = c(0, Inf))
+# magnitude of the state-level (difference from the national) error trend
+sigma_state <- normal(0, 1, truncation = c(0, Inf))
+# degree of variation between state timeseries (shrink towards 0)
 sigma_state_iid <- normal(0, 1, truncation = c(0, Inf))
 
-intercept_kernel <- bias(R0_prior$sd ^ 2)
+# standard deviation of IID noise associated with each day (case clustering)
+# we want the prior marginal variance to approximately match prior on log(R0),
+# but also to shrink towards 0, so use a half normal prior with mean matching
+# the required standard deviation
+sigma_noise_sd <- R0_prior$sd * sqrt(pi) / sqrt(2)
+sigma_noise <- normal(0, sigma_noise_sd, truncation = c(0, Inf))
+# summary(calculate(sigma_noise, nsim = 10000)[[1]])
+
+noise_kernel <- white(sigma_noise ^ 2)
 distancing_kernel <- linear(1, columns = 3)
 state_kernel <- rbf(l_state, sigma_state ^ 2, columns = 1) * iid(sigma_state_iid ^ 2, columns = 2)
 national_kernel <- rbf(l_ntnl, sigma_ntnl ^ 2, columns = 1)
 
-kernel <- intercept_kernel + distancing_kernel + state_kernel + national_kernel
+kernel <- noise_kernel + distancing_kernel + state_kernel + national_kernel
 
 # build a matrix of inducing points, one every 7 days but with one at the end
 inducing_date_nums <- seq(n_dates, 1, by = -7)
 inducing_index <- which(X[, 1] %in% inducing_date_nums)
 X_inducing <- X[inducing_index, ]
 
-zero_mean_gp <- gp(X, kernel, inducing = X_inducing)
+zero_mean_gp <- gp(X, kernel, inducing = X_inducing, tol = 0)
 
 log_R_eff <- R0_prior$mean + zero_mean_gp
 
@@ -226,29 +232,62 @@ df <- tibble(date = rep(dates, n_states),
              R_eff_50_hi = ci50[2, ],
              R_eff_90_lo = ci90[1, ],
              R_eff_90_hi = ci90[2, ])
-thresholds <- tibble(state = factor(states),
-                     threshold = 1)
 
+
+base_colour <- "steelblue3"
 library(ggplot2)
 df %>%
-  mutate(state = factor(state)) %>%
-  ggplot(aes(date, R_eff_mean)) +
+  filter(date >= as.Date("2020-03-01")) %>%
+  mutate(type = "Nowcast") %>%
+  
+  ggplot() + 
+  aes(date, R_eff_mean, fill = type) +
+  
+  ylab(expression(R["eff"])) +
+  xlab("Date") +
+  
+  scale_y_continuous(limits = c(0, 3), position = "right") +
+  scale_x_date(date_breaks = "2 weeks", date_labels = "%b %d") +
+  scale_alpha(range = c(0, 0.5)) +
+  scale_fill_manual(values = c("Nowcast" = base_colour)) +
+  
   geom_ribbon(aes(ymin = R_eff_90_lo,
                   ymax = R_eff_90_hi),
-              alpha = 0.1) +
+              alpha = 0.2) +
   geom_ribbon(aes(ymin = R_eff_50_lo,
                   ymax = R_eff_50_hi),
-              alpha = 0.2) +
-  geom_hline(yintercept = 1, colour = grey(0.7)) +
-  facet_wrap(~ state) +
-  theme_minimal()
-
-# - add a custom greta function for lognormal CDF (using TFP)
-# - run with social distancing index as a covariate in the mean function
-#   - write the notation as having the prior on the intercept reflect R0
-#   - but in the code, marginalise both the intercept and slope into the GP
-#   kernel to avoid identifiability issues
+              alpha = 0.5) +
+  geom_line(aes(y = R_eff_90_lo),
+            colour = base_colour,
+            alpha = 0.8) + 
+  geom_line(aes(y = R_eff_90_hi),
+            colour = base_colour,
+            alpha = 0.8) + 
   
+  geom_hline(yintercept = 1, linetype = "dotted") +
+  geom_hline(yintercept = 2.6, linetype = "dashed") +
+  
+  facet_wrap(~ state, ncol = 2, scales = "free") +
+  
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  theme(legend.position = "none",
+        strip.background = element_blank(),
+        strip.text = element_text(hjust = 0, face = "bold"),
+        axis.title.y.right = element_text(vjust = 0.5, angle = 0))
+
+ggsave("outputs/figures/R_eff.png",
+       width = 10,
+       height = 16, scale = 0.8)
+# - output plots of GP components:
+#    - prior on Rt (mean & white kernel & distancing factor)
+#    - state-level deviation from those trends
+
+# - run with social distancing index as a covariate in the mean function
+
+# - add a custom greta function for lognormal CDF (using TFP) and try
+#   sampling with that
+
 # # run epinow too
 # epinow_cases <- linelist %>%
 #   rename(date = date_confirmation) %>%
