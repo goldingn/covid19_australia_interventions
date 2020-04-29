@@ -26,9 +26,8 @@
 # of quarantine measures.
 
 #   local-incidence_{t,i} ~ Poisson(lambda_{t,i} * R_{t,i})
-#   log(R_{t,i}) = R_0 + b * social-distancing-index_{t,i} + \epsilon_{t,i} + \gamma_t
-#   epsilon_i ~ GP(0, K1)
-#   gamma ~ GP(0, K2)
+#   log(R_{t,i}) = R_0 + b * social-distancing-index_{t,i} + \epsilon_{t,i}
+#   epsilon_i ~ GP(0, K)
 #   lambda_{t,i} = sum_{t'=1}^t p-serial-interval(t') (local-incidence_{t',i} + imported-incidence_{t',i} import-contribution_{t'})
 #   log(R_0) ~ N(0.723, 0.465)
 
@@ -135,26 +134,23 @@ lambda <- apply_serial_interval(case_contribution, fixed = TRUE)
 # NOTE: fixing the SI parameters at their prior means just for testing
 
 # define a GP to reflect the function:
-#   log(R_eff) <- log(R_0) + b * social-distancing-index_{t,i} + \epsilon_{t,i} + \gamma_t
+#   log(R_eff) <- log(R_0) + b * social-distancing-index_{t,i} + \epsilon_{t,i}
 #   epsilon_i ~ GP(0, K1)
-#   gamma ~ GP(0, K2)
 #   log(R_0) ~ N(0.723, 0.465)
 
 # but since this implies a MVN prior over log(R_eff), we can marginalise all of
 # these separate parameters and make the posterior much more nicely behaved:
 
 #  log(R0) ~ R0_mean + GP(0, white())
-#  gamma ~ GP(0, rbf(time))
 #  epsilon_i ~ GP(0, rbf1(time))
 #  epsilon ~ GP(0, rbf2(time) * iid(state))
 #  social-distancing-index * b ~ GP(0, lin(social-distancing-index))
 
 # These GPs can be combined as:
 
-#  log(R0) + b * social-distancing-index + gamma + epsilon = GP(0.723, K)
+#  log(R0) + b * social-distancing-index + epsilon = GP(0.723, K)
 #  K = white() +
 #      lin(social-distancing-index)
-#      rbf1(time) +
 #      rbf2(time) * iid(state) +
 
 # need to first put the data into a vector, and take this opportunity to exclude those with no infectious cases
@@ -169,12 +165,10 @@ X <- cbind(date_vec,
            social_distancing_index_vec)
 
 # define a GP on dates, using subset of regressors approximation
-l_ntnl <- lognormal(1, 0.5)
-l_state <- lognormal(1, 0.5)
 
-# magnitude of the national error trend
-sigma_ntnl <- normal(0, 1, truncation = c(0, Inf))
-# magnitude of the state-level (difference from the national) error trend
+# wiggliness of the state-level correlated errors
+l_state <- lognormal(1, 0.5)
+# magnitude of the state-level correlated errors
 sigma_state <- normal(0, 1, truncation = c(0, Inf))
 # degree of variation between state timeseries (shrink towards 0)
 sigma_state_iid <- normal(0, 1, truncation = c(0, Inf))
@@ -189,10 +183,9 @@ sigma_noise <- normal(0, sigma_noise_sd, truncation = c(0, Inf))
 
 noise_kernel <- white(sigma_noise ^ 2)
 distancing_kernel <- linear(1, columns = 3)
-state_kernel <- rbf(l_state, sigma_state ^ 2, columns = 1) * iid(sigma_state_iid ^ 2, columns = 2)
-national_kernel <- rbf(l_ntnl, sigma_ntnl ^ 2, columns = 1)
+error_kernel <- rbf(l_state, sigma_state ^ 2, columns = 1) * iid(sigma_state_iid ^ 2, columns = 2)
 
-kernel <- noise_kernel + distancing_kernel + state_kernel + national_kernel
+kernel <- noise_kernel + distancing_kernel + error_kernel
 
 # build a matrix of inducing points, one every 7 days but with one at the end
 inducing_date_nums <- seq(n_dates, 1, by = -7)
@@ -251,7 +244,8 @@ df %>%
   ylab(expression(R["eff"])) +
   xlab("Date") +
   
-  scale_y_continuous(limits = c(0, 3), position = "right") +
+  coord_cartesian(ylim = c(0, 3)) +
+  scale_y_continuous(position = "right") +
   scale_x_date(date_breaks = "2 weeks", date_labels = "%b %d") +
   scale_alpha(range = c(0, 0.5)) +
   scale_fill_manual(values = c("Nowcast" = base_colour)) +
@@ -354,7 +348,6 @@ ggsave("outputs/figures/R_eff_trend.png",
 
 
 # plot random effect trends in Rt (different in each state)
-error_kernel <- state_kernel + national_kernel
 error_effect <- project(zero_mean_gp,
                         x_new = X,
                         kernel = error_kernel)
