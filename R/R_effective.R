@@ -118,12 +118,17 @@ R0_prior <- lognormal_prior(2.6, 2)
 
 # the relative contribution of imported cases (relative to locally-acquired
 # cases) to transmission. I.e. one minus the effectiveness of quarantine
-# measures.
-import_contribution <- 1
+# measures. Assume it varies over time
+quarantine_effectiveness <- case_when(
+  dates < as.Date("2020-03-15") ~ 0.2,
+  dates <= as.Date("2020-03-27") ~ 0.5,
+  TRUE ~ 0.99,
+)
+import_contribution <- 1 - quarantine_effectiveness
 
 # disaggregate imported and local cases according to these probabilities to get
 # the expected number of infectious people in each state and time
-case_contribution <- local_cases + imported_cases * import_contribution
+case_contribution <- local_cases + sweep(imported_cases, 1, import_contribution, FUN = "*")
 lambda <- apply_serial_interval(case_contribution, fixed = TRUE)
 
 # NOTE: fixing the SI parameters at their prior means just for testing
