@@ -5,16 +5,15 @@ library(stringr)
 # read in and tidy up Facebook movement data
 facebook_mobility <- function() {
   
-  file <- "data/fb_data/au_gadm_mobility_statistics.20200420.csv"
+  file <- "data/fb_data/au_gadm_mobility_statistics.20200427.csv"
   data <- readr::read_csv(file) %>%
     dplyr::select(
       state = polygon_name,
       date = ds,
-      "movement range" = all_day_bing_tiles_visited_relative_change,
       "staying still" = all_day_ratio_single_tile_users
     ) %>%
     tidyr::pivot_longer(
-      cols = c("movement range", "staying still"),
+      cols = c("staying still"),
       names_to = "metric",
       values_to = "trend"
     ) %>%
@@ -93,7 +92,7 @@ google_mobility <- function() {
 # download and format Apple's mobility data - will need to update the url regularly
 apple_mobility <- function() {
   # get link from: https://www.apple.com/covid19/mobility
-  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2006HotfixDev18/v1/en-us/applemobilitytrends-2020-04-26.csv"
+  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2006HotfixDev20/v2/en-us/applemobilitytrends-2020-04-27.csv"
   data <- readr::read_csv(url) %>%
     tidyr::pivot_longer(
       cols = starts_with("2020-"),
@@ -133,7 +132,7 @@ apple_mobility <- function() {
 citymapper_mobility <- function() {
   
   # get link from: https://citymapper.com/cmi/about
-  url <- "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20200427.csv"
+  url <- "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20200429.csv"
   data <- readr::read_csv(url, skip = 3) %>%
     tidyr::pivot_longer(cols = -Date,
                         names_to = "region",
