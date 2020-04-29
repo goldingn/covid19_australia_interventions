@@ -110,20 +110,45 @@ local_cases <- date_by_state %>%
   select(-import_status) %>%
   as.matrix()
 
-
+# load the social distancing factor
+distancing_file <- "outputs/social_distancing_latent.RDS"
+social_distancing_index <- distancing_file %>%
+  readRDS() %>%
+  select(mean, date) %>%
+  right_join(tibble(date = dates)) %>%
+  replace_na(list(mean = 0)) %>%
+  pull(mean)
+  
 library(greta.gp)
 
 # lognormal prior on R0 (normal prior on log(R0))
-R0_prior <- lognormal_prior(2.6, 2)
+R0_prior <- lognormal_prior(2.6, 1)
 
 # the relative contribution of imported cases (relative to locally-acquired
-# cases) to transmission. I.e. one minus the effectiveness of quarantine
+# cases) to transmission. I.e. one minus sthe effectiveness of quarantine
 # measures. Assume it varies over time
-quarantine_effectiveness <- case_when(
-  dates < as.Date("2020-03-15") ~ 0.2,
-  dates <= as.Date("2020-03-27") ~ 0.5,
-  TRUE ~ 0.99,
+
+# quarantine_effectiveness <- case_when(
+#   dates < as.Date("2020-03-15") ~ 0.2,
+#   dates <= as.Date("2020-03-27") ~ 0.5,
+#   TRUE ~ 0.99,
+# )
+
+quarantine_index <- case_when(
+  dates < as.Date("2020-03-15") ~ 1,
+  dates <= as.Date("2020-03-27") ~ 2,
+  TRUE ~ 3,
 )
+
+q3 <- uniform(0.99, 1)
+ratio1 <- uniform(0.5 / 0.99, 1)
+q2 <- q3 * ratio1
+ratio2 <- uniform(0.2 / 0.5, 1)
+q1 <- q2 * ratio2
+
+quarantine <- c(q1, q2, q3)
+quarantine_effectiveness <- quarantine[quarantine_index]
+
 import_contribution <- 1 - quarantine_effectiveness
 
 # disaggregate imported and local cases according to these probabilities to get
@@ -158,7 +183,7 @@ lambda_vec <- c(lambda)
 
 date_vec <- rep(date_nums, n_states)
 state_vec <- rep(seq_len(n_states), each = n_dates)
-social_distancing_index_vec <- rep(0, n_dates * n_states)
+social_distancing_index_vec <- rep(social_distancing_index, n_states)
 
 X <- cbind(date_vec,
            state_vec,
@@ -167,7 +192,7 @@ X <- cbind(date_vec,
 # define a GP on dates, using subset of regressors approximation
 
 # wiggliness of the state-level correlated errors
-l_state <- lognormal(1, 0.5)
+l_state <- lognormal(2, 0.5)
 # magnitude of the state-level correlated errors
 sigma_state <- normal(0, 1, truncation = c(0, Inf))
 # degree of variation between state timeseries (shrink towards 0)
@@ -177,11 +202,14 @@ sigma_state_iid <- normal(0, 1, truncation = c(0, Inf))
 # we want the prior marginal variance to approximately match prior on log(R0),
 # but also to shrink towards 0, so use a half normal prior with mean matching
 # the required standard deviation
-sigma_noise_sd <- R0_prior$sd * sqrt(pi) / sqrt(2)
-sigma_noise <- normal(0, sigma_noise_sd, truncation = c(0, Inf))
+# sigma_noise_sd <- R0_prior$sd * sqrt(pi) / sqrt(2)
+# sigma_noise <- normal(0, sigma_noise_sd, truncation = c(0, Inf))
 # summary(calculate(sigma_noise, nsim = 10000)[[1]])
 
-noise_kernel <- white(sigma_noise ^ 2)
+
+# noise_kernel <- white(sigma_noise ^ 2)
+# try setting a prior over the true R0 for Australia - maybe the covariate will let it stay high?
+noise_kernel <- bias(R0_prior$sd ^ 2)
 distancing_kernel <- linear(1, columns = 3)
 error_kernel <- rbf(l_state, sigma_state ^ 2, columns = 1) * iid(sigma_state_iid ^ 2, columns = 2)
 
@@ -197,7 +225,8 @@ zero_mean_gp <- gp(X, kernel, inducing = X_inducing, tol = 0)
 log_R_eff <- R0_prior$mean + zero_mean_gp
 
 # work out which ones to exclude (because there were no infectious people)
-valid <- which(lambda_vec > 0)
+lambda_vec_vals <- calculate(lambda_vec, nsim = 1)[[1]][1, , 1]
+valid <- which(lambda_vec_vals > 0)
 
 # combine with lambda on log scale for numerical stability - since greta can use
 # this in evaluating the poisson likelihood
@@ -214,6 +243,8 @@ r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psr
 n_eff <- coda::effectiveSize(draws)
 max(r_hats)
 min(n_eff)
+
+summary(calculate(quarantine, values = draws))
 
 R_eff <- exp(log_R_eff)
 
@@ -281,12 +312,13 @@ ggsave("outputs/figures/R_eff.png",
 
 # plot fixed effect trend in Rt (common to all states)
 X_one_state <- X[1:n_dates, ]
+trend_kernel <- noise_kernel + distancing_kernel
 distancing_effect <- project(zero_mean_gp,
                              x_new = X_one_state,
-                             kernel = distancing_kernel)
+                             kernel = trend_kernel)
 
-noise <- normal(0, sigma_noise, dim = n_dates)
-log_R_eff_trend <- R0_prior$mean + noise + distancing_effect
+# noise <- normal(0, sigma_noise, dim = n_dates)
+log_R_eff_trend <- R0_prior$mean + distancing_effect
 R_eff_trend <- exp(log_R_eff_trend)
 
 R_eff_trend_sim <- calculate(R_eff_trend, values = draws, nsim = 10000)[[1]][, , 1]
@@ -410,13 +442,6 @@ ggsave("outputs/figures/R_eff_error.png",
        width = 10,
        height = 16, scale = 0.8)
 
-
-
-# - output plots of GP components:
-#    - prior on Rt (mean & white kernel & distancing factor)
-#    - state-level deviation from those trends
-
-# - run with social distancing index as a covariate in the mean function
 
 # - add a custom greta function for lognormal CDF (using TFP) and try
 #   sampling with that
