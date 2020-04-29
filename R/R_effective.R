@@ -26,17 +26,13 @@
 # of quarantine measures.
 
 #   local-incidence_{t,i} ~ Poisson(lambda_{t,i} * R_{t,i})
-#   log(R_{t,i}) ~ GP(m_{t,i}, K) + log(\hat{R}_{t})
-#   log(\hat{R}_{t}) ~ GP(0, K)
-#   m_{t,i} = a + b * social-distancing-index_{t,i}
+#   log(R_{t,i}) = R_0 + b * social-distancing-index_{t,i} + \epsilon_{t,i} + \gamma_t
+#   epsilon_i ~ GP(0, K1)
+#   gamma ~ GP(0, K2)
 #   lambda_{t,i} = sum_{t'=1}^t p-serial-interval(t') (local-incidence_{t',i} + imported-incidence_{t',i} import-contribution_{t'})
+#   log(R_0) ~ N(0.723, 0.465)
 
-# - load in Freya's data
-# - get serial interval distribution
-# - get case count time series by locals and imports
-# - write out model for one region
-# - compare fit with David's outputs
-# - extend to multiple regions.
+# this lognormal prior on R0 has a mean of 2.6 and sd of 2
 
 library(dplyr)
 library(readr)
@@ -45,6 +41,7 @@ source("R/functions.R")
 
 # return a fake linelist based on the real case counts and samples of the
 # reporting delay distribution
+set.seed(2020-04-29)
 linelist <- fake_linelist()
 
 # for now just do single imputation with the mean delay on the date of onset for
@@ -83,6 +80,10 @@ import_statuses <- sort(unique(linelist$import_status))
 states <- sort(unique(linelist$state))
 dates <- seq(min(linelist$date), max(linelist$date), by = 1)
 
+n_states <- length(states)
+n_dates <- length(dates)
+date_nums <- seq_len(n_dates)
+
 # pad this with full set of dates, states, and import statuses
 grid <- expand_grid(
   date = dates,
@@ -112,11 +113,14 @@ local_cases <- date_by_state %>%
 
 library(greta.gp)
 
-idx <- which(states == "VIC")
+# idx <- which(states == "VIC")
+# 
+# # summarise nationally to start with
+# local_cases <- local_cases[, idx, drop = FALSE]
+# imported_cases <- imported_cases[, idx, drop = FALSE]
 
-# summarise nationally to start with
-local_cases <- local_cases[, idx, drop = FALSE]
-imported_cases <- imported_cases[, idx, drop = FALSE]
+# prior on R0
+R0_prior <- lognormal_prior(2.6, 2)
 
 # the relative contribution of imported cases (relative to locally-acquired
 # cases) to transmission. I.e. one minus the effectiveness of quarantine
@@ -125,36 +129,77 @@ import_contribution <- 1
 
 # disaggregate imported and local cases according to these probabilities to get
 # the expected number of infectious people in each state and time
-n_dates <- length(dates)
-
-serial_interval_disaggregation <- disaggregation_matrix(n_dates,
-                                                        serial_interval_probability,
-                                                        max_days = 46)
-
 case_contribution <- local_cases + imported_cases * import_contribution
+lambda <- apply_serial_interval(case_contribution, fixed = TRUE)
 
-lambda <- serial_interval_disaggregation %*% case_contribution
+# NOTE: fixing the SI parameters at their prior means just for testing
+
+# define a GP to reflect the function:
+#   log(R_eff) <- log(R_0) + b * social-distancing-index_{t,i} + \epsilon_{t,i} + \gamma_t
+#   epsilon_i ~ GP(0, K1)
+#   gamma ~ GP(0, K2)
+#   log(R_0) ~ N(0.723, 0.465)
+
+# but since this implies a MVN prior over log(R_eff), we can marginalise all of
+# these separate parameters and make the posterior much more nicely behaved:
+
+#  log(R0) ~ R0_mean + GP(0, bias())
+#  gamma ~ GP(0, rbf(time))
+#  epsilon_i ~ GP(0, rbf1(time))
+#  epsilon ~ GP(0, rbf2(time) * iid(state))
+#  social-distancing-index * b ~ GP(0, lin(social-distancing-index))
+
+# These GPs can be combined as:
+
+#  log(R0) + b * social-distancing-index + gamma + epsilon = GP(0.723, K)
+#  K = bias() +
+#      lin(social-distancing-index)
+#      rbf1(time) +
+#      rbf2(time) * iid(state) +
+
+# need to first put the data into a vector, and take this opportunity to exclude those with no infectious cases
+lambda_vec <- c(lambda)
+
+date_vec <- rep(date_nums, n_states)
+state_vec <- rep(seq_len(n_states), each = n_dates)
+social_distancing_index_vec <- rep(0, n_dates * n_states)
+
+X <- cbind(date_vec,
+           state_vec,
+           social_distancing_index_vec)
 
 # define a GP on dates, using subset of regressors approximation
-lengthscale <- lognormal(4, 0.5)
-sigma <- lognormal(-1, 1)
-temporal_kernel <- rbf(lengthscale, sigma)
-intercept_kernel <- bias(0.5)
-kernel <- intercept_kernel + temporal_kernel
+l_ntnl <- lognormal(1, 0.5)
+l_state <- lognormal(1, 0.5)
+sigma_ntnl <- lognormal(-1, 1)
+sigma_state <- lognormal(-1, 1)
+sigma_state_iid <- normal(0, 1, truncation = c(0, Inf))
 
-n_dates <- length(dates)
-date_nums <- seq_len(n_dates)
-n_inducing <- 5
-inducing_points <- seq(1, n_dates, length.out = n_inducing + 1)[-1]
+intercept_kernel <- bias(R0_prior$sd ^ 2)
+distancing_kernel <- linear(1, columns = 3)
+state_kernel <- rbf(l_state, sigma_state ^ 2, columns = 1) * iid(sigma_state_iid ^ 2, columns = 2)
+national_kernel <- rbf(l_ntnl, sigma_ntnl ^ 2, columns = 1)
 
-log_R_eff <- gp(date_nums, kernel, inducing = inducing_points)
+kernel <- intercept_kernel + distancing_kernel + state_kernel + national_kernel
+
+# build a matrix of inducing points, one every 7 days but with one at the end
+inducing_date_nums <- seq(n_dates, 1, by = -7)
+inducing_index <- which(X[, 1] %in% inducing_date_nums)
+X_inducing <- X[inducing_index, ]
+
+zero_mean_gp <- gp(X, kernel, inducing = X_inducing)
+
+log_R_eff <- R0_prior$mean + zero_mean_gp
+
+# work out which ones to exclude (because there were no infectious people)
+valid <- which(lambda_vec > 0)
 
 # combine with lambda on log scale for numerical stability - since greta can use
 # this in evaluating the poisson likelihood
 # log_expected_infections <- sweep(log(lambda), 1, log_R_eff, FUN = "+") 
-log_expected_infections <- log(lambda) + log_R_eff 
+log_expected_infections <- log(lambda_vec[valid]) + log_R_eff[valid]
 expected_infections <- exp(log_expected_infections)
-distribution(local_cases) <- poisson(expected_infections)
+distribution(local_cases[valid]) <- poisson(expected_infections)
 
 m <- model(log_R_eff)
 
@@ -170,15 +215,52 @@ R_eff <- exp(log_R_eff)
 R_eff_draws <- calculate(R_eff, values = draws)
 R_eff_mat <- as.matrix(R_eff_draws)
 mean <- colMeans(R_eff_mat)
-ci <- apply(R_eff_mat, 2, quantile, c(0.025, 0.975))
+ci90 <- apply(R_eff_mat, 2, quantile, c(0.05, 0.95))
+ci50 <- apply(R_eff_mat, 2, quantile, c(0.25, 0.75))
 
-plot(mean ~ dates,
-     type = "n",
-     ylim = range(c(ci, 0, 1)))
-polygon(x = c(dates, rev(dates)),
-        y = c(ci[1, ], rev(ci[2, ])),
-        lty = 0,
-        col = "lightskyblue1")
-lines(mean ~ dates,
-      col = "blue",
-      lwd = 2)
+df <- tibble(date = rep(dates, n_states),
+             state = rep(states, each = n_dates),
+             social_distance = X[, 3],
+             R_eff_mean = mean,
+             R_eff_50_lo = ci50[1, ],
+             R_eff_50_hi = ci50[2, ],
+             R_eff_90_lo = ci90[1, ],
+             R_eff_90_hi = ci90[2, ])
+thresholds <- tibble(state = factor(states),
+                     threshold = 1)
+
+library(ggplot2)
+df %>%
+  mutate(state = factor(state)) %>%
+  ggplot(aes(date, R_eff_mean)) +
+  geom_ribbon(aes(ymin = R_eff_90_lo,
+                  ymax = R_eff_90_hi),
+              alpha = 0.1) +
+  geom_ribbon(aes(ymin = R_eff_50_lo,
+                  ymax = R_eff_50_hi),
+              alpha = 0.2) +
+  geom_hline(yintercept = 1, colour = grey(0.7)) +
+  facet_wrap(~ state) +
+  theme_minimal()
+
+# - add a custom greta function for lognormal CDF (using TFP)
+# - run with social distancing index as a covariate in the mean function
+#   - write the notation as having the prior on the intercept reflect R0
+#   - but in the code, marginalise both the intercept and slope into the GP
+#   kernel to avoid identifiability issues
+  
+# # run epinow too
+# epinow_cases <- linelist %>%
+#   rename(date = date_confirmation) %>%
+#   group_by(date, region, import_status) %>%
+#   summarise(cases = n())
+# 
+# epinow_linelist <- linelist %>%
+#   rename(date_confirm = date_confirmations)
+# 
+# EpiNow::regional_rt_pipeline(
+#   cases = epinow_cases,
+#   linelist = epinow_linelist,
+#   case_limit = 20
+# )
+
