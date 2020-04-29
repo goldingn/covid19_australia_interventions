@@ -533,3 +533,267 @@ plot_latent_factor <- function (factor, draws, dates, key_dates, cols = grey(c(0
   title(main = title,
         col.main = grey(0.3))
 }
+
+# greta function for the lognormal CDF (equivalent to plnorm(x, meanlog, sdlog))
+# x must not be a greta array, though meanlog and sdlog can be. A greta array of
+# CDF values is returned, equal to 0 wherex was 0 or lower.
+lognormal_cdf <- function(x, meanlog, sdlog) {
+  
+  # filter out any invalid dates, to replace their CDF with 0
+  valid <- x > 0
+  x <- x[valid]
+  
+  p <- iprobit((log(x) - meanlog) / sdlog)
+  
+  # if any were missing, replace their cumulative density with 0
+  if (any(!valid)) {
+    result <- zeros(length(valid))
+    result[valid] <- p
+    p <- result
+  }
+  
+  p
+  
+}
+
+exponential_cdf <- function (x, rate) {
+  
+  # filter out any invalid dates, to replace their CDF with 0
+  valid <- x > 0
+  x <- x[valid]
+  
+  p <- 1 - exp(-rate * x)
+  
+  # if any were missing, replace their cumulative density with 0
+  if (any(!valid)) {
+    result <- zeros(length(valid))
+    result[valid] <- p
+    p <- result
+  }
+  
+  p
+  
+}
+
+# Given samples 'x' of a parameter, approximate the distribution by a (possibly
+# truncated) normal distribution, and return a variable greta array following
+# that distribution
+parameter <- function(x, truncation = c(-Inf, Inf)) {
+  normal(mean(x), sd(x), truncation = truncation)
+}
+
+# given a positive integer vector of (days since a case became symptomatic,
+# compute the probability that the serial interval values falls in that day
+serial_interval_probability <- function(days, fixed = FALSE) {
+  
+  # priors for the parameters of the lognormal distribution over the serial interval from Nishiura et
+  # al., as stored in the EpiNow source code 
+  si_param_samples <- read_csv(
+    file = "https://raw.githubusercontent.com/epiforecasts/EpiNow/758b706599244a545d6b07f7be4c10ffe6c8cf50/data-raw/nishiura-lognormal-truncated.csv",
+    col_types = cols(param1 = col_double(),
+                     param2 = col_double())
+  )
+  
+  # compute the CDF of the lognormal distribution, for this and the next day
+  days_lower <- days
+  days_upper <- days + 1
+  
+  if (fixed) {
+    # if fixed, we can do this in R
+    meanlog <- mean(si_param_samples$param1)
+    sdlog <- mean(si_param_samples$param2)
+    
+    p_lower <- plnorm(days_lower, meanlog, sdlog)
+    p_upper <- plnorm(days_upper, meanlog, sdlog)
+    
+  } else {
+    # otherwise create greta arrays for the parameters, with priors based on
+    # these samples
+    meanlog <- parameter(si_param_samples$param1)
+    sdlog <- parameter(si_param_samples$param2, c(0, Inf))
+    
+    p_lower <- lognormal_cdf(days_lower, meanlog, sdlog)
+    p_upper <- lognormal_cdf(days_upper, meanlog, sdlog)
+  }
+  
+
+  # get the integral of the density over this day
+  p_upper - p_lower
+  
+}
+
+# given a positive integer vector (of days between a case becoming symptomatic
+# and being reported) compute the probability that the delay falls in that day
+delay_probability <- function(days) {
+  
+  # define the parameter of the exponential distribution via samples provided by
+  # David
+  delay_samples <- read_csv("data/cases/sampled_report_delay.csv",
+                            col_types = cols(x = col_double())) %>%
+    pull(x)
+
+  rate <- lognormal(0, 1)
+  distribution(delay_samples) <- exponential(rate)
+  
+  # compute the CDF of the lognormal distribution, for this and the next day
+  days_lower <- days
+  days_upper <- days + 1
+  
+  # get the integral of the density over this day
+  p_upper <- exponential_cdf(days_upper, rate)
+  p_lower <- exponential_cdf(days_lower, rate)
+  p_upper - p_lower
+  
+}
+
+fake_linelist <- function() {
+  
+  library(readr)
+  library(dplyr)
+  library(lubridate)
+  library(tidyr)
+  
+  # create a synthetic linelist from data provided by David and Freya
+  cases <- read_csv(
+    file = "data/cases/cases.csv",
+    col_types = cols(
+      date = col_date(format = ""),
+      import_status = col_character(),
+      region = col_character(),
+      cases = col_double()
+    )
+  ) %>%
+    mutate(
+      date = ymd(date),
+      import_status = recode(
+        import_status, 
+        "Unknown origin" = "local",  # conservative approach assuming all unknown cases are locally acquired
+        "Locally acquired" = "local",
+        "Overseas acquired" = "imported"
+      )
+    ) %>% 
+    group_by(date, region, import_status) %>%
+    tally(wt = cases) %>%
+    rename(cases = n) %>%
+    ungroup()
+  
+  # Load gamma distributed reporting delays
+  delay_samples <- read_csv(
+    file = "data/cases/sampled_report_delay.csv",
+    col_types = cols(x = col_integer())
+  ) %>%
+    pull(x)
+  
+  # Create a "linelist" from the data, as input into EpiNow::regional_rt_pipeline
+  linelist <- cases %>%
+    group_by(date, import_status, region) %>% 
+    expand(count = seq(1:cases)) %>%
+    select(-count) %>% 
+    ungroup() %>% 
+    mutate(
+      report_delay = sample(
+        x = delay_samples,
+        size = nrow(.),
+        replace = TRUE)
+    ) %>% 
+    mutate(date_onset = ymd(date) - report_delay) %>% 
+    rename(date_confirmation = date)
+  
+  # throw away some of the true onset dates
+  n_cases <- nrow(linelist)
+  remove <- sample.int(n_cases, floor(n_cases * 0.06))
+  linelist$date_onset[remove] <- NA
+  
+  linelist
+  
+}
+
+# given a positive integer 'n_days' of the number of days for which to compute
+# values and a discrete vector 'disaggregation_probs' of probabilities that data
+# for one day should actually be assigned that number of days into the future,
+# return a symmetric matrix that can be used in a matrix multiply to
+# disaggregate daily data into expected counts on future days, according to that
+# probability distribution. Doing this disaggregation using a circulant matrix
+# of probabilities with masked lower values, is more efficient in greta than
+# looping since it can easily be parallelised. Note this is the same operation
+# as cases_known_outcome_matrix() in goldingn/australia_covid_ascertainment
+disaggregation_matrix <- function (n_days, disaggregation_probs) {
+
+  # build an upper-triangular circulant matrix (contribution of each day's cases
+  # to each other's)
+  mat <- matrix(0, n_days, n_days)
+  
+  # if we're doing this with a greta array, mat must be coerced to on in advance
+  if (inherits(disaggregation_probs, "greta_array")) {
+    mat <- as_data(mat)
+  }
+  
+  indices <- row(mat) - col(mat) + 1
+  mask <- indices > 0 & indices <= length(disaggregation_probs)
+  mat[mask] <- disaggregation_probs[indices[mask]]
+  mat
+  
+}
+
+# apply the serial interval a date-by-state matrix 'cases' of case counts to get
+# the expected number of infectious people at each time. If 'fixed', use a
+# deterministic serial interval distribution base don prior means, othrwise
+# treeat the parameters of the distribution as unknown parameters, to account
+# for uncrtainty in the distribution.
+apply_serial_interval <- function(cases, fixed = FALSE) {
+  
+  # get vector of probabilities (either an R or a greta array, based on 'fixed')
+  probabilities <- serial_interval_probability(0:45, fixed = fixed)
+  
+  # get a square matrix of contributions of each date to each other, and
+  # matrix-multiply to disaggregate
+  si_disaggregation <- disaggregation_matrix(nrow(cases), probabilities)
+  si_disaggregation %*% cases
+  
+}
+
+# given the eman and standard deviation of a lognormal distribution, compute the
+# parameters (mean and standard deviation of the normal distribution over the
+# variable's log)
+lognormal_prior <- function(mean, sd) {
+  
+  var <- sd ^ 2
+  list(
+    mean = log((mean ^ 2) / sqrt(var + mean ^ 2)),
+    sd = sqrt(log(1 + var / (mean ^ 2)))
+  )
+  
+}
+
+tf_as_float <- greta:::tf_as_float
+fl <- greta:::fl
+
+greta_kernel <- greta.gp:::greta_kernel
+tf_cols <- greta.gp:::tf_cols
+tf_distance <- greta.gp:::tf_distance
+check_active_dims <- greta.gp:::check_active_dims
+
+
+iid <- function(variance, columns = 1) {
+  greta_kernel("iid",
+               tf_name = "tf_iid",
+               parameters = list(variance = variance),
+               arguments = list(
+                 active_dims = check_active_dims(columns,
+                                                 rep(1, length(columns))
+                 )))
+}
+
+tf_iid <- function(X, X_prime, variance, active_dims) {
+  
+  # pull out active dimensions
+  X <- tf_cols(X, active_dims)
+  X_prime <- tf_cols(X_prime, active_dims)
+  
+  # find where these values match and assign the variance as a covariance there
+  # (else set it to 0)
+  distance <- tf_distance(X, X_prime)
+  tf_as_float(distance < fl(1e-12)) * variance
+
+}
+
