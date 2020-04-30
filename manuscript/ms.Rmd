@@ -14,19 +14,7 @@ output:
 header-includes: \usepackage{float}
 ---
 
-## Gist (to be split up into a paper format)
- 
-Social distancing behaviour - advised and enforced by governments around the world - has been a cornerstone of the global response to the COVID-19 pandemic. Quantifying how the behaviour of a population has changed in response to these public health measures, is critical to monitoring the ongoing effectiveness of these measures, identifying which are most impactful, and as inputs to modelling to forecast how the measures will aimpact ont he course of the outbreak.
-
-A variety of data sources have are available that can quantify different aspects of social distancing behaviour at a population level. Aggregated user-tracking data from technology companies provide timeseries of: how often users leave home, the lengths of journeys they undertake when they do, the types of locations they visited, and the locations of those places.
-
-Whilst these multiple data sources provide varied perspectives on population behaviour, they vary significantly in the subset of the population they reflect and the aspects of behaviour being considered. For example, data from route-planning apps is more likely to reflect unfamiliar journeys than trips to places regularly visited, and data on the types of places being visited does not indicate how far users travel to visit them. The different, and often non-overlapping spatial scales and time frames of these data sources also hinders direct comparison and synthesis of them.
-
-Moreover, no single one of these types of data fully encompasses the range of behaviours that affect transmission of COVID-19 - those that can be sumamrised in a mathematical modelling framework via the mixing parameter of a transmission model.
-
-The aim of this work is to synthesise these varied measures of population mixing behaviour into a small, quantified set of latent social distancing factors that reflect the underlying changes in behaviour. We consider these latent social distancing factors in a semi-mechanistic way; reflecting knowledge and hypotheses of the events that triggered and influenced these behavioural trends. To do this, we construct a statistical semi-mechanistic latent factor model that considers dates that events, policy measures, and public announcements are made, and estimates how the behaviour of the population responded to each event by calibration against all of the available metrics of population mixing behaviour.
-
-We apply this model to 12 separate data streams provided by 4 technology companies for Australia, with spatial data varying between national, state and city-levels. This reveals two distinct latent population behavioural factors: a strong social distancing effect in response to national announcements and policies, preceeded by a small and short-lived rise in mixing apparently driven by the population 'stocking up' on supplies.
+## Gist 
 
 To add:
  - relative effectiveness of three different policies
@@ -43,10 +31,23 @@ To add:
  
 ## Introduction
 
- - COVID-19 background
- - Social distancing policies
- - Population mixing/mobility studies
- - Timeline of data availability
+The novel coronavirus SARS-CoV-2 first emerged in the city of Wuhan, China, in December 2019. Despite early containment efforts, by early March 2020 SARS-CoV-2 had spread to all global regions and overwhelmed some of the world’s strongest health systems. As of 29 April 2020, over 2.9 million cases of the disease (known as COVID-19) had been confirmed globally, including more than 200,000 deaths.  
+
+In the absence of pharmaceutical interventions, ‘physical distancing’ behaviour —-- advised and enforced by governments around the world --- has been a cornerstone of the global response to COVID-19. Many countries have successfully mitigated an initial epidemic wave of COVID-19, using a combination of border, case targeted and physical distancing measures. 
+Physical distancing or social distancing measures may include the closure of schools, businesses and workplaces, and limits on the size of public gatherings. The goal of these strategies is to reduce normal levels of physical and social population mixing in order to slow the spread of the infection and intensity of the epidemic, thus reducing the risk of overwhelming the health system. The specific physical distancing measures, the intensity and timing of their implementation, the public response to them, and the level of government enforcement, has varied vastly across the globe, including within countries. 
+
+For example, on 16 March, the Australian Government imposed restrictions on outdoor public gatherings of more than 500 people in order to reduce and prevent further COVID-19 transmission. Further restrictions were incrementally imposed over the following 10 days. By March 27, all Australians were strongly encouraged to leave their homes only for limited essential activities and all public gatherings were limited to two people. These measures were in addition to self-isolation advice for (mild) confirmed cases and their contacts, as well as for returned travellers. By late March, daily counts of new cases were declining, and the effective reproduction number was estimated to be below 1, indicating that these measures had successfully mitigated the epidemic.  
+
+Australia --- and many other countries with intensive physical distancing measures in place --- is now shifting its focus from reacting to a first epidemic wave of COVID-19 to proactive planning for gradual and targeted relaxation of physical distancing measures. Quantifying how the behaviour of the population has changed in response to these measures and the potential impact on disease transmission is critical for the next stage of response planning. 
+
+A variety of data sources are available that can quantify different aspects of social distancing behaviour at a population level. Aggregated user-tracking data from technology companies provide timeseries of: how often users leave home, the lengths of journeys they undertake when they do, the types of locations they visited, and the locations of those places.
+
+While these multiple data sources provide varied perspectives on population behaviour, they vary significantly in the subset of the population they reflect, and the aspects of behaviour being considered. For example, data from route-planning apps is more likely to reflect unfamiliar journeys than trips to places regularly visited, and data on the types of places being visited does not indicate how far users travel to visit them. The different, and often non-overlapping spatial scales and time frames of these data sources also hinders direct comparison and synthesis of them.
+
+Moreover, no single one of these types of data fully encompasses the range of behaviours that affect transmission of COVID-19 *i.e.*, those that can be summarised in a mathematical modelling framework via the mixing parameter of a transmission model.
+
+Here we synthesise these varied measures of population mixing behaviour into a small, quantified set of latent physical distancing factors that reflect the underlying changes in behaviour. To do so, we construct a statistical latent factor model that considers dates of key events, including COVID-19 policy announcements and public holidays. The model estimates how population behaviour changed in response to each event by calibrating against all available metrics of population mixing behaviour. We apply this model to 12 separate data streams provided by four technology companies for Australia, with spatial data varying between national, state and city-levels. We then use outputs from the latent factor model to inform estimates of the effective reproduction number for each Australian state in March and April, and finally, to quantify the relative effectiveness of key physical distancing measures implemented in late March.
+
 
 ## Methods
 
@@ -221,6 +222,13 @@ Figures:
  - Variation in latent factors by state
 
 ## Discussion
+
+Summary of results: This reveals two distinct latent population behavioural factors: a strong social distancing effect in response to national announcements and policies, preceeded by a small and short-lived rise in mixing apparently driven by the population 'stocking up' on supplies.
+
+Our work will enable monitoring of the ongoing effectiveness of physical distancing measures in Australia, and the generation of model inputs for estimating the impact of these measures on the future course of the epidemic. 
+
+The impacts of physical distancing efforts have been in addition to extensive case targeted efforts (case isolation and contact quarantine) which cannot be disentangled from our results. Case targeted measures will be particularly important for disease management as physical distancing measures are gradually relaxed. Further studies, potentially using mathematical modelling frameworks, are required to analyse the relationship between physical distancing behaviour, case targeted interventions, and disease transmission. 
+
 
  - Use for monitoring adherence.
  - Use in modelling studies.
