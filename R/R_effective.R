@@ -128,13 +128,7 @@ R0_europe <- R0_prior()
 
 # the relative contribution of imported cases (relative to locally-acquired
 # cases) to transmission. I.e. one minus sthe effectiveness of quarantine
-# measures. Assume it varies over time
-
-# quarantine_effectiveness <- case_when(
-#   dates < as.Date("2020-03-15") ~ 0.2,
-#   dates <= as.Date("2020-03-27") ~ 0.5,
-#   TRUE ~ 0.99,
-# )
+# measures. Assume it varies over time, based around these federal announcements
 
 quarantine_index <- case_when(
   dates < as.Date("2020-03-15") ~ 1,
@@ -142,10 +136,13 @@ quarantine_index <- case_when(
   TRUE ~ 3,
 )
 
-q3 <- uniform(0.99, 1)
-ratio1 <- uniform(0.5 / 0.99, 1)
+# assume at least 95% imports removed from circulation in the last period
+# (enforced quarantine), but just assume that quarantine efectiveness in earlier
+# periods was increasing
+q3 <- uniform(0.95, 1)
+ratio1 <- uniform(0, 1)
 q2 <- q3 * ratio1
-ratio2 <- uniform(0.2 / 0.5, 1)
+ratio2 <- uniform(0, 1)
 q1 <- q2 * ratio2
 
 quarantine <- c(q1, q2, q3)
