@@ -122,8 +122,9 @@ social_distancing_index <- distancing_file %>%
   
 library(greta.gp)
 
-# lognormal prior on R0 (normal prior on log(R0))
-R0_prior <- lognormal_prior(2.6, 1)
+# lognormal prior on R0 (normal prior on log(R0)) based on estimates for
+# Northern Europe from Flaxman et al. (Imperial report 13)
+R0_europe <- R0_prior()
 
 # the relative contribution of imported cases (relative to locally-acquired
 # cases) to transmission. I.e. one minus sthe effectiveness of quarantine
@@ -195,26 +196,18 @@ X <- cbind(date_vec,
 # wiggliness of the state-level correlated errors
 l_state <- lognormal(2, 0.5)
 # magnitude of the state-level correlated errors
-sigma_state <- normal(0, 1, truncation = c(0, Inf))
+sigma_state <- normal(0, 0.5, truncation = c(0, Inf))
 # degree of variation between state timeseries (shrink towards 0)
-sigma_state_iid <- normal(0, 1, truncation = c(0, Inf))
+sigma_state_iid <- normal(0, 0.5, truncation = c(0, Inf))
+# amount of IID noise in log(R_eff) per day (overdispersion, or case clustering)
+sigma_noise <- normal(0, 0.5, truncation = c(0, Inf))
 
-# standard deviation of IID noise associated with each day (case clustering)
-# we want the prior marginal variance to approximately match prior on log(R0),
-# but also to shrink towards 0, so use a half normal prior with mean matching
-# the required standard deviation
-# sigma_noise_sd <- R0_prior$sd * sqrt(pi) / sqrt(2)
-# sigma_noise <- normal(0, sigma_noise_sd, truncation = c(0, Inf))
-# summary(calculate(sigma_noise, nsim = 10000)[[1]])
-
-
-# noise_kernel <- white(sigma_noise ^ 2)
-# try setting a prior over the true R0 for Australia - maybe the covariate will let it stay high?
-noise_kernel <- bias(R0_prior$sd ^ 2)
+noise_kernel <- white(sigma_noise ^ 2)
+R0_kernel <- bias(R0_europe$sdlog ^ 2)
 distancing_kernel <- linear(1, columns = 3)
 error_kernel <- rbf(l_state, sigma_state ^ 2, columns = 1) * iid(sigma_state_iid ^ 2, columns = 2)
 
-kernel <- noise_kernel + distancing_kernel + error_kernel
+kernel <- noise_kernel + R0_kernel + distancing_kernel + error_kernel
 
 # build a matrix of inducing points, one every 7 days but with one at the end
 inducing_date_nums <- seq(n_dates, 1, by = -7)
@@ -223,7 +216,7 @@ X_inducing <- X[inducing_index, ]
 
 zero_mean_gp <- gp(X, kernel, inducing = X_inducing, tol = 0)
 
-log_R_eff <- R0_prior$mean + zero_mean_gp
+log_R_eff <- R0_europe$meanlog + zero_mean_gp
 
 # work out which ones to exclude (because there were no infectious people)
 lambda_vec_vals <- calculate(lambda_vec, nsim = 1)[[1]][1, , 1]
@@ -319,7 +312,7 @@ distancing_effect <- project(zero_mean_gp,
                              kernel = trend_kernel)
 
 # noise <- normal(0, sigma_noise, dim = n_dates)
-log_R_eff_trend <- R0_prior$mean + distancing_effect
+log_R_eff_trend <- R0_europe$meanlog + distancing_effect
 R_eff_trend <- exp(log_R_eff_trend)
 
 R_eff_trend_sim <- calculate(R_eff_trend, values = draws, nsim = 10000)[[1]][, , 1]
