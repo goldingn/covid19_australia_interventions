@@ -288,7 +288,7 @@ for (j in seq_len(n_states)) {
 # same for a subset of datastreams, by all states
 target_datastreams <- c("Apple: directions for driving",
                         "Google: time at residential",
-                        "Facebook: movement range")
+                        "Google: time at grocery and pharmacy")
 
 # get the vector of state-datastreams to plot
 state_datastreams_plot <- mobility %>%

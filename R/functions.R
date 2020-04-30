@@ -171,14 +171,14 @@ all_mobility <- function() {
       -region,
       -transportation_type
     )
-  
-  facebook <- facebook_mobility() %>%
-    mutate(
-      datastream = str_c("Facebook: ", metric)
-    ) %>%
-    dplyr::select(
-      -metric
-    )
+
+  # facebook <- facebook_mobility() %>%
+  #   mutate(
+  #     datastream = str_c("Facebook: ", metric)
+  #   ) %>%
+  #   dplyr::select(
+  #     -metric
+  #   )
   
   citymapper <- citymapper_mobility() %>%
     mutate(
@@ -189,7 +189,7 @@ all_mobility <- function() {
   bind_rows(
     google,
     apple,
-    facebook,
+    # facebook,
     citymapper
   )
   
