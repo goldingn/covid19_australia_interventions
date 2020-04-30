@@ -69,11 +69,12 @@ linelist <- linelist %>%
 # - when defining the likelihood, marginalise over the sum of the known onsets
 # and probabilistic unknown onsets
 
-# build date-by-state matrices of the counts of new local and impiorted cases and
-# imports by date of onset
+# build date-by-state matrices of the counts of new local and imported cases and
+# imports by assumed date of infection (with an incubation period of 5 days)
 linelist <- linelist %>%
   rename(state = region,
          date = date_onset) %>%
+  mutate(date = date - 5) %>%
   select(-date_confirmation)
 
 import_statuses <- sort(unique(linelist$import_status))
