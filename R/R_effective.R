@@ -438,5 +438,10 @@ R0_draws <- R_eff_trend_sim[, 1]
 mean(R0_draws)
 sd(R0_draws)
 
+# posterior summary of R_eff for the llatest date
+R_eff_now_draws <- R_eff_trend_sim[, ncol(R_eff_trend_sim)]
+mean(R_eff_now_draws)
+sd(R_eff_now_draws)
+max(dates)
 # - add a custom greta function for lognormal CDF (using TFP) and try
 #   sampling with that
