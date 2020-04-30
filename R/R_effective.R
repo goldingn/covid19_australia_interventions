@@ -207,7 +207,7 @@ error_kernel <- rbf(l_state, sigma_state ^ 2, columns = 1) * iid(sigma_state_iid
 kernel <- noise_kernel + R0_kernel + distancing_kernel + error_kernel
 
 # build a matrix of inducing points, one every 7 days but with one at the end
-inducing_date_nums <- seq(n_dates, 1, by = -7)
+inducing_date_nums <- seq(n_dates, 1, by = -3)
 inducing_index <- which(X[, 1] %in% inducing_date_nums)
 X_inducing <- X[inducing_index, ]
 
@@ -236,6 +236,7 @@ max(r_hats)
 min(n_eff)
 
 summary(calculate(quarantine, values = draws))
+
 
 R_eff <- exp(log_R_eff)
 
@@ -303,12 +304,11 @@ ggsave("outputs/figures/R_eff.png",
 
 # plot fixed effect trend in Rt (common to all states)
 X_one_state <- X[1:n_dates, ]
-trend_kernel <- noise_kernel + distancing_kernel
+trend_kernel <- R0_kernel + distancing_kernel
 distancing_effect <- project(zero_mean_gp,
                              x_new = X_one_state,
                              kernel = trend_kernel)
 
-# noise <- normal(0, sigma_noise, dim = n_dates)
 log_R_eff_trend <- R0_europe$meanlog + distancing_effect
 R_eff_trend <- exp(log_R_eff_trend)
 
@@ -433,22 +433,10 @@ ggsave("outputs/figures/R_eff_error.png",
        width = 10,
        height = 16, scale = 0.8)
 
+# posterior summary of R0
+R0_draws <- R_eff_trend_sim[, 1]
+mean(R0_draws)
+sd(R0_draws)
 
 # - add a custom greta function for lognormal CDF (using TFP) and try
 #   sampling with that
-
-# # run epinow too
-# epinow_cases <- linelist %>%
-#   rename(date = date_confirmation) %>%
-#   group_by(date, region, import_status) %>%
-#   summarise(cases = n())
-# 
-# epinow_linelist <- linelist %>%
-#   rename(date_confirm = date_confirmations)
-# 
-# EpiNow::regional_rt_pipeline(
-#   cases = epinow_cases,
-#   linelist = epinow_linelist,
-#   case_limit = 20
-# )
-
