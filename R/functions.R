@@ -956,14 +956,17 @@ proportion_imported <- function (local_infectious, imported_infectious, X) {
   # interpolate state-by-state  
   df <- as.data.frame(X)
   df$state <- factor(df$state)
-  model <- mgcv::gam(response_q ~ s(date) +
+  model <- mgcv::gam(q_imported ~ s(date) +
                        s(date, by = state, k = 30),
                      data = df)
   q_imported <- predict(model, newdata = df)
   
-  # transform back and return
+  # transform back, clamp to numerically stable values, and return
   p_imported <- plogis(q_imported)
   dim(p_imported) <- dim(all_infectious)
+  eps <- sqrt(.Machine$double.eps)
+  p_imported <- pmax(eps, p_imported)
+  p_imported <- pmin(1 - eps, p_imported)
   p_imported
   
 }

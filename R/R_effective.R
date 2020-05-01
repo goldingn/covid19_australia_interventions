@@ -1,18 +1,69 @@
-# fit a Bayesian model-based estimate of R_effective over time.
+# fit a Bayesian model-based estimate of R_effective over time, quantifying the
+# impacts of both quarantine and physical distancing measures.
 
-# The model assumes that the number of new locally-acquired cases at time $t$ in
-# region $i$ is *conditionally* Poisson-distributed with expectation given by
-# the number of infectious people $lambda_{t,i}$ multiplied by the region- and
-# time-varying reproduction rate $R_{t,i}$. To account for clusters in numbers
+# The basic model assumes that the number of new locally-acquired cases
+# $N_{ti}$ at time $t$ in region $i$ is *conditionally* Poisson-distributed
+# with expectation $lambda_{ti}$ given by the product of the number of
+# infectious cases $I_{ti}$ and the time-varying reproduction rate $R_{ti}$:
+
+#   N_{ti} &\sim Poisson(lambda_{ti})
+#   lambda_{ti} &= I_{ti} R_{ti}
+
+# We extend this model by considering separate reproduction rates for two groups
+# of infectious cases in order to model the effects of different interventions
+# targetted at each group: those with locally-acquired cases $I_{ti}^L$, and
+# those with overseas acquired cases $I_{ti}^O$, with corresponding reproduction
+# rates $R_{ti}^L$ and $R_{ti}^O$:
+
+#   lambda_{ti} &= I_{ti}^L R_{ti}^L + I_{ti}^O R_{ti}^O
+#   R_{ti}^L &= R_0 D_t e^{\epsilon_{ti}^L}
+#   R_{ti}^O &= R_0 Q_t e^{\epsilon_{ti}^O}
+
+# where each of these reproduction rates is modelled as a product of: the
+# reproduction rate under initial conditions and no interventions $R_0$;
+# deterministic functions $D_t$ and $Q_t$ that modify $R_0$ over time to
+# respectively represent the impacts of physical distancing and quarantine
+# interventions at a national level, and correlated timeseries of random effects
+# $\epsilon_{ti}^L$ and $\epsilon_{ti}^O$ to represent stochastic fluctuations
+# in the reporting rate in each state, for example due to the clusters in
+# subpopulations with higher or lower reproduction rates than the general
+# population.
+
+# (Not sure about this next bit of the model. It's a bit icky.)
+
+# Whilst we would expect stochastic processes to affect both reproduction rates,
+# these two separate stochastic processes are in practice only poorly identified
+# apart. We therefore instead model a single combined stochastic process
+# $\epsilon_{ti}$, which can be interpreted as a weighted average of these two
+# processes, with weights giveen by the porportions of all infectious cases
+# belonging to each group:
+
+#  lambda_{ti} &= R_0 (I_{ti}^L D_t + I_{ti}^O Q_t) e^{\epsilon_{ti}}
+
+# We model the effect of $D_t$ as being proportional (on the log scale) to an index of the
+# proportional change in population mobility in response to physical distancing
+# measures $d_t$, which has initial value 0 before distancing measures were
+# implemented and value 1 at its maximum extent:
+
+#   D_t &= e^{\beta d_t}
+
+# We model $Q_t$ via a monotone decreasing step functio with values constrained
+# to the unit interval, and with steps at the dates of changes in quarantine policy.
+
+# where respectively encode the impact of social distancing and
+# of Quarantine policies on the reproduction rates of locally- and
+# overseas-acquired cases respectively
+
+# time-varying reproduction rate $R_{ti}$. To account for clusters in numbers
 # of cases reported (overdispersion in the data), and fluctuations due to
-# unobserved factors affecting transmission (temporal correlation) $R_{t,i}$ has
+# unobserved factors affecting transmission (temporal correlation) $R_{ti}$ has
 # a random error structure - either temporally-correlated, temporally
 # independent, or some mix of both. This can be expressed via a Gaussian process
-# over time in each region on $log(R_{t,i})$. To account for temporal
+# over time in each region on $log(R_{ti})$. To account for temporal
 # fluctations common to all regions, we also include a single temporal Gaussian
 # process on $log(\hat{R}_{t})$, where $\hat{R}_{t}$ is the Australia-wide mean
 # time-varying effective reproduction rate. Fixed effects for all regions can
-# also be included via a linear mean function $m_{t,i}$ for these
+# also be included via a linear mean function $m_{ti}$ for these
 # region-specific Gaussian processes. The number of infectious people is
 # computed by disaggregating the number of cases (both locally-and
 # overseas-acquired) over a subsequent period of time, with probability
@@ -25,10 +76,10 @@
 # contribution rate $import-contribution_{t'}$, which reflects the effectiveness
 # of quarantine measures.
 
-#   local-incidence_{t,i} ~ Poisson(lambda_{t,i} * R_{t,i})
-#   log(R_{t,i}) = log(R_0) + b * social-distancing-index_{t,i} + \epsilon_{t,i}
+#   local-incidence_{ti} ~ Poisson(lambda_{ti} * R_{ti})
+#   log(R_{ti}) = log(R_0) + b * social-distancing-index_{ti} + \epsilon_{ti}
 #   epsilon_i ~ GP(0, K)
-#   lambda_{t,i} = sum_{t'=1}^t p-serial-interval(t') (local-incidence_{t',i} + imported-incidence_{t',i} import-contribution_{t'})
+#   lambda_{ti} = sum_{t'=1}^t p-serial-interval(t') (local-incidence_{t',i} + imported-incidence_{t',i} import-contribution_{t'})
 #   log(R_0) ~ N(0.723, 0.465)
 
 # this lognormal prior on R0 has a mean of 2.6 and sd of 2
@@ -140,13 +191,13 @@ q_index <- case_when(
   TRUE ~ 3,
 )
 
-q_raw <- uniform(0, 1, dim = 3)
-q <- cumprod(q_raw)
 q_index_vec <- rep(q_index, n_states)
-log_q <- log(q)
+# q_raw <- uniform(0, 1, dim = 3)
+# q <- cumprod(q_raw)
+# log_q <- log(q)
+log_q_raw <- -exponential(1, dim = 3)
+log_q <- cumsum(log_q_raw)
 log_Qt_vec <- log_q[q_index_vec]
-# log_q_raw <- -exponential(1, dim = 3)
-# log_q <- cumsum(log_q_raw)
 # log_Qt <- log_q[q_index]
 
 # the reduction from R0 down to R_eff for locally-acquired cases due to social
@@ -195,8 +246,8 @@ X_inducing <- X[inducing_index, ]
 epsilon <- gp(X, kernel, inducing = X_inducing, tol = 0)
 
 # combine these components
-# N ~ Poisson(R0 * (I_L * Dt * exp(epsilon) + IO * Qt))
-# log_R0 + log(exp(log(I_L) + log_Dt + epsilon) + exp(log(I_O)  log_Qt))
+# N ~ Poisson(R0 * exp(epsilon_t) * (I_t^L * D_t  + I_t^O * Q_t))
+# log_R0 + epsilon + log(exp(log(I_L) + log_Dt) + exp(log(I_O) + log_Qt))
 
 # disaggregate imported and local cases according to the serial interval
 # probabilities to get the expected number of infectious people in each state
@@ -211,7 +262,7 @@ log_imp_infectious_vec <- c(log(imported_infectious))
 # work out which ones to exclude (because there were no infectious people)
 valid <- which(is.finite(log_loc_infectious_vec + log_imp_infectious_vec))
 
-# log_Reff_local <- log_R0 + log_Dt_vec + epsilon
+# log_Reff_local <- log_R0 + log_Dt_vec
 # log_Reff_imported <- log_R0 + log_Qt_vec
 # 
 # # get log expected number of new cases due to infectious people in each group
@@ -219,16 +270,15 @@ valid <- which(is.finite(log_loc_infectious_vec + log_imp_infectious_vec))
 # new_from_imports <- exp(log_imp_infectious_vec[valid] + log_Reff_imported[valid])
 # expected_infections <- new_from_local + new_from_local
 
-log_rel_new_from_loc <- log_loc_infectious_vec[valid] + log_Dt_vec + epsilon
-log_rel_new_from_imp <- log_imp_infectious_vec[valid] + log_Qt_vec
+log_rel_new_from_loc <- log_loc_infectious_vec[valid] + log_Dt_vec[valid]
+log_rel_new_from_imp <- log_imp_infectious_vec[valid] + log_Qt_vec[valid]
 rel_new <- exp(log_rel_new_from_loc) + exp(log_rel_new_from_imp)
-log_expected_infections <- log_R0 + log(rel_new)
+log_expected_infections <- log_R0 + epsilon[valid] + log(rel_new)
 expected_infections <- exp(log_expected_infections)
 
-# really want to do logsumexp here, so poisson is working with logs..
 distribution(local_cases[valid]) <- poisson(expected_infections)
 
-m <- model(log_Reff_local, log_Reff_imported)
+m <- model(beta, log_q, epsilon)
 draws <- mcmc(m, chains = 10, one_by_one = TRUE)
 
 # check convergence
@@ -237,27 +287,40 @@ n_eff <- coda::effectiveSize(draws)
 max(r_hats)
 min(n_eff)
 
+
+
+
 # estimate the overall R_eff by weighting using the (interpolated) proportion of
 # infectious cases that are imports
+
 p_imported <- proportion_imported(local_infectious, imported_infectious, X)
 
-R_eff_loc_weighted <- R_eff_loc * (1 - c(p_imported))
-R_eff_imp_weighted <- c(sweep(p_imported, 1, R_eff_imp_trend, FUN = "*"))
-R_eff <- R_eff_loc_weighted + R_eff_imp_weighted 
+# log_Dt_vec
+# log_Qt_vec
+# log_R0 + epsilon + log(exp())
+
+
+log_Dt_weighted <- log_Dt_vec + log(1 - c(p_imported))
+log_Qt_weighted <- log_Qt_vec + log(c(p_imported))
+log_rel_R_eff <- log(exp(log_Dt_weighted) + exp(log_Qt_weighted))
+log_R_eff <- log_R0 + log_rel_R_eff + epsilon
+R_eff <- exp(log_R_eff)
 
 # simulate from posterior for quantitites of interest
 
 # R_eff of all cases
 R_eff_sim <- posterior_sims(R_eff, draws)
 
-# R_eff of locally-acquired cases
-R_eff_loc_sim <- posterior_sims(R_eff_loc, draws)
+# # R_eff of locally-acquired cases
+# R_eff_loc_sim <- posterior_sims(R_eff_loc, draws)
 
 # average R_eff of locally-acquired cases
+log_Dt <- log_Dt_vec[1:n_dates]
 R_eff_loc_trend <- exp(log_R0 + log_Dt)
 R_eff_loc_trend_sim <- posterior_sims(R_eff_loc_trend, draws)
 
 # average R_eff of overseas-acquired cases
+log_Qt <- log_Qt_vec[1:n_dates]
 R_eff_imp_trend <- exp(log_R0 + log_Qt)
 R_eff_imp_trend_sim <- posterior_sims(R_eff_imp_trend, draws)
 
@@ -270,11 +333,11 @@ green <- brewer.pal(8, "Set2")[1]
 orange <- brewer.pal(8, "Set2")[2]
 pink <- brewer.pal(8, "Set2")[4]
 
+
 # overall R_eff
 plot_trend(R_eff_sim,
            multistate = TRUE,
-           base_colour = blue,
-           keep_only_rows = c(all_infectious > 0)) +
+           base_colour = blue) +
   ggtitle(label = "Transmission by all cases") +
   ylab(expression(R["eff"]))
 
@@ -282,16 +345,16 @@ ggsave("outputs/figures/R_eff_all.png",
        width = 10,
        height = 16, scale = 0.8)
 
-# local R_eff
-plot_trend(R_eff_loc_sim,
-           multistate = TRUE,
-           base_colour = blue) +
-  ggtitle(label = "Transmission by locally-acquired cases") +
-  ylab(expression(R["eff"]~of~"locally-acquired"~cases))
-  
-ggsave("outputs/figures/R_eff_local.png",
-       width = 10,
-       height = 16, scale = 0.8)
+# # local R_eff
+# plot_trend(R_eff_loc_sim,
+#            multistate = TRUE,
+#            base_colour = blue) +
+#   ggtitle(label = "Transmission by locally-acquired cases") +
+#   ylab(expression(R["eff"]~of~"locally-acquired"~cases))
+#   
+# ggsave("outputs/figures/R_eff_local.png",
+#        width = 10,
+#        height = 16, scale = 0.8)
 
 # local average R_eff 
 plot_trend(R_eff_loc_trend_sim,
