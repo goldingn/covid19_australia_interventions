@@ -26,7 +26,7 @@
 # of quarantine measures.
 
 #   local-incidence_{t,i} ~ Poisson(lambda_{t,i} * R_{t,i})
-#   log(R_{t,i}) = R_0 + b * social-distancing-index_{t,i} + \epsilon_{t,i}
+#   log(R_{t,i}) = log(R_0) + b * social-distancing-index_{t,i} + \epsilon_{t,i}
 #   epsilon_i ~ GP(0, K)
 #   lambda_{t,i} = sum_{t'=1}^t p-serial-interval(t') (local-incidence_{t',i} + imported-incidence_{t',i} import-contribution_{t'})
 #   log(R_0) ~ N(0.723, 0.465)
@@ -42,7 +42,7 @@ source("R/functions.R")
 # return a fake linelist based on the real case counts and samples of the
 # reporting delay distribution
 set.seed(2020-04-29)
-linelist <- fake_linelist()
+linelist <- readRDS("~/not_synced/nnds/linelist_formatted.RDS")
 
 # for now just do single imputation with the mean delay on the date of onset for
 # those missing it
@@ -212,7 +212,6 @@ inducing_index <- which(X[, 1] %in% inducing_date_nums)
 X_inducing <- X[inducing_index, ]
 
 zero_mean_gp <- gp(X, kernel, inducing = X_inducing, tol = 0)
-
 log_R_eff <- R0_europe$meanlog + zero_mean_gp
 
 # work out which ones to exclude (because there were no infectious people)
@@ -221,7 +220,6 @@ valid <- which(lambda_vec_vals > 0)
 
 # combine with lambda on log scale for numerical stability - since greta can use
 # this in evaluating the poisson likelihood
-# log_expected_infections <- sweep(log(lambda), 1, log_R_eff, FUN = "+") 
 log_expected_infections <- log(lambda_vec[valid]) + log_R_eff[valid]
 expected_infections <- exp(log_expected_infections)
 distribution(local_cases[valid]) <- poisson(expected_infections)
@@ -234,8 +232,6 @@ r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psr
 n_eff <- coda::effectiveSize(draws)
 max(r_hats)
 min(n_eff)
-
-summary(calculate(quarantine, values = draws))
 
 
 R_eff <- exp(log_R_eff)
