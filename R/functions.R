@@ -452,12 +452,19 @@ state_populations <- function() {
   )
 }
 
+posterior_sims <- function(vector, draws, nsim = NULL) {
+  if (is.null(nsim)) {
+    nsim <- coda::niter(draws) * coda::nchain(draws)
+  }
+  calculate(vector, values = draws, nsim = nsim)[[1]][, , 1]
+}
+
 # summarise the posterior for a vector greta array
 summarise_vec_posterior <- function(vector,
                                     draws,
                                     quantiles = c(0.025, 0.975),
                                     nsim = 1000) {
-  vector_sim <- calculate(vector, values = draws, nsim = nsim)[[1]][, , 1]
+  vector_sim <- posterior_sims(vector, draws, nsim = nsim)[, , 1]
   posterior_mean <- colMeans(vector_sim)
   posterior_ci <- t(apply(vector_sim, 2, quantile, quantiles))
   cbind(mean = posterior_mean, posterior_ci)
@@ -901,6 +908,8 @@ plot_trend <- function(simulations,
     scale_alpha(range = c(0, 0.5)) +
     scale_fill_manual(values = c("Nowcast" = base_colour)) +
     
+    geom_vline(xintercept = vline_at, colour = "grey80") +
+    
     geom_ribbon(aes(ymin = ci_90_lo,
                     ymax = ci_90_hi),
                 alpha = 0.2) +
@@ -914,6 +923,7 @@ plot_trend <- function(simulations,
               colour = base_colour,
               alpha = 0.8) + 
     
+
     geom_hline(yintercept = hline_at, linetype = "dotted") +
     
     cowplot::theme_cowplot() +
@@ -931,3 +941,29 @@ plot_trend <- function(simulations,
   
 }
 
+
+# interpolate proportion of infectious cases that are imports
+proportion_imported <- function (local_infectious, imported_infectious, X) {
+  
+  all_infectious <- local_infectious + imported_infectious
+  prop_imported <- imported_infectious / all_infectious
+  
+  # transform to vector on unconstrained scale
+  prop_imported <- pmax(0.01, prop_imported)
+  prop_imported <- pmin(0.99, prop_imported)
+  q_imported <- c(qlogis(prop_imported))
+  
+  # interpolate state-by-state  
+  df <- as.data.frame(X)
+  df$state <- factor(df$state)
+  model <- mgcv::gam(response_q ~ s(date) +
+                       s(date, by = state, k = 30),
+                     data = df)
+  q_imported <- predict(model, newdata = df)
+  
+  # transform back and return
+  p_imported <- plogis(q_imported)
+  dim(p_imported) <- dim(all_infectious)
+  p_imported
+  
+}

@@ -132,10 +132,11 @@ log_R0 <- normal(R0_europe$meanlog, R0_europe$sdlog)
 # quarantine measures each measure applied during a different period. Q_t is
 # R_eff_t / R0 for each time t, modelled as a monotone decreasing step function
 # over three periods with increasingly strict policies
+quarantine_dates <- as.Date(c("2020-03-15", "2020-03-28"))
 
 q_index <- case_when(
-  dates < as.Date("2020-03-15") ~ 1,
-  dates <= as.Date("2020-03-27") ~ 2,
+  dates < quarantine_dates[1] ~ 1,
+  dates < quarantine_dates[2] ~ 2,
   TRUE ~ 3,
 )
 
@@ -236,25 +237,40 @@ n_eff <- coda::effectiveSize(draws)
 max(r_hats)
 min(n_eff)
 
-# estimate R effective for all cases as a case-weighted sum of the two?
-all_infectious <- local_infectious + imported_infectious
-p_imported <- imported_infectious / all_infectious
-p_imported[local_infectious == 0]  <- 1
-p_imported[imported_infectious == 0]  <- 0
-keep <- all_infectious > 0
+# estimate the overall R_eff by weighting using the (interpolated) proportion of
+# infectious cases that are imports
+p_imported <- proportion_imported(local_infectious, imported_infectious, X)
 
 R_eff_loc_weighted <- R_eff_loc * (1 - c(p_imported))
 R_eff_imp_weighted <- c(sweep(p_imported, 1, R_eff_imp_trend, FUN = "*"))
-
 R_eff <- R_eff_loc_weighted + R_eff_imp_weighted 
 
-# R_eff of locally-acquired cases
-R_eff_sim <- calculate(R_eff, values = draws, nsim = 1e4)[[1]]
+# simulate from posterior for quantitites of interest
 
-# pass in a masking variable to plot_trend to remove some dates?
+# R_eff of all cases
+R_eff_sim <- posterior_sims(R_eff, draws)
+
+# R_eff of locally-acquired cases
+R_eff_loc_sim <- posterior_sims(R_eff_loc, draws)
+
+# average R_eff of locally-acquired cases
+R_eff_loc_trend <- exp(log_R0 + log_Dt)
+R_eff_loc_trend_sim <- posterior_sims(R_eff_loc_trend, draws)
+
+# average R_eff of overseas-acquired cases
+R_eff_imp_trend <- exp(log_R0 + log_Qt)
+R_eff_imp_trend_sim <- posterior_sims(R_eff_imp_trend, draws)
+
+# random effect trends in Rt for locally-acquired cases (by state)
+error_effect_sim <- posterior_sims(epsilon, draws)
+
 
 blue <- "steelblue3"
+green <- brewer.pal(8, "Set2")[1]
+orange <- brewer.pal(8, "Set2")[2]
+pink <- brewer.pal(8, "Set2")[4]
 
+# overall R_eff
 plot_trend(R_eff_sim,
            multistate = TRUE,
            base_colour = blue,
@@ -266,69 +282,57 @@ ggsave("outputs/figures/R_eff_all.png",
        width = 10,
        height = 16, scale = 0.8)
 
-
-# R_eff of locally-acquired cases
-R_eff_loc_sim <- calculate(R_eff_loc, values = draws, nsim = 1e4)[[1]]
-
+# local R_eff
 plot_trend(R_eff_loc_sim,
            multistate = TRUE,
            base_colour = blue) +
   ggtitle(label = "Transmission by locally-acquired cases") +
-  ylab(expression(R["eff"]~of~locally~acquired~cases))
+  ylab(expression(R["eff"]~of~"locally-acquired"~cases))
   
 ggsave("outputs/figures/R_eff_local.png",
        width = 10,
        height = 16, scale = 0.8)
 
-# plot fixed effect trend in R_eff for locals (common to all states)
-R_eff_loc_trend <- exp(log_R0 + log_Dt)
-
-R_eff_loc_trend_sim <- calculate(R_eff_loc_trend, values = draws, nsim = 10000)[[1]][, , 1]
-
-green <- brewer.pal(8, "Set2")[1]
-
+# local average R_eff 
 plot_trend(R_eff_loc_trend_sim,
            multistate = FALSE,
-           base_colour = green) + 
-  ggtitle("Impact of social distancing") +
-  ylab(expression(average~R["eff"]~of~locally~acquired~cases))
+           base_colour = green,
+           vline_at = intervention_dates()$date) + 
+  ggtitle(label = "Impact of social distancing",
+          subtitle = expression(Average~R["eff"]~of~"locally-acquired"~cases)) +
+  ylab(expression(Average~R["eff"]))
   
 ggsave("outputs/figures/R_eff_trend_local.png",
        width = 5,
-       height = 4, scale = 0.8)
+       height = 4, scale = 1)
 
-# plot fixed effect trend in R_eff for locals (common to all states)
-R_eff_imp_trend <- exp(log_R0 + log_Qt)
-
-R_eff_imp_trend_sim <- calculate(R_eff_imp_trend, values = draws, nsim = 10000)[[1]][, , 1]
-
-orange <- base_colour <- brewer.pal(8, "Set2")[2]
+# imported average R_eff
 plot_trend(R_eff_imp_trend_sim,
            multistate = FALSE,
-           base_colour = orange) + 
-  ggtitle(label = "Impact of quarantine") +
-  ylab(expression(average~R["eff"]~of~overseas~acquired~cases))
+           base_colour = orange,
+           vline_at = quarantine_dates) + 
+  ggtitle(label = "Impact of quarantine",
+          subtitle = expression(Average~R["eff"]~of~"overseas-acquired"~cases)) +
+  ylab(expression(Average~R["eff"]))
 
 ggsave("outputs/figures/R_eff_trend_import.png",
        width = 5,
-       height = 4, scale = 0.8)
+       height = 4)
 
-# plot random effect trends in Rt (different in each state)
-error_effect_sim <- calculate(epsilon, values = draws, nsim = 10000)[[1]][, , 1]
-
-pink <- brewer.pal(8, "Set2")[4]
+# error trends
 plot_trend(error_effect_sim,
            multistate = TRUE,
            base_colour = pink,
            hline_at = 0,
            ylim = NULL) + 
   ggtitle(label = "Trends not explained by interventions",
-          subtitle = expression(Temporal~variation~around~average~ln(R["eff"])~of~locally~acquired~cases)) +
-  ylab("Deviation from national average")
+          subtitle = expression(Deviation~from~average~ln(R["eff"])~of~"locally-acquired"~cases)) +
+  ylab("Deviation")
 
 ggsave("outputs/figures/R_eff_error.png",
        width = 10,
        height = 16, scale = 0.8)
+
 
 # posterior summary of R0
 R0_draws <- R_eff_trend_sim[, 1]
