@@ -191,7 +191,8 @@ X <- cbind(date_vec,
 # define a GP on dates, using subset of regressors approximation
 
 # wiggliness of the state-level correlated errors
-l_state <- lognormal(2, 0.5)
+a_state <- lognormal(2, 0.5)
+l_state <- lognormal(4, 0.5)
 # magnitude of the state-level correlated errors
 sigma_state <- normal(0, 0.5, truncation = c(0, Inf))
 # degree of variation between state timeseries (shrink towards 0)
@@ -202,12 +203,18 @@ sigma_noise <- normal(0, 0.5, truncation = c(0, Inf))
 noise_kernel <- white(sigma_noise ^ 2)
 R0_kernel <- bias(R0_europe$sdlog ^ 2)
 distancing_kernel <- linear(1, columns = 3)
-error_kernel <- rbf(l_state, sigma_state ^ 2, columns = 1) * iid(sigma_state_iid ^ 2, columns = 2)
+error_kernel <- rational_quadratic(
+  lengthscales = l_state,
+  variance = sigma_state ^ 2,
+  alpha = a_state,
+  columns = 1) *
+  iid(sigma_state_iid ^ 2,
+      columns = 2)
 
 kernel <- noise_kernel + R0_kernel + distancing_kernel + error_kernel
 
 # build a matrix of inducing points, one every 7 days but with one at the end
-inducing_date_nums <- seq(n_dates, 1, by = -3)
+inducing_date_nums <- seq(n_dates, 1, by = -5)
 inducing_index <- which(X[, 1] %in% inducing_date_nums)
 X_inducing <- X[inducing_index, ]
 
