@@ -847,3 +847,87 @@ R0_prior <- function() {
   list(meanlog = par[1], sdlog = exp(par[2]))
   
 }
+
+plot_trend <- function(simulations,
+                       base_colour = grey(0.4),
+                       multistate = FALSE,
+                       hline_at = 1,
+                       ylim = c(0, 3),
+                       vline_at = NA,
+                       keep_only_rows = NULL) {
+  
+  library(ggplot2)
+  
+  mean <- colMeans(simulations)
+  ci_90 <- apply(simulations, 2, quantile, c(0.05, 0.95))
+  ci_50 <- apply(simulations, 2, quantile, c(0.25, 0.75))
+  
+  if (multistate) {
+    dates <- rep(dates, n_states)
+    states <- rep(states, each = n_dates)
+  } else {
+    states <- NA
+  }
+  
+  df <- tibble(date = dates,
+               state = states,
+               mean = mean,
+               ci_50_lo = ci_50[1, ],
+               ci_50_hi = ci_50[2, ],
+               ci_90_lo = ci_90[1, ],
+               ci_90_hi = ci_90[2, ])
+  
+  if (!is.null(keep_only_rows)) {
+    df <- df[keep_only_rows, ]
+  }
+  
+  df <- df %>%
+    filter(date >= as.Date("2020-03-01")) %>%
+    mutate(type = "Nowcast")
+  
+  if (is.null(ylim)) {
+    ylim <- c(min(df$ci_90_lo), max(df$ci_90_hi)) 
+  }
+  
+  p <- ggplot(df) + 
+    
+    aes(date, mean, fill = type) +
+    
+    xlab(element_blank()) +
+    
+    coord_cartesian(ylim = ylim) +
+    scale_y_continuous(position = "right") +
+    scale_x_date(date_breaks = "2 weeks", date_labels = "%b %d") +
+    scale_alpha(range = c(0, 0.5)) +
+    scale_fill_manual(values = c("Nowcast" = base_colour)) +
+    
+    geom_ribbon(aes(ymin = ci_90_lo,
+                    ymax = ci_90_hi),
+                alpha = 0.2) +
+    geom_ribbon(aes(ymin = ci_50_lo,
+                    ymax = ci_50_hi),
+                alpha = 0.5) +
+    geom_line(aes(y = ci_90_lo),
+              colour = base_colour,
+              alpha = 0.8) + 
+    geom_line(aes(y = ci_90_hi),
+              colour = base_colour,
+              alpha = 0.8) + 
+    
+    geom_hline(yintercept = hline_at, linetype = "dotted") +
+    
+    cowplot::theme_cowplot() +
+    cowplot::panel_border(remove = TRUE) +
+    theme(legend.position = "none",
+          strip.background = element_blank(),
+          strip.text = element_text(hjust = 0, face = "bold"),
+          axis.title.y.right = element_text(vjust = 0.5, angle = 90))
+  
+  if (multistate) {
+    p <- p + facet_wrap(~ state, ncol = 2, scales = "free")
+  }
+  
+  p    
+  
+}
+

@@ -123,314 +123,208 @@ social_distancing_index <- distancing_file %>%
 library(greta.gp)
 
 # lognormal prior on R0 (normal prior on log(R0)) based on estimates for
-# Northern Europe from Flaxman et al. (Imperial report 13)
+# Northern Europe from Flaxman et al. (Imperial report 13, lowest R0s from their
+# sensitivity analysis)
 R0_europe <- R0_prior()
+log_R0 <- normal(R0_europe$meanlog, R0_europe$sdlog)
 
-# the relative contribution of imported cases (relative to locally-acquired
-# cases) to transmission. I.e. one minus sthe effectiveness of quarantine
-# measures. Assume it varies over time, based around these federal announcements
+# the reduction from R0 down to R_eff for imported cases due to different
+# quarantine measures each measure applied during a different period. Q_t is
+# R_eff_t / R0 for each time t, modelled as a monotone decreasing step function
+# over three periods with increasingly strict policies
 
-quarantine_index <- case_when(
+q_index <- case_when(
   dates < as.Date("2020-03-15") ~ 1,
   dates <= as.Date("2020-03-27") ~ 2,
   TRUE ~ 3,
 )
 
-# assume at least 95% imports removed from circulation in the last period
-# (enforced quarantine), but just assume that quarantine efectiveness in earlier
-# periods was increasing
-q3 <- uniform(0.95, 1)
-ratio1 <- uniform(0, 1)
-q2 <- q3 * ratio1
-ratio2 <- uniform(0, 1)
-q1 <- q2 * ratio2
+q_raw <- uniform(0, 1, dim = 3)
+q <- cumprod(q_raw)
+q_index_vec <- rep(q_index, n_states)
+log_q <- log(q)
+log_Qt_vec <- log_q[q_index_vec]
+# log_q_raw <- -exponential(1, dim = 3)
+# log_q <- cumsum(log_q_raw)
+# log_Qt <- log_q[q_index]
 
-quarantine <- c(q1, q2, q3)
-quarantine_effectiveness <- quarantine[quarantine_index]
+# the reduction from R0 down to R_eff for locally-acquired cases due to social
+# distancing behaviour, modelled as a being proportional to the change in
+# mobility measured from the mobility datastreams
+beta <- normal(0, 1)
+log_Dt_vec <- beta * rep(social_distancing_index, n_states)
+# log_Dt <- beta * social_distancing_index
 
-import_contribution <- 1 - quarantine_effectiveness
+# temporally correlated errors in R_eff for local cases - representing all the
+# stochastic transmission dynamics in the community, such as outbreaks in
+# communities with higher or lower tranmission rates.
 
-# disaggregate imported and local cases according to these probabilities to get
-# the expected number of infectious people in each state and time
-case_contribution <- local_cases + sweep(imported_cases, 1, import_contribution, FUN = "*")
-lambda <- apply_serial_interval(case_contribution, fixed = TRUE)
+# variation in R_eff for locally-acquired cases over time
+alpha_time <- lognormal(2, 0.5)
+lengthscale_time <- lognormal(4, 0.5)
+sigma_time <- normal(0, 0.5, truncation = c(0, Inf))
 
-# NOTE: fixing the SI parameters at their prior means just for testing
+time_kernel <- rational_quadratic(
+  lengthscales = lengthscale_time,
+  variance = sigma_time ^ 2,
+  alpha = alpha_time,
+  columns = 1)
 
-# define a GP to reflect the function:
-#   log(R_eff) <- log(R_0) + b * social-distancing-index_{t,i} + \epsilon_{t,i}
-#   epsilon_i ~ GP(0, K1)
-#   log(R_0) ~ N(0.723, 0.465)
-
-# but since this implies a MVN prior over log(R_eff), we can marginalise all of
-# these separate parameters and make the posterior much more nicely behaved:
-
-#  log(R0) ~ R0_mean + GP(0, white())
-#  epsilon_i ~ GP(0, rbf1(time))
-#  epsilon ~ GP(0, rbf2(time) * iid(state))
-#  social-distancing-index * b ~ GP(0, lin(social-distancing-index))
-
-# These GPs can be combined as:
-
-#  log(R0) + b * social-distancing-index + epsilon = GP(0.723, K)
-#  K = white() +
-#      lin(social-distancing-index)
-#      rbf2(time) * iid(state) +
-
-# need to first put the data into a vector, and take this opportunity to exclude those with no infectious cases
-lambda_vec <- c(lambda)
-
-date_vec <- rep(date_nums, n_states)
-state_vec <- rep(seq_len(n_states), each = n_dates)
-social_distancing_index_vec <- rep(social_distancing_index, n_states)
-
-X <- cbind(date_vec,
-           state_vec,
-           social_distancing_index_vec)
-
-# define a GP on dates, using subset of regressors approximation
-
-# wiggliness of the state-level correlated errors
-a_state <- lognormal(2, 0.5)
-l_state <- lognormal(4, 0.5)
-# magnitude of the state-level correlated errors
+# variation in this timeseries between the states and territories
 sigma_state <- normal(0, 0.5, truncation = c(0, Inf))
-# degree of variation between state timeseries (shrink towards 0)
-sigma_state_iid <- normal(0, 0.5, truncation = c(0, Inf))
-# amount of IID noise in log(R_eff) per day (overdispersion, or case clustering)
+state_variation_kernel <- iid(sigma_state ^ 2, columns = 2)
+
+# IID noise in log(R_eff) per day (overdispersion, or case clustering)
 sigma_noise <- normal(0, 0.5, truncation = c(0, Inf))
-
 noise_kernel <- white(sigma_noise ^ 2)
-R0_kernel <- bias(R0_europe$sdlog ^ 2)
-distancing_kernel <- linear(1, columns = 3)
-error_kernel <- rational_quadratic(
-  lengthscales = l_state,
-  variance = sigma_state ^ 2,
-  alpha = a_state,
-  columns = 1) *
-  iid(sigma_state_iid ^ 2,
-      columns = 2)
 
-kernel <- noise_kernel + R0_kernel + distancing_kernel + error_kernel
+kernel <- noise_kernel + time_kernel * state_variation_kernel
 
-# build a matrix of inducing points, one every 7 days but with one at the end
+# data for the GP to act on
+X <- cbind(date = rep(date_nums, n_states),
+           state = rep(seq_len(n_states), each = n_dates))
+
+# build a matrix of inducing points, regularly spaced over time but with one on
+# the most recent date
 inducing_date_nums <- seq(n_dates, 1, by = -5)
 inducing_index <- which(X[, 1] %in% inducing_date_nums)
 X_inducing <- X[inducing_index, ]
 
-zero_mean_gp <- gp(X, kernel, inducing = X_inducing, tol = 0)
-log_R_eff <- R0_europe$meanlog + zero_mean_gp
+# evaluate GP for epsilon
+epsilon <- gp(X, kernel, inducing = X_inducing, tol = 0)
+
+# combine these components
+# N ~ Poisson(R0 * (I_L * Dt * exp(epsilon) + IO * Qt))
+# log_R0 + log(exp(log(I_L) + log_Dt + epsilon) + exp(log(I_O)  log_Qt))
+
+# disaggregate imported and local cases according to the serial interval
+# probabilities to get the expected number of infectious people in each state
+# and time. Fixing the SI parameters at their prior means for now
+local_infectious <- apply_serial_interval(local_cases, fixed = TRUE) 
+imported_infectious <- apply_serial_interval(imported_cases, fixed = TRUE) 
+
+# combine everything as vectors
+log_loc_infectious_vec <- c(log(local_infectious))
+log_imp_infectious_vec <- c(log(imported_infectious))
 
 # work out which ones to exclude (because there were no infectious people)
-lambda_vec_vals <- calculate(lambda_vec, nsim = 1)[[1]][1, , 1]
-valid <- which(lambda_vec_vals > 0)
+valid <- which(is.finite(log_loc_infectious_vec + log_imp_infectious_vec))
 
-# combine with lambda on log scale for numerical stability - since greta can use
-# this in evaluating the poisson likelihood
-log_expected_infections <- log(lambda_vec[valid]) + log_R_eff[valid]
+# log_Reff_local <- log_R0 + log_Dt_vec + epsilon
+# log_Reff_imported <- log_R0 + log_Qt_vec
+# 
+# # get log expected number of new cases due to infectious people in each group
+# new_from_local <- exp(log_loc_infectious_vec[valid] + log_Reff_local[valid])
+# new_from_imports <- exp(log_imp_infectious_vec[valid] + log_Reff_imported[valid])
+# expected_infections <- new_from_local + new_from_local
+
+log_rel_new_from_loc <- log_loc_infectious_vec[valid] + log_Dt_vec + epsilon
+log_rel_new_from_imp <- log_imp_infectious_vec[valid] + log_Qt_vec
+rel_new <- exp(log_rel_new_from_loc) + exp(log_rel_new_from_imp)
+log_expected_infections <- log_R0 + log(rel_new)
 expected_infections <- exp(log_expected_infections)
+
+# really want to do logsumexp here, so poisson is working with logs..
 distribution(local_cases[valid]) <- poisson(expected_infections)
 
-m <- model(log_R_eff)
-
+m <- model(log_Reff_local, log_Reff_imported)
 draws <- mcmc(m, chains = 10, one_by_one = TRUE)
 
+# check convergence
 r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
 n_eff <- coda::effectiveSize(draws)
 max(r_hats)
 min(n_eff)
 
+# estimate R effective for all cases as a case-weighted sum of the two?
+all_infectious <- local_infectious + imported_infectious
+p_imported <- imported_infectious / all_infectious
+p_imported[local_infectious == 0]  <- 1
+p_imported[imported_infectious == 0]  <- 0
+keep <- all_infectious > 0
 
-R_eff <- exp(log_R_eff)
+R_eff_loc_weighted <- R_eff_loc * (1 - c(p_imported))
+R_eff_imp_weighted <- c(sweep(p_imported, 1, R_eff_imp_trend, FUN = "*"))
 
-R_eff_draws <- calculate(R_eff, values = draws)
-R_eff_mat <- as.matrix(R_eff_draws)
-mean <- colMeans(R_eff_mat)
-ci90 <- apply(R_eff_mat, 2, quantile, c(0.05, 0.95))
-ci50 <- apply(R_eff_mat, 2, quantile, c(0.25, 0.75))
+R_eff <- R_eff_loc_weighted + R_eff_imp_weighted 
 
-df <- tibble(date = rep(dates, n_states),
-             state = rep(states, each = n_dates),
-             R_eff_mean = mean,
-             R_eff_50_lo = ci50[1, ],
-             R_eff_50_hi = ci50[2, ],
-             R_eff_90_lo = ci90[1, ],
-             R_eff_90_hi = ci90[2, ])
+# R_eff of locally-acquired cases
+R_eff_sim <- calculate(R_eff, values = draws, nsim = 1e4)[[1]]
 
+# pass in a masking variable to plot_trend to remove some dates?
 
-base_colour <- "steelblue3"
-library(ggplot2)
-df %>%
-  filter(date >= as.Date("2020-03-01")) %>%
-  mutate(type = "Nowcast") %>%
-  
-  ggplot() + 
-  aes(date, R_eff_mean, fill = type) +
-  
-  ylab(expression(R["eff"])) +
-  xlab("Date") +
-  
-  coord_cartesian(ylim = c(0, 3)) +
-  scale_y_continuous(position = "right") +
-  scale_x_date(date_breaks = "2 weeks", date_labels = "%b %d") +
-  scale_alpha(range = c(0, 0.5)) +
-  scale_fill_manual(values = c("Nowcast" = base_colour)) +
-  
-  geom_ribbon(aes(ymin = R_eff_90_lo,
-                  ymax = R_eff_90_hi),
-              alpha = 0.2) +
-  geom_ribbon(aes(ymin = R_eff_50_lo,
-                  ymax = R_eff_50_hi),
-              alpha = 0.5) +
-  geom_line(aes(y = R_eff_90_lo),
-            colour = base_colour,
-            alpha = 0.8) + 
-  geom_line(aes(y = R_eff_90_hi),
-            colour = base_colour,
-            alpha = 0.8) + 
-  
-  geom_hline(yintercept = 1, linetype = "dotted") +
-  geom_hline(yintercept = 2.6, linetype = "dashed") +
-  
-  facet_wrap(~ state, ncol = 2, scales = "free") +
-  
-  cowplot::theme_cowplot() +
-  cowplot::panel_border(remove = TRUE) +
-  theme(legend.position = "none",
-        strip.background = element_blank(),
-        strip.text = element_text(hjust = 0, face = "bold"),
-        axis.title.y.right = element_text(vjust = 0.5, angle = 0))
+blue <- "steelblue3"
 
-ggsave("outputs/figures/R_eff.png",
+plot_trend(R_eff_sim,
+           multistate = TRUE,
+           base_colour = blue,
+           keep_only_rows = c(all_infectious > 0)) +
+  ggtitle(label = "Transmission by all cases") +
+  ylab(expression(R["eff"]))
+
+ggsave("outputs/figures/R_eff_all.png",
        width = 10,
        height = 16, scale = 0.8)
 
-# plot fixed effect trend in Rt (common to all states)
-X_one_state <- X[1:n_dates, ]
-trend_kernel <- R0_kernel + distancing_kernel
-distancing_effect <- project(zero_mean_gp,
-                             x_new = X_one_state,
-                             kernel = trend_kernel)
 
-log_R_eff_trend <- R0_europe$meanlog + distancing_effect
-R_eff_trend <- exp(log_R_eff_trend)
+# R_eff of locally-acquired cases
+R_eff_loc_sim <- calculate(R_eff_loc, values = draws, nsim = 1e4)[[1]]
 
-R_eff_trend_sim <- calculate(R_eff_trend, values = draws, nsim = 10000)[[1]][, , 1]
-mean <- colMeans(R_eff_trend_sim)
-ci90 <- apply(R_eff_trend_sim, 2, quantile, c(0.05, 0.95))
-ci50 <- apply(R_eff_trend_sim, 2, quantile, c(0.25, 0.75))
+plot_trend(R_eff_loc_sim,
+           multistate = TRUE,
+           base_colour = blue) +
+  ggtitle(label = "Transmission by locally-acquired cases") +
+  ylab(expression(R["eff"]~of~locally~acquired~cases))
+  
+ggsave("outputs/figures/R_eff_local.png",
+       width = 10,
+       height = 16, scale = 0.8)
 
-df_trend <- tibble(date = dates,
-                   R_eff_mean = mean,
-                   R_eff_50_lo = ci50[1, ],
-                   R_eff_50_hi = ci50[2, ],
-                   R_eff_90_lo = ci90[1, ],
-                   R_eff_90_hi = ci90[2, ])
+# plot fixed effect trend in R_eff for locals (common to all states)
+R_eff_loc_trend <- exp(log_R0 + log_Dt)
 
-base_colour <- brewer.pal(8, "Set2")[1]
-y_max <- max(c(3, df_trend$R_eff_50_hi))
-df_trend %>%
-  filter(date >= as.Date("2020-03-01")) %>%
-  mutate(type = "Nowcast") %>%
-  
-  ggplot() + 
-  aes(date, R_eff_mean, fill = type) +
-  
-  ylab(expression(R["eff"])) +
-  xlab("Date") +
-  
-  coord_cartesian(ylim = c(0, y_max)) +
-  scale_y_continuous(position = "right") +
-  scale_x_date(date_breaks = "2 weeks", date_labels = "%b %d") +
-  scale_alpha(range = c(0, 0.5)) +
-  scale_fill_manual(values = c("Nowcast" = base_colour)) +
-  
-  geom_ribbon(aes(ymin = R_eff_90_lo,
-                  ymax = R_eff_90_hi),
-              alpha = 0.2) +
-  geom_ribbon(aes(ymin = R_eff_50_lo,
-                  ymax = R_eff_50_hi),
-              alpha = 0.5) +
-  geom_line(aes(y = R_eff_90_lo),
-            colour = base_colour,
-            alpha = 0.8) + 
-  geom_line(aes(y = R_eff_90_hi),
-            colour = base_colour,
-            alpha = 0.8) + 
-  
-  geom_hline(yintercept = 1, linetype = "dotted") +
-  geom_hline(yintercept = 2.6, linetype = "dashed") +
-  
-  cowplot::theme_cowplot() +
-  cowplot::panel_border(remove = TRUE) +
-  theme(legend.position = "none",
-        strip.background = element_blank(),
-        strip.text = element_text(hjust = 0, face = "bold"),
-        axis.title.y.right = element_text(vjust = 0.5, angle = 0))
+R_eff_loc_trend_sim <- calculate(R_eff_loc_trend, values = draws, nsim = 10000)[[1]][, , 1]
 
-ggsave("outputs/figures/R_eff_trend.png",
+green <- brewer.pal(8, "Set2")[1]
+
+plot_trend(R_eff_loc_trend_sim,
+           multistate = FALSE,
+           base_colour = green) + 
+  ggtitle("Impact of social distancing") +
+  ylab(expression(average~R["eff"]~of~locally~acquired~cases))
+  
+ggsave("outputs/figures/R_eff_trend_local.png",
        width = 5,
        height = 4, scale = 0.8)
 
+# plot fixed effect trend in R_eff for locals (common to all states)
+R_eff_imp_trend <- exp(log_R0 + log_Qt)
+
+R_eff_imp_trend_sim <- calculate(R_eff_imp_trend, values = draws, nsim = 10000)[[1]][, , 1]
+
+orange <- base_colour <- brewer.pal(8, "Set2")[2]
+plot_trend(R_eff_imp_trend_sim,
+           multistate = FALSE,
+           base_colour = orange) + 
+  ggtitle(label = "Impact of quarantine") +
+  ylab(expression(average~R["eff"]~of~overseas~acquired~cases))
+
+ggsave("outputs/figures/R_eff_trend_import.png",
+       width = 5,
+       height = 4, scale = 0.8)
 
 # plot random effect trends in Rt (different in each state)
-error_effect <- project(zero_mean_gp,
-                        x_new = X,
-                        kernel = error_kernel)
+error_effect_sim <- calculate(epsilon, values = draws, nsim = 10000)[[1]][, , 1]
 
-error_effect_sim <- calculate(error_effect, values = draws, nsim = 10000)[[1]][, , 1]
-mean <- colMeans(error_effect_sim)
-ci90 <- apply(error_effect_sim, 2, quantile, c(0.05, 0.95))
-ci50 <- apply(error_effect_sim, 2, quantile, c(0.25, 0.75))
-
-df_error <- tibble(date = rep(dates, n_states),
-                   state = rep(states, each = n_dates),
-                   R_eff_mean = mean,
-                   R_eff_50_lo = ci50[1, ],
-                   R_eff_50_hi = ci50[2, ],
-                   R_eff_90_lo = ci90[1, ],
-                   R_eff_90_hi = ci90[2, ])
-
-base_colour <- brewer.pal(8, "Set2")[4]
-y_lim <- range(c(df_error$R_eff_90_lo, df_error$R_eff_90_hi))
-df_error %>%
-  filter(date >= as.Date("2020-03-01")) %>%
-  mutate(type = "Nowcast") %>%
-  
-  ggplot() + 
-  aes(date, R_eff_mean, fill = type) +
-  
-  ylab(expression(Temporal~variation~around~trend~of~ln(R["eff"]))) +
-  xlab("Date") +
-  
-  coord_cartesian(ylim = y_lim) +
-  scale_y_continuous(position = "right") +
-  scale_x_date(date_breaks = "2 weeks", date_labels = "%b %d") +
-  scale_alpha(range = c(0, 0.5)) +
-  scale_fill_manual(values = c("Nowcast" = base_colour)) +
-  
-  geom_ribbon(aes(ymin = R_eff_90_lo,
-                  ymax = R_eff_90_hi),
-              alpha = 0.2) +
-  geom_ribbon(aes(ymin = R_eff_50_lo,
-                  ymax = R_eff_50_hi),
-              alpha = 0.5) +
-  geom_line(aes(y = R_eff_90_lo),
-            colour = base_colour,
-            alpha = 0.8) + 
-  geom_line(aes(y = R_eff_90_hi),
-            colour = base_colour,
-            alpha = 0.8) + 
-  
-  geom_hline(yintercept = 0, linetype = "dotted") +
-  facet_wrap(~ state, ncol = 2, scales = "free") +
-  
-  cowplot::theme_cowplot() +
-  cowplot::panel_border(remove = TRUE) +
-  theme(legend.position = "none",
-        strip.background = element_blank(),
-        strip.text = element_text(hjust = 0, face = "bold"),
-        axis.title.y.right = element_text(vjust = 0.5, angle = 90))
+pink <- brewer.pal(8, "Set2")[4]
+plot_trend(error_effect_sim,
+           multistate = TRUE,
+           base_colour = pink,
+           hline_at = 0,
+           ylim = NULL) + 
+  ggtitle(label = "Trends not explained by interventions",
+          subtitle = expression(Temporal~variation~around~average~ln(R["eff"])~of~locally~acquired~cases)) +
+  ylab("Deviation from national average")
 
 ggsave("outputs/figures/R_eff_error.png",
        width = 10,
@@ -441,7 +335,7 @@ R0_draws <- R_eff_trend_sim[, 1]
 mean(R0_draws)
 sd(R0_draws)
 
-# posterior summary of R_eff for the llatest date
+# posterior summary of R_eff for the latest date
 R_eff_now_draws <- R_eff_trend_sim[, ncol(R_eff_trend_sim)]
 mean(R_eff_now_draws)
 sd(R_eff_now_draws)
