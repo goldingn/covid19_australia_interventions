@@ -92,7 +92,7 @@ google_mobility <- function() {
 # download and format Apple's mobility data - will need to update the url regularly
 apple_mobility <- function() {
   # get link from: https://www.apple.com/covid19/mobility
-  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2006HotfixDev20/v2/en-us/applemobilitytrends-2020-04-27.csv"
+  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2007HotfixDev44/v2/en-us/applemobilitytrends-2020-04-30.csv"
   data <- readr::read_csv(url) %>%
     tidyr::pivot_longer(
       cols = starts_with("2020-"),
@@ -132,7 +132,7 @@ apple_mobility <- function() {
 citymapper_mobility <- function() {
   
   # get link from: https://citymapper.com/cmi/about
-  url <- "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20200429.csv"
+  url <- "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20200501.csv"
   data <- readr::read_csv(url, skip = 3) %>%
     tidyr::pivot_longer(cols = -Date,
                         names_to = "region",
@@ -464,7 +464,7 @@ summarise_vec_posterior <- function(vector,
                                     draws,
                                     quantiles = c(0.025, 0.975),
                                     nsim = 1000) {
-  vector_sim <- posterior_sims(vector, draws, nsim = nsim)[, , 1]
+  vector_sim <- posterior_sims(vector, draws, nsim = nsim)
   posterior_mean <- colMeans(vector_sim)
   posterior_ci <- t(apply(vector_sim, 2, quantile, quantiles))
   cbind(mean = posterior_mean, posterior_ci)

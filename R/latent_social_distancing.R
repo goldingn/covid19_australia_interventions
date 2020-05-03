@@ -61,12 +61,17 @@ distancing <- latent_behaviour_switch(date_num, trigger_date_num)
 # switching back to baseline behaviour or increasing distancing behaviour) Fix
 # the parameters to an exponential function, since it's barely identified.
 last_date_num <- n_dates - 1
-kappa_distancing_change <- 2
-tau_distancing_change <- last_date_num
-distancing_change <- latent_behaviour_switch(date_num,
-                                             tau = tau_distancing_change,
-                                             kappa = kappa_distancing_change)
-distancing_change <- distancing_change * 2
+# kappa_distancing_effect <- 2
+# tau_distancing_effect <- last_date_num - 7
+# distancing_effect <- latent_behaviour_switch(date_num,
+#                                              tau = tau_distancing_effect,
+#                                              kappa = kappa_distancing_effect)
+# distancing_effect <- distancing_effect * 2
+
+# make this a linear increase since one week after the last intervention
+# should be able to fit to date once we get more datastreams showing waning
+effect_period <- as.numeric(max(dates) - max(interventions$date)) - 7
+distancing_effect <- pmax(0, 1 + (date_num - last_date_num) / effect_period)
 
 # latent factor for pre-distancing surge in mobility with a prior that it peaks
 # around the time of the first restriction
@@ -95,7 +100,7 @@ weekday <- day_weights[doy]
 # combine into latent factor matrix
 latents_ntnl <- cbind(bump,
                       distancing,
-                      distancing_change,
+                      distancing_effect,
                       back_to_work,
                       weekday)
 n_latents_ntnl <- ncol(latents_ntnl)
@@ -288,7 +293,7 @@ for (j in seq_len(n_states)) {
 # same for a subset of datastreams, by all states
 target_datastreams <- c("Apple: directions for driving",
                         "Google: time at residential",
-                        "Google: time at grocery and pharmacy")
+                        "Google: time at parks")
 
 # get the vector of state-datastreams to plot
 state_datastreams_plot <- mobility %>%
@@ -589,6 +594,8 @@ for(i in 1:4) {
     mutate(date = dates) %>%
     saveRDS(filename)
 }
+
+save.image("outputs/latent_social_distancing_temp.RData")
 
 # - plot state-by-factor loading plots
 # - pull more model code out into functions
