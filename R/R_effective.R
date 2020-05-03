@@ -329,6 +329,22 @@ orange <- brewer.pal(8, "Set2")[2]
 pink <- brewer.pal(8, "Set2")[4]
 
 
+# david does 8.27 x 11.69 (landscape A4) for 3x2 panels
+# aspect ratio of 0.707:1 h:w
+# want A4 *portrait* width (8.27) with same aspect ratio
+
+# get required aspect ratio
+panel_width <- 11.69 / 2
+panel_height <- 8.27 / 3
+panel_ratio <- panel_height / panel_width
+
+# work out dimensions for 4x2 panels for reports
+multi_mfrow <- c(4, 2)
+multi_width <- 8.27
+multi_height <- (multi_width / multi_mfrow[2]) * panel_ratio * multi_mfrow[1]
+# add a bit of space for the title
+multi_height <- multi_height * 1.2
+
 # overall R_eff
 plot_trend(R_eff_sim,
            multistate = TRUE,
@@ -338,8 +354,9 @@ plot_trend(R_eff_sim,
   ylab(expression(R["eff"]))
 
 ggsave("outputs/figures/R_eff_all.png",
-       width = 10,
-       height = 16, scale = 0.8)
+       width = multi_width,
+       height = multi_height,
+       scale = 0.8)
 
 # local R_eff
 plot_trend(R_eff_loc_sim,
@@ -350,8 +367,9 @@ plot_trend(R_eff_loc_sim,
   ylab(expression(R["eff"]~of~"locally-acquired"~cases))
 
 ggsave("outputs/figures/R_eff_local.png",
-       width = 10,
-       height = 16, scale = 0.8)
+       width = multi_width,
+       height = multi_height,
+       scale = 0.8)
 
 # imported R_eff
 plot_trend(R_eff_imp_sim,
@@ -362,8 +380,10 @@ plot_trend(R_eff_imp_sim,
   ylab(expression(R["eff"]~of~"overseas-acquired"~cases))
 
 ggsave("outputs/figures/R_eff_imported.png",
-       width = 10,
-       height = 16, scale = 0.8)
+       width = multi_width,
+       height = multi_height,
+       scale = 0.8)
+
 
 # local average R_eff 
 plot_trend(R_eff_loc_trend_sim,
@@ -371,25 +391,27 @@ plot_trend(R_eff_loc_trend_sim,
            base_colour = green,
            vline_at = intervention_dates()$date) + 
   ggtitle(label = "Impact of social distancing",
-          subtitle = expression(Average~R["eff"]~of~"locally-acquired"~cases)) +
-  ylab(expression(Average~R["eff"]))
+          subtitle = expression(Component~of~R["eff"]~due~to~social~distancing)) +
+  ylab(expression(R["eff"]~component))
   
 ggsave("outputs/figures/R_eff_trend_local.png",
-       width = 5,
-       height = 4, scale = 1)
+       width = panel_width,
+       height = panel_height * 1.25,
+       scale = 1)
 
 # imported average R_eff
 plot_trend(R_eff_imp_trend_sim,
            multistate = FALSE,
            base_colour = orange,
            vline_at = quarantine_dates) + 
-  ggtitle(label = "Impact of quarantine",
-          subtitle = expression(Average~R["eff"]~of~"overseas-acquired"~cases)) +
-  ylab(expression(Average~R["eff"]))
+  ggtitle(label = "Impact of quarantine of overseas arrivals",
+          subtitle = expression(Component~of~R["eff"]~due~to~quarantine~of~overseas~arrivals)) +
+  ylab(expression(R["eff"]~component))
 
 ggsave("outputs/figures/R_eff_trend_import.png",
-       width = 5,
-       height = 4)
+       width = panel_width,
+       height = panel_height * 1.25,
+       scale = 1)
 
 # error trends
 plot_trend(error_effect_L_sim,
@@ -398,13 +420,14 @@ plot_trend(error_effect_L_sim,
            hline_at = 0,
            vline_at = intervention_dates()$date,
            ylim = NULL) + 
-  ggtitle(label = "Trend in local cases not explained by distancing",
+  ggtitle(label = "Trend in local cases not explained by social distancing",
           subtitle = expression(Deviation~from~average~ln(R["eff"])~of~"locally-acquired"~cases)) +
   ylab("Deviation")
 
 ggsave("outputs/figures/R_eff_error_local.png",
-       width = 10,
-       height = 16, scale = 0.8)
+       width = multi_width,
+       height = multi_height,
+       scale = 0.8)
 
 # error trends
 plot_trend(error_effect_O_sim,
@@ -413,13 +436,14 @@ plot_trend(error_effect_O_sim,
            hline_at = 0,
            vline_at = quarantine_dates,
            ylim = NULL) + 
-  ggtitle(label = "Trend in imported cases not explained by distancing",
+  ggtitle(label = "Trend in imported cases not explained by quarantine of overseas arrivals",
           subtitle = expression(Deviation~from~average~ln(R["eff"])~of~"overseas-acquired"~cases)) +
   ylab("Deviation")
 
 ggsave("outputs/figures/R_eff_error_import.png",
-       width = 10,
-       height = 16, scale = 0.8)
+       width = multi_width,
+       height = multi_height,
+       scale = 0.8)
 
 
 # posterior summary of R0
@@ -432,5 +456,7 @@ R_eff_now_draws <- R_eff_trend_sim[, ncol(R_eff_trend_sim)]
 mean(R_eff_now_draws)
 sd(R_eff_now_draws)
 max(dates)
+
+# - switch to stacked version of GP (smaller covaraince matrix, faster inference)
 # - add a custom greta function for lognormal CDF (using TFP) and try
 #   sampling with that
