@@ -192,11 +192,13 @@ log_Qt_vec <- log_q[q_index_vec]
 # log_Qt <- log_q[q_index]
 
 # the reduction from R0 down to R_eff for locally-acquired cases due to social
-# distancing behaviour, modelled as a being proportional to the change in
-# mobility measured from the mobility datastreams
-beta <- normal(0, 1)
-log_Dt_vec <- beta * rep(social_distancing_index, n_states)
-# log_Dt <- beta * social_distancing_index
+# distancing behaviour, modelled as a being proportional to the reduction in
+# mobility (and therefore contacts) measured from the mobility datastreams. The
+# social distanding index is proportional to the percentage change in mobility,
+# but we can express is as proportional reduction in mobility with: 1 - beta * sdi
+beta <- uniform(0, 1)
+log_Dt_vec <- log1p(-beta * rep(social_distancing_index, n_states))
+# log_Dt <- log1p(-beta * social_distancing_index)
 
 # temporally correlated errors in R_eff for local cases - representing all the
 # stochastic transmission dynamics in the community, such as outbreaks in
@@ -289,7 +291,7 @@ min(n_eff)
 # infectious cases that are imports
 
 p_imported <- proportion_imported(local_infectious, imported_infectious, X)
-log_Dt_weighted <- log_Dt_vec + epsilon_L + log(1 - c(p_imported))
+log_Dt_weighted <- log_Dt_vec + epsilon_L + log1p(-c(p_imported))
 log_Qt_weighted <- log_Qt_vec + epsilon_O + log(c(p_imported))
 log_rel_R_eff <- log(exp(log_Dt_weighted) + exp(log_Qt_weighted))
 log_R_eff <- log_R0 + log_rel_R_eff

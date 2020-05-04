@@ -772,38 +772,6 @@ lognormal_prior <- function(mean, sd) {
   
 }
 
-tf_as_float <- greta:::tf_as_float
-fl <- greta:::fl
-
-greta_kernel <- greta.gp:::greta_kernel
-tf_cols <- greta.gp:::tf_cols
-tf_distance <- greta.gp:::tf_distance
-check_active_dims <- greta.gp:::check_active_dims
-
-
-iid <- function(variance, columns = 1) {
-  greta_kernel("iid",
-               tf_name = "tf_iid",
-               parameters = list(variance = variance),
-               arguments = list(
-                 active_dims = check_active_dims(columns,
-                                                 rep(1, length(columns))
-                 )))
-}
-
-tf_iid <- function(X, X_prime, variance, active_dims) {
-  
-  # pull out active dimensions
-  X <- tf_cols(X, active_dims)
-  X_prime <- tf_cols(X_prime, active_dims)
-  
-  # find where these values match and assign the variance as a covariance there
-  # (else set it to 0)
-  distance <- tf_distance(X, X_prime)
-  tf_as_float(distance < fl(1e-12)) * variance
-
-}
-
 R0_prior <- function() {
   # Visually estimated values of the posterior distributions  (means and lower
   # and upper 95% CIs) over R0 in 11 European countries from Flaxman et al.
