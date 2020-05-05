@@ -58,20 +58,22 @@ trigger_date_num <- as.numeric(interventions$date - first_date)
 distancing <- latent_behaviour_switch(date_num, trigger_date_num)
 
 # add term for recent change to social distancing (some proportion either
-# switching back to baseline behaviour or increasing distancing behaviour) Fix
-# the parameters to an exponential function, since it's barely identified.
+# switching back to baseline behaviour or increasing distancing behaviour)
+# make this a linear increase since a peak (with prior mean one week after the
+# last intervention, 95% interval in the week around that)
 last_date_num <- n_dates - 1
-# kappa_distancing_effect <- 2
-# tau_distancing_effect <- last_date_num - 7
-# distancing_effect <- latent_behaviour_switch(date_num,
-#                                              tau = tau_distancing_effect,
-#                                              kappa = kappa_distancing_effect)
-# distancing_effect <- distancing_effect * 2
+last_intervention_date_num <- as.numeric(max(interventions$date) - first_date)
+peak_range <- last_date_num - last_intervention_date_num
 
-# make this a linear increase since one week after the last intervention
-# should be able to fit to date once we get more datastreams showing waning
-effect_period <- as.numeric(max(dates) - max(interventions$date)) - 7
-distancing_effect <- pmax(0, 1 + (date_num - last_date_num) / effect_period)
+# how far back from the last date was the peak of distancing?
+peak <- normal(last_intervention_date_num + 7,
+               3.5 / 1.96,
+               truncation = c(last_intervention_date_num, last_date_num))
+effect_period <- last_date_num - peak
+
+distancing_effect <- 1 + ((date_num - last_date_num) / effect_period)
+nullify <- (sign(distancing_effect) + 1) / 2
+distancing_effect <- distancing_effect * nullify
 
 # latent factor for pre-distancing surge in mobility with a prior that it peaks
 # around the time of the first restriction
@@ -174,7 +176,7 @@ m <- model(loadings_ntnl, loadings_holiday)
 draws <- mcmc(m,
               sampler = hmc(Lmin = 20, Lmax = 25),
               chains = 20)
-draws <- extra_samples(draws, 4000)
+draws <- extra_samples(draws, 1000)
 
 # check convergence
 r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
@@ -291,9 +293,9 @@ for (j in seq_len(n_states)) {
 }
 
 # same for a subset of datastreams, by all states
-target_datastreams <- c("Apple: directions for driving",
-                        "Google: time at residential",
-                        "Google: time at parks")
+target_datastreams <- c("Google: time at parks",
+                        "Apple: directions for driving",
+                        "Google: time at transit stations")
 
 # get the vector of state-datastreams to plot
 state_datastreams_plot <- mobility %>%
@@ -596,6 +598,22 @@ for(i in 1:4) {
 }
 
 save.image("outputs/latent_social_distancing_temp.RData")
+
+distancing_change_data %>%
+  mutate(value = pmin(0, value * 100)) %>%
+  group_by(datastream) %>%
+  summarise(
+    mean = mean(value),
+    min = max(value),
+    max = min(value)
+  )
+
+vals <- calculate(peak, values = draws, nsim = 20000)[[1]][, 1, 1]
+peak_date <- first_date + vals
+first_date + mean(vals)
+first_date + quantile(vals, c(0.025, 0.975))
+
+
 
 # - plot state-by-factor loading plots
 # - pull more model code out into functions

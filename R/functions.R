@@ -67,7 +67,7 @@ facebook_mobility <- function() {
 # - remove the grocery and pharmacy category
 # (affected by panic buying, not interventions)
 google_mobility <- function() {
-  # get link from: https://www.google.com/covid19/mobility/index.html?hl=en
+  # get link from: https://www.google.com/covid19/mobility/index.html
   url <- "https://www.gstatic.com/covid19/mobility/Global_Mobility_Report.csv"
   data <- readr::read_csv(url, ) %>%
     filter(country_region == "Australia") %>%
@@ -92,7 +92,7 @@ google_mobility <- function() {
 # download and format Apple's mobility data - will need to update the url regularly
 apple_mobility <- function() {
   # get link from: https://www.apple.com/covid19/mobility
-  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2007HotfixDev44/v2/en-us/applemobilitytrends-2020-04-30.csv"
+  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2007HotfixDev47/v2/en-us/applemobilitytrends-2020-05-03.csv"
   data <- readr::read_csv(url) %>%
     tidyr::pivot_longer(
       cols = starts_with("2020-"),
@@ -112,17 +112,38 @@ apple_mobility <- function() {
   data <- data %>%
     mutate(trend = trend - 100,
            date = date + 1)
+
+  # pull out the states and cities
+  states <- c("New South Wales", "Victoria", "Queensland", "Western Australia", 
+              "South Australia", "Australian Capital Territory", "Tasmania", 
+              "Northern Territory")
   
-  # add on a state label, rename the transportation type to 'category' to match
-  # google, and add on the data source
+  cities <- c("Sydney", "Melbourne", "Brisbane", "Perth", 
+              "Adelaide", "Canberra", "Hobart", "Darwin")
+  
+  # need to use state-level data for driving, but cities for other metrics
   data <- data %>%
+    filter(
+      case_when(
+        transportation_type == "driving" & region %in% states ~ TRUE,
+        transportation_type != "driving" & region %in% cities ~ TRUE,
+        TRUE ~ FALSE
+      )
+    ) %>%
     mutate(
-      state = case_when(region == "Sydney" ~ "New South Wales",
-                        region == "Melbourne" ~ "Victoria",
-                        region == "Brisbane" ~ "Queensland",
-                        region == "Perth" ~ "Western Australia",
-                        TRUE ~ as.character(NA))
-    )
+      region = case_when(
+        region == "Sydney" ~ "New South Wales",
+        region == "Melbourne" ~ "Victoria",
+        region == "Brisbane" ~ "Queensland",
+        region == "Perth" ~ "Western Australia",
+        region == "Adelaide" ~ "South Australia",
+        region == "Hobart" ~ "Tasmania",
+        region == "Canberra" ~ "Australian Capital Territory",
+        region == "Darwin" ~ "Northern Territory",
+        TRUE ~ region
+      )
+    ) %>%
+    rename(state = region)
   
   data
    
@@ -132,7 +153,7 @@ apple_mobility <- function() {
 citymapper_mobility <- function() {
   
   # get link from: https://citymapper.com/cmi/about
-  url <- "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20200501.csv"
+  url <- "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20200504.csv"
   data <- readr::read_csv(url, skip = 3) %>%
     tidyr::pivot_longer(cols = -Date,
                         names_to = "region",
@@ -168,7 +189,6 @@ all_mobility <- function() {
     ) %>%
     dplyr::select(
       -geo_type,
-      -region,
       -transportation_type
     )
 
