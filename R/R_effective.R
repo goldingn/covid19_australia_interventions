@@ -195,14 +195,14 @@ q_index <- case_when(
   TRUE ~ 3,
 )
 
-q_index_vec <- rep(q_index, n_states)
+# q_index_vec <- rep(q_index, n_states)
 # q_raw <- uniform(0, 1, dim = 3)
 # q <- cumprod(q_raw)
 # log_q <- log(q)
 log_q_raw <- -exponential(1, dim = 3)
 log_q <- cumsum(log_q_raw)
-log_Qt_vec <- log_q[q_index_vec]
-# log_Qt <- log_q[q_index]
+# log_Qt_vec <- log_q[q_index_vec]
+log_Qt <- log_q[q_index]
 
 # the reduction from R0 down to R_eff for locally-acquired cases due to social
 # distancing behaviour, modelled as a being proportional to the reduction in
@@ -210,8 +210,8 @@ log_Qt_vec <- log_q[q_index_vec]
 # social distanding index is proportional to the percentage change in mobility,
 # but we can express is as proportional reduction in mobility with: 1 - beta * sdi
 beta <- uniform(0, 1)
-log_Dt_vec <- log1p(-beta * rep(social_distancing_index, n_states))
-# log_Dt <- log1p(-beta * social_distancing_index)
+# log_Dt_vec <- log1p(-beta * rep(social_distancing_index, n_states))
+log_Dt <- log1p(-beta * social_distancing_index)
 
 # temporally correlated errors in R_eff for local cases - representing all the
 # stochastic transmission dynamics in the community, such as outbreaks in
@@ -252,19 +252,19 @@ noise_kernel_O <- white(sigma_noise_O ^ 2)
 kernel_L <- noise_kernel_L + time_kernel_L * state_variation_kernel_L
 kernel_O <- noise_kernel_O + time_kernel_O * state_variation_kernel_O
 
-# data for the GP to act on
-X <- cbind(date = rep(date_nums, n_states),
-           state = rep(seq_len(n_states), each = n_dates))
+# # data for the GP to act on
+# X <- cbind(date = rep(date_nums, n_states),
+#            state = rep(seq_len(n_states), each = n_dates))
 
 # build a matrix of inducing points, regularly spaced over time but with one on
 # the most recent date
 inducing_date_nums <- seq(n_dates, 1, by = -5)
-inducing_index <- which(X[, 1] %in% inducing_date_nums)
-X_inducing <- X[inducing_index, ]
+# inducing_index <- which(X[, 1] %in% inducing_date_nums)
+# X_inducing <- X[inducing_index, ]
 
 # evaluate GP for epsilon
-epsilon_L <- gp(X, kernel_L, inducing = X_inducing, tol = 0)
-epsilon_O <- gp(X, kernel_O, inducing = X_inducing, tol = 0)
+epsilon_L <- gp(date_nums, kernel_L, inducing = inducing_date_nums, n = n_states, tol = 0)
+epsilon_O <- gp(date_nums, kernel_O, inducing = inducing_date_nums, n = n_states, tol = 0)
 
 # combine these components
 # N ~ Poisson(R0 * exp(epsilon_t) * (I_t^L * D_t  + I_t^O * Q_t))
@@ -277,22 +277,29 @@ local_infectious <- apply_serial_interval(local_cases, fixed = TRUE)
 imported_infectious <- apply_serial_interval(imported_cases, fixed = TRUE) 
 
 # combine everything as vectors
-log_loc_infectious_vec <- c(log(local_infectious))
-log_imp_infectious_vec <- c(log(imported_infectious))
+# log_loc_infectious_vec <- c(log(local_infectious))
+# log_imp_infectious_vec <- c(log(imported_infectious))
+log_loc_infectious <- log(local_infectious)
+log_imp_infectious <- log(imported_infectious)
 
 # work out which ones to exclude (because there were no infectious people)
-valid <- which(is.finite(log_loc_infectious_vec + log_imp_infectious_vec))
+valid <- which(is.finite(log_loc_infectious + log_imp_infectious))
 
-log_rel_new_from_loc <- log_loc_infectious_vec[valid] + log_Dt_vec[valid] + epsilon_L[valid]
-log_rel_new_from_imp <- log_imp_infectious_vec[valid] + log_Qt_vec[valid] + epsilon_O[valid]
-rel_new <- exp(log_rel_new_from_loc) + exp(log_rel_new_from_imp)
-log_expected_infections <- log_R0 + log(rel_new)
-expected_infections <- exp(log_expected_infections)
+log_rel_Reff_loc <- sweep(epsilon_L, 1, log_Dt, FUN = "+") 
+log_rel_Reff_imp <- sweep(epsilon_O, 1, log_Qt, FUN = "+") 
 
-distribution(local_cases[valid]) <- poisson(expected_infections)
+log_rel_new_from_loc_vec <- log_loc_infectious[valid] + log_rel_Reff_loc[valid]
+log_rel_new_from_imp_vec <- log_imp_infectious[valid] + log_rel_Reff_imp[valid]
+rel_new_vec <- exp(log_rel_new_from_loc_vec) + exp(log_rel_new_from_imp_vec)
+
+log_expected_infections_vec <- log_R0 + log(rel_new_vec)
+expected_infections_vec <- exp(log_expected_infections_vec)
+
+distribution(local_cases[valid]) <- poisson(expected_infections_vec)
 
 m <- model(beta, log_q, epsilon_L, epsilon_O)
 draws <- mcmc(m, chains = 10, one_by_one = TRUE)
+draws <- extra_samples(draws, 2000)
 
 # check convergence
 r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
@@ -302,47 +309,48 @@ min(n_eff)
 
 # estimate the overall R_eff by weighting using the (interpolated) proportion of
 # infectious cases that are imports
-
-p_imported <- proportion_imported(local_infectious, imported_infectious, X)
-log_Dt_weighted <- log_Dt_vec + epsilon_L + log1p(-c(p_imported))
-log_Qt_weighted <- log_Qt_vec + epsilon_O + log(c(p_imported))
+p_imported <- proportion_imported(local_infectious, imported_infectious)
+log_Dt_weighted <- log_rel_Reff_loc + log1p(-p_imported)
+log_Qt_weighted <- log_rel_Reff_imp + log(p_imported)
 log_rel_R_eff <- log(exp(log_Dt_weighted) + exp(log_Qt_weighted))
 log_R_eff <- log_R0 + log_rel_R_eff
-R_eff <- exp(log_R_eff)
+R_eff_vec <- c(exp(log_R_eff))
+
+# R_eff of locally-acquired and overseas-acquired cases
+R_eff_loc_vec <- c(exp(log_R0 + log_rel_Reff_loc))
+R_eff_imp_vec <- c(exp(log_R0 + log_rel_Reff_imp))
+
+# average R_eff of locally-acquired and overseas-acquired cases
+R_eff_loc_trend <- exp(log_R0 + log_Dt)
+R_eff_imp_trend <- exp(log_R0 + log_Qt)
 
 # simulate from posterior for quantitities of interest
+nsim <- coda::niter(draws) * coda::nchain(draws)
+sims <- calculate(
+  R_eff_vec,
+  R_eff_loc_vec,
+  R_eff_imp_vec,
+  R_eff_loc_trend,
+  R_eff_imp_trend,
+  c(epsilon_L),
+  c(epsilon_O),
+  values = draws,
+  nsim = nsim
+)
 
-# R_eff of all cases
-R_eff_sim <- posterior_sims(R_eff, draws)
-
-# R_eff of locally-acquired cases
-R_eff_loc <- exp(log_R0 + log_Dt_vec + epsilon_L)
-R_eff_loc_sim <- posterior_sims(R_eff_loc, draws)
-
-# R_eff of overseas-acquired cases
-R_eff_imp <- exp(log_R0 + log_Qt_vec + epsilon_O)
-R_eff_imp_sim <- posterior_sims(R_eff_imp, draws)
-
-# average R_eff of locally-acquired cases
-log_Dt <- log_Dt_vec[1:n_dates]
-R_eff_loc_trend <- exp(log_R0 + log_Dt)
-R_eff_loc_trend_sim <- posterior_sims(R_eff_loc_trend, draws)
-
-# average R_eff of overseas-acquired cases
-log_Qt <- log_Qt_vec[1:n_dates]
-R_eff_imp_trend <- exp(log_R0 + log_Qt)
-R_eff_imp_trend_sim <- posterior_sims(R_eff_imp_trend, draws)
-
-# random effect trends in Rt for cases of each type (by state)
-error_effect_L_sim <- posterior_sims(epsilon_L, draws)
-error_effect_O_sim <- posterior_sims(epsilon_O, draws)
+R_eff_sim <- sims$R_eff_vec
+R_eff_loc_sim <- sims$R_eff_loc_vec
+R_eff_imp_sim <- sims$R_eff_imp_vec
+R_eff_loc_trend_sim <- sims$R_eff_loc_trend
+R_eff_imp_trend_sim <- sims$R_eff_imp_trend
+error_effect_L_sim <- sims$`c(epsilon_L)`
+error_effect_O_sim <- sims$`c(epsilon_O)`
 
 
 blue <- "steelblue3"
 green <- brewer.pal(8, "Set2")[1]
 orange <- brewer.pal(8, "Set2")[2]
 pink <- brewer.pal(8, "Set2")[4]
-
 
 # david does 8.27 x 11.69 (landscape A4) for 3x2 panels
 # aspect ratio of 0.707:1 h:w
@@ -460,17 +468,37 @@ ggsave("outputs/figures/R_eff_error_import.png",
        height = multi_height,
        scale = 0.8)
 
-
 # posterior summary of R0
-R0_draws <- R_eff_trend_sim[, 1]
+R0_draws <- R_eff_loc_trend_sim[, 1, 1]
 mean(R0_draws)
 sd(R0_draws)
 
 # posterior summary of R_eff for the latest date
-R_eff_now_draws <- R_eff_trend_sim[, ncol(R_eff_trend_sim)]
+R_eff_now_draws <- R_eff_loc_trend_sim[, ncol(R_eff_loc_trend_sim), 1]
 mean(R_eff_now_draws)
 sd(R_eff_now_draws)
 max(dates)
+
+# posterior summary of R_eff for the peak of distancing
+peak_distancing <- max(which(waning_index == 0))
+R_eff_peak_draws <- R_eff_loc_trend_sim[, peak_distancing, 1]
+mean(R_eff_peak_draws)
+sd(R_eff_peak_draws)
+min(dates) + peak_distancing - 1
+
+# summary of the inferred waning amount
+waning_amount_draws <- calculate(waning_amount, values = draws, nsim = 20000)[[1]][, 1, 1]
+mean(waning_amount_draws * -100)
+sd(waning_amount_draws * -100)
+waning_amount_params
+
+
+post_intervention_start <- as.numeric(max(intervention_dates()$date) - dates[1])
+sum(local_infectious[post_intervention_start:n_dates, ])
+sum(local_cases[post_intervention_start:n_dates, ])
+
+
+# Ratio of R_eff at minimum to R0 to
 
 # - switch to stacked version of GP (smaller covaraince matrix, faster inference)
 # - add a custom greta function for lognormal CDF (using TFP) and try
