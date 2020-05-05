@@ -153,16 +153,29 @@ local_cases <- date_by_state %>%
   select(-import_status) %>%
   as.matrix()
 
-# load the social distancing factor
+library(greta.gp)
+
+# build the social distancing index, with fixed shape for main effect, and informative prior on the amount of waning
 distancing_file <- "outputs/social_distancing_latent.RDS"
-social_distancing_index <- distancing_file %>%
+social_distancing_main_index <- distancing_file %>%
+  readRDS() %>%
+  select(mean, date) %>%
+  right_join(tibble(date = dates)) %>%
+  replace_na(list(mean = 0)) %>%
+  pull(mean)
+
+waning_file <- "outputs/waning_distancing_latent.RDS"
+waning_index <- waning_file %>%
   readRDS() %>%
   select(mean, date) %>%
   right_join(tibble(date = dates)) %>%
   replace_na(list(mean = 0)) %>%
   pull(mean)
   
-library(greta.gp)
+waning_amount_params <- readRDS("outputs/waning_amount_parameters.RDS")
+waning_amount <- do.call(normal, waning_amount_params)
+
+social_distancing_index <- social_distancing_main_index + waning_index * waning_amount
 
 # lognormal prior on R0 (normal prior on log(R0)) based on estimates for
 # Northern Europe from Flaxman et al. (Imperial report 13, lowest R0s from their

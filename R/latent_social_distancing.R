@@ -608,11 +608,77 @@ distancing_change_data %>%
     max = min(value)
   )
 
-vals <- calculate(peak, values = draws, nsim = 20000)[[1]][, 1, 1]
-peak_date <- first_date + vals
-first_date + mean(vals)
-first_date + quantile(vals, c(0.025, 0.975))
+peak_draws <- calculate(peak, values = draws, nsim = 20000)[[1]][, 1, 1]
+peak_mean <- first_date + mean(peak_draws)
+peak_ci <- first_date + quantile(peak_draws, c(0.025, 0.975))
 
+
+# get an index of waned distancing, weighting datastreams according to their
+# representativeness of transmission potential ('riskiness')
+
+transmission_potential <- state_datastream_lookup %>%
+  mutate(risk = case_when(
+    datastream %in% c(
+      "Apple: directions for driving",
+      "Apple: directions for walking",
+      "Google: time at parks",
+      "Google: time at residential"
+    ) ~ "low",
+    datastream %in% c(
+      "Google: time at grocery and pharmacy",
+      "Google: time at retail and recreation"
+    ) ~ "medium",
+    datastream %in% c(
+      "Citymapper: directions",
+      "Apple: directions for transit",
+      "Google: time at transit stations",
+      "Google: time at workplaces"
+    ) ~ "high",
+  )) %>%
+  group_by(risk) %>%
+  mutate(weight = case_when(
+    risk == "low" ~ 0.1,
+    risk == "medium" ~ 0.3,
+    risk == "high" ~ 0.6
+  )) %>%
+  mutate(weight = weight / n_distinct(state_datastream))
+
+# calculate weighted regression of the overall distancing effect, weighted to
+# represent mobility data streams thought to be most representative of
+# transmission pontential
+regression <- distancing_change_relative %*% as_data(transmission_potential$weight)
+regression_vals <- calculate(regression, values = draws, nsim = 10000)[[1]]
+
+# save parameters of posterior on the amount of waning, for use in R_eff model
+waning_amount_params <- list(
+  mean = mean(regression_vals),
+  sd = sd(regression_vals),
+  truncation = c(-1, 0)
+)
+saveRDS(waning_amount_params,
+        file = "outputs/waning_amount_parameters.RDS")
+
+# # get posterior over combined distancing effect curve
+# distancing_overall <- distancing + distancing_effect * regression
+# distancing_overall_vals <- calculate(distancing_overall, values = draws, nsim = 10000)[[1]][, , 1]
+# plot(distancing_overall_vals[1, ] ~ dates, type = "n")
+# for (i in 1:10000) {
+#   lines(distancing_overall_vals[i, ] ~ dates, lwd = 0.05)
+# }
+# distancing_overall_est <- summarise_vec_posterior(
+#   distancing_overall,
+#   draws,
+#   quantiles = c(0.05, 0.995)
+# )
+# plot(distancing_overall_est[, 1] ~ dates, type = "n",
+#      ylab = "distancing effect", xlab = "")
+# lines(distancing_overall_est[, 2] ~ dates, lty = 2)
+# lines(distancing_overall_est[, 3] ~ dates, lty = 2)
+# lines(distancing_overall_est[, 1] ~ dates, lwd = 3)
+# 
+# # 0.1, 0.1, 0.8: 10.1% (6.6% - 13.3%) 
+# # 0.1, 0.3, 0.6: 10.7% (5.0% - 15.6%) 
+# # 0.2, 0.4, 0.4: 12.5% (5.3% - 18.6%) 
 
 
 # - plot state-by-factor loading plots
