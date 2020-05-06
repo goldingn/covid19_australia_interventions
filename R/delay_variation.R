@@ -144,3 +144,64 @@ ggsave("outputs/figures/time_to_detection_fit.png",
 
 pred_df %>%
   filter(date_num == max(date_num))
+
+# priors for the parameters of the lognormal distribution over the serial interval from Nishiura et
+# al., as stored in the EpiNow source code 
+si_param_samples <- read_csv(
+  file = "https://raw.githubusercontent.com/epiforecasts/EpiNow/758b706599244a545d6b07f7be4c10ffe6c8cf50/data-raw/nishiura-lognormal-truncated.csv",
+  col_types = cols(param1 = col_double(),
+                   param2 = col_double())
+)
+meanlog <- mean(si_param_samples$param1)
+sdlog <- mean(si_param_samples$param2)
+# beta <- function(x) {
+#   plnorm(x + 5, meanlog, sdlog)
+# }
+# gamma <- function(x) {
+#   beta(x) / beta(10)
+# }
+# # 
+# pred_df$prop_R_eff <- gamma(pmin(10, pred_df$delay))
+# par(mfrow = c(4, 2))
+# for (state in states) {
+#   plot(prop_R_eff ~ date, data = pred_df[pred_df$state == state, ],
+#        type = "l",
+#        ylim = c(0, 1))
+#   title(main = state)
+# }
+
+# need to incorporate uncertainty on earlier delay here, so the later delay
+# becomes uncertain
+
+# so need to compute lognormal cdf in greta
+beta_dt <- iprobit((log(mu + 5) - meanlog) / sdlog)
+gamma_dt <- sweep(beta_dt, 2, t(beta_dt[1, ]), FUN = "/")
+gamma_dt_sim <- calculate(gamma_dt, values = draws, nsim = 2000)[[1]]
+gamma_dt_mean <- c(apply(gamma_dt_sim, 2:3, FUN = base::mean))
+gamma_dt_lower <- c(apply(gamma_dt_sim, 2:3, FUN = quantile, 0.025))
+gamma_dt_upper <- c(apply(gamma_dt_sim, 2:3, FUN = quantile, 0.975))
+
+pred_df$rel_reff_mean <- gamma_dt_mean
+pred_df$rel_reff_lower <- gamma_dt_lower
+pred_df$rel_reff_upper <- gamma_dt_upper
+  
+ggplot(pred_df) +
+  aes(date, rel_reff_mean) +
+  
+  ggtitle(label = expression(Reduction~of~R[eff]~due~to~improved~contact~tracing),
+          subtitle = "among locally-acquired cases") +
+  ylab(expression(Proportion~of~original~R[eff])) +
+  xlab(element_blank()) +
+  
+  geom_ribbon(aes(ymin = rel_reff_lower, ymax = rel_reff_upper), alpha = 0.2) +
+  geom_line() +
+  
+  coord_cartesian(ylim = c(0, 1)) +
+  facet_wrap(~state, ncol = 2) + 
+  theme_minimal()
+
+ggsave("outputs/figures/contact_tracing_effect.png",
+       width = 8.27,
+       height = 11.69,
+       scale = 0.8)
+  
