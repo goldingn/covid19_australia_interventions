@@ -39,7 +39,7 @@ n_states <- length(states)
 library(greta.gp)
 
 kernel <- function(alpha_time = lognormal(2, 0.5),
-                   lengthscale_time = lognormal(4, 0.5),
+                   lengthscale_time = lognormal(2, 0.5),
                    sigma_time = normal(0, 0.5, truncation = c(0, Inf)),
                    sigma_bias = NULL) {
   
@@ -62,7 +62,7 @@ kernel <- function(alpha_time = lognormal(2, 0.5),
 state_kernel <- kernel()
 national_kernel <- kernel(sigma_bias = 0.1)
 
-inducing_date_nums <- seq(n_dates, 1, length.out = 10)
+inducing_date_nums <- seq(n_dates, 1, by = -5)
 
 national_trend <- gp(x = date_nums,
                      kernel = national_kernel,
