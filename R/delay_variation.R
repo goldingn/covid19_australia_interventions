@@ -29,6 +29,17 @@ delay_data <- linelist %>%
          delay = time_to_detection,
          state = region)
 
+# get data on numbers of tests
+test_data <- get_tests() %>%
+  na.omit()
+
+# jointly model numbers of tests and the reporting delay:
+
+# tests ~ poisson(expected_tests)
+# delay ~ negative_binomial(expected_delay)
+# log(expected_delay) = log(expected_tests) + e1
+# log(expected_tests) = e2
+
 
 n_dates <- max(delay_data$date_num)
 date_nums <- seq_len(n_dates)
