@@ -844,11 +844,13 @@ R0_prior <- function() {
 }
 
 plot_trend <- function(simulations,
+                       dates,
                        base_colour = grey(0.4),
                        multistate = FALSE,
                        hline_at = 1,
                        ylim = c(0, 3),
                        vline_at = NA,
+                       vline2_at = NA,
                        keep_only_rows = NULL) {
   
   library(ggplot2)
@@ -858,8 +860,8 @@ plot_trend <- function(simulations,
   ci_50 <- apply(simulations, 2, quantile, c(0.25, 0.75))
   
   if (multistate) {
+    states <- rep(states, each = length(dates))
     dates <- rep(dates, n_states)
-    states <- rep(states, each = n_dates)
   } else {
     states <- NA
   }
@@ -892,11 +894,12 @@ plot_trend <- function(simulations,
     
     coord_cartesian(ylim = ylim) +
     scale_y_continuous(position = "right") +
-    scale_x_date(date_breaks = "2 weeks", date_labels = "%b %d") +
+    scale_x_date(date_breaks = "1 months", date_labels = "%b %d") +
     scale_alpha(range = c(0, 0.5)) +
     scale_fill_manual(values = c("Nowcast" = base_colour)) +
     
     geom_vline(xintercept = vline_at, colour = "grey80") +
+    geom_vline(xintercept = vline2_at, linetype = "dashed", colour = "grey60") +
     
     geom_ribbon(aes(ymin = ci_90_lo,
                     ymax = ci_90_hi),
@@ -919,10 +922,23 @@ plot_trend <- function(simulations,
     theme(legend.position = "none",
           strip.background = element_blank(),
           strip.text = element_text(hjust = 0, face = "bold"),
-          axis.title.y.right = element_text(vjust = 0.5, angle = 90))
+          axis.title.y.right = element_text(vjust = 0.5, angle = 90),
+          panel.spacing = unit(1.2, "lines"))
   
   if (multistate) {
     p <- p + facet_wrap(~ state, ncol = 2, scales = "free")
+  }
+  
+  if (!is.na(vline2_at)) {
+    p <- p +
+      annotate("rect",
+             xmin = vline2_at,
+             xmax = max(df$date),
+             ymin = -Inf,
+             ymax = Inf,
+             fill = grey(0.5), alpha = 0.1) +
+      geom_text(aes(x = vline2_at, y = 3, label = "projection"),
+                hjust = -0.1, size = 3, colour = grey(0.6))
   }
   
   p    
@@ -985,4 +1001,48 @@ app_downloads <- function () {
       date = as.Date(date),
       uptake = number / 16e6
     )
+}
+
+as.greta_array <- greta:::as.greta_array
+
+# copy of greta.gp::gp with v manually passed in, enabling different
+# (hierarchical) variance on each gp draw
+multi_gp <- function (x, v, kernel, inducing, tol = 1e-04) {
+  
+  sparse <- !is.null(inducing)
+  
+  x <- as.greta_array(x)
+  
+  if (!sparse)
+    inducing <- x
+  else
+    inducing <- as.greta_array(inducing)
+  
+  # calculate key objects
+  Kmm <- kernel(inducing)
+  
+  if (!identical(tol, 0))
+    Kmm <- Kmm + diag(m) * tol
+  
+  Lm <- t(chol(Kmm))
+  
+  # evaluate gp at x
+  if (sparse) {
+    
+    Kmn <- kernel(inducing, x)
+    A <- forwardsolve(Lm, Kmn)
+    f <- t(A) %*% v
+    
+  } else {
+    
+    f <- Lm %*% v
+    
+  }
+  
+  # add the info to the greta array
+  attr(f, "gp_info") <- list(kernel = kernel,
+                             inducing = inducing,
+                             v = v,
+                             Lm = Lm)
+  f
 }

@@ -125,7 +125,8 @@ dates <- seq(min(linelist$date), max(linelist$date), by = 1)
 
 n_states <- length(states)
 n_dates <- length(dates)
-date_nums <- seq_len(n_dates)
+n_extra <- 21
+date_nums <- seq_len(n_dates + n_extra)
 
 # pad this with full set of dates, states, and import statuses
 grid <- expand_grid(
@@ -163,19 +164,20 @@ social_distancing_main_index <- distancing_file %>%
   right_join(tibble(date = dates)) %>%
   replace_na(list(mean = 0)) %>%
   pull(mean)
+# 
+# waning_file <- "outputs/waning_distancing_latent.RDS"
+# waning_index <- waning_file %>%
+#   readRDS() %>%
+#   select(mean, date) %>%
+#   right_join(tibble(date = dates)) %>%
+#   replace_na(list(mean = 0)) %>%
+#   pull(mean)
+#   
+# waning_amount_params <- readRDS("outputs/waning_amount_parameters.RDS")
+# waning_amount <- do.call(normal, waning_amount_params)
 
-waning_file <- "outputs/waning_distancing_latent.RDS"
-waning_index <- waning_file %>%
-  readRDS() %>%
-  select(mean, date) %>%
-  right_join(tibble(date = dates)) %>%
-  replace_na(list(mean = 0)) %>%
-  pull(mean)
-  
-waning_amount_params <- readRDS("outputs/waning_amount_parameters.RDS")
-waning_amount <- do.call(normal, waning_amount_params)
-
-social_distancing_index <- social_distancing_main_index + waning_index * waning_amount
+# social_distancing_index <- social_distancing_main_index + waning_index * waning_amount
+social_distancing_index <- c(social_distancing_main_index, rep(1, n_extra))
 
 # lognormal prior on R0 (normal prior on log(R0)) based on estimates for
 # Northern Europe from Flaxman et al. (Imperial report 13, lowest R0s from their
@@ -194,6 +196,7 @@ q_index <- case_when(
   dates < quarantine_dates[2] ~ 2,
   TRUE ~ 3,
 )
+q_index <- c(q_index, rep(3, n_extra))
 
 # q_index_vec <- rep(q_index, n_states)
 # q_raw <- uniform(0, 1, dim = 3)
@@ -238,10 +241,10 @@ time_kernel_O <- rational_quadratic(
   columns = 1)
 
 # variation in this timeseries between the states and territories
-sigma_state_L <- normal(0, 0.5, truncation = c(0, Inf))
-sigma_state_O <- normal(0, 0.5, truncation = c(0, Inf))
-state_variation_kernel_L <- iid(sigma_state_L ^ 2, columns = 2)
-state_variation_kernel_O <- iid(sigma_state_O ^ 2, columns = 2)
+sigma_state_L <- normal(0, 0.5, truncation = c(0, Inf), dim = n_states)
+# sigma_state_O <- normal(0, 0.5, truncation = c(0, Inf))
+# state_variation_kernel_L <- iid(sigma_state_L ^ 2, columns = 2)
+# state_variation_kernel_O <- iid(sigma_state_O ^ 2, columns = 2)
 
 # IID noise in log(R_eff) per day (overdispersion, or case clustering)
 sigma_noise_L <- normal(0, 0.5, truncation = c(0, Inf))
@@ -249,8 +252,8 @@ noise_kernel_L <- white(sigma_noise_L ^ 2)
 sigma_noise_O <- normal(0, 0.5, truncation = c(0, Inf))
 noise_kernel_O <- white(sigma_noise_O ^ 2)
 
-kernel_L <- noise_kernel_L + time_kernel_L * state_variation_kernel_L
-kernel_O <- noise_kernel_O + time_kernel_O * state_variation_kernel_O
+kernel_L <- noise_kernel_L + time_kernel_L  # * state_variation_kernel_L
+kernel_O <- noise_kernel_O + time_kernel_O  # * state_variation_kernel_O
 
 # # data for the GP to act on
 # X <- cbind(date = rep(date_nums, n_states),
@@ -258,13 +261,22 @@ kernel_O <- noise_kernel_O + time_kernel_O * state_variation_kernel_O
 
 # build a matrix of inducing points, regularly spaced over time but with one on
 # the most recent date
-inducing_date_nums <- seq(n_dates, 1, by = -5)
+n_date_nums <- length(date_nums)
+inducing_date_nums <- rev(seq(n_date_nums, 1, by = -5))
 # inducing_index <- which(X[, 1] %in% inducing_date_nums)
 # X_inducing <- X[inducing_index, ]
 
-# evaluate GP for epsilon
-epsilon_L <- gp(date_nums, kernel_L, inducing = inducing_date_nums, n = n_states, tol = 0)
+# evaluate epsilon GP for imports
 epsilon_O <- gp(date_nums, kernel_O, inducing = inducing_date_nums, n = n_states, tol = 0)
+
+# and for locals, with different variances
+n_inducing <- length(inducing_date_nums)
+v_L_raw <- normal(0, 1, dim = c(n_inducing, n_states))
+v_L <- sweep(v_L_raw, 2, sigma_state_L, FUN = "*")
+
+epsilon_L <- multi_gp(x = date_nums, v = v_L, kernel = kernel_L, inducing = inducing_date_nums, tol = 0)
+
+# epsilon_L <- gp(date_nums, kernel_L, inducing = inducing_date_nums, n = n_states, tol = 0)
 
 # combine these components
 # N ~ Poisson(R0 * exp(epsilon_t) * (I_t^L * D_t  + I_t^O * Q_t))
@@ -288,8 +300,8 @@ valid <- which(is.finite(log_loc_infectious + log_imp_infectious))
 log_rel_Reff_loc <- sweep(epsilon_L, 1, log_Dt, FUN = "+") 
 log_rel_Reff_imp <- sweep(epsilon_O, 1, log_Qt, FUN = "+") 
 
-log_rel_new_from_loc_vec <- log_loc_infectious[valid] + log_rel_Reff_loc[valid]
-log_rel_new_from_imp_vec <- log_imp_infectious[valid] + log_rel_Reff_imp[valid]
+log_rel_new_from_loc_vec <- log_loc_infectious[valid] + log_rel_Reff_loc[1:n_dates, ][valid]
+log_rel_new_from_imp_vec <- log_imp_infectious[valid] + log_rel_Reff_imp[1:n_dates, ][valid]
 rel_new_vec <- exp(log_rel_new_from_loc_vec) + exp(log_rel_new_from_imp_vec)
 
 log_expected_infections_vec <- log_R0 + log(rel_new_vec)
@@ -299,7 +311,7 @@ distribution(local_cases[valid]) <- poisson(expected_infections_vec)
 
 m <- model(beta, log_q, epsilon_L, epsilon_O)
 draws <- mcmc(m, chains = 10, one_by_one = TRUE)
-draws <- extra_samples(draws, 2000)
+draws <- extra_samples(draws, 2000, one_by_one = TRUE)
 
 # check convergence
 r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
@@ -307,198 +319,271 @@ n_eff <- coda::effectiveSize(draws)
 max(r_hats)
 min(n_eff)
 
-# estimate the overall R_eff by weighting using the (interpolated) proportion of
-# infectious cases that are imports
-p_imported <- proportion_imported(local_infectious, imported_infectious)
-log_Dt_weighted <- log_rel_Reff_loc + log1p(-p_imported)
-log_Qt_weighted <- log_rel_Reff_imp + log(p_imported)
-log_rel_R_eff <- log(exp(log_Dt_weighted) + exp(log_Qt_weighted))
-log_R_eff <- log_R0 + log_rel_R_eff
-R_eff_vec <- c(exp(log_R_eff))
+# # estimate the overall R_eff by weighting using the (interpolated) proportion of
+# # infectious cases that are imports
+# p_imported <- proportion_imported(local_infectious, imported_infectious)
+# log_Dt_weighted <- log_rel_Reff_loc + log1p(-p_imported)
+# log_Qt_weighted <- log_rel_Reff_imp + log(p_imported)
+# log_rel_R_eff <- log(exp(log_Dt_weighted) + exp(log_Qt_weighted))
+# log_R_eff <- log_R0 + log_rel_R_eff
+# R_eff_vec <- c(exp(log_R_eff))
 
 # R_eff of locally-acquired and overseas-acquired cases
-R_eff_loc_vec <- c(exp(log_R0 + log_rel_Reff_loc))
-R_eff_imp_vec <- c(exp(log_R0 + log_rel_Reff_imp))
+R_eff_loc <- exp(log_R0 + log_rel_Reff_loc)
+R_eff_imp <- exp(log_R0 + log_rel_Reff_imp)
 
 # average R_eff of locally-acquired and overseas-acquired cases
 R_eff_loc_trend <- exp(log_R0 + log_Dt)
 R_eff_imp_trend <- exp(log_R0 + log_Qt)
-
-# simulate from posterior for quantitities of interest
 nsim <- coda::niter(draws) * coda::nchain(draws)
-sims <- calculate(
-  R_eff_vec,
-  R_eff_loc_vec,
-  R_eff_imp_vec,
-  R_eff_loc_trend,
-  R_eff_imp_trend,
-  c(epsilon_L),
-  c(epsilon_O),
-  values = draws,
-  nsim = nsim
-)
 
-R_eff_sim <- sims$R_eff_vec
-R_eff_loc_sim <- sims$R_eff_loc_vec
-R_eff_imp_sim <- sims$R_eff_imp_vec
-R_eff_loc_trend_sim <- sims$R_eff_loc_trend
-R_eff_imp_trend_sim <- sims$R_eff_imp_trend
-error_effect_L_sim <- sims$`c(epsilon_L)`
-error_effect_O_sim <- sims$`c(epsilon_O)`
+# make 4 different versions of the plots and outputs:
+# 1. up to latest date of infection
+# 2. up to June 8
+# 3. up to June 8, with increase in mean Reff to 1.1 after May 11
+# 3. up to June 8, with increase in lower bound of Reff to 1.1 after May 11
 
+output_directories <- c("",
+                        "projection",
+                        "counterfactual_1",
+                        "counterfactual_2",
+                        "counterfactual_3")
 
-blue <- "steelblue3"
-green <- brewer.pal(8, "Set2")[1]
-orange <- brewer.pal(8, "Set2")[2]
-pink <- brewer.pal(8, "Set2")[4]
-
-# david does 8.27 x 11.69 (landscape A4) for 3x2 panels
-# aspect ratio of 0.707:1 h:w
-# want A4 *portrait* width (8.27) with same aspect ratio
-
-# get required aspect ratio
-panel_width <- 11.69 / 2
-panel_height <- 8.27 / 3
-panel_ratio <- panel_height / panel_width
-
-# work out dimensions for 4x2 panels for reports
-multi_mfrow <- c(4, 2)
-multi_width <- 8.27
-multi_height <- (multi_width / multi_mfrow[2]) * panel_ratio * multi_mfrow[1]
-# add a bit of space for the title
-multi_height <- multi_height * 1.2
-
-# overall R_eff
-plot_trend(R_eff_sim,
-           multistate = TRUE,
-           base_colour = blue,
-           vline_at = quarantine_dates) +
-  ggtitle(label = "Transmission by all cases") +
-  ylab(expression(R["eff"]))
-
-ggsave("outputs/figures/R_eff_all.png",
-       width = multi_width,
-       height = multi_height,
-       scale = 0.8)
-
-# local R_eff
-plot_trend(R_eff_loc_sim,
-           multistate = TRUE,
-           base_colour = green,
-           vline_at = intervention_dates()$date) +
-  ggtitle(label = "Transmission by locally-acquired cases") +
-  ylab(expression(R["eff"]~of~"locally-acquired"~cases))
-
-ggsave("outputs/figures/R_eff_local.png",
-       width = multi_width,
-       height = multi_height,
-       scale = 0.8)
-
-# imported R_eff
-plot_trend(R_eff_imp_sim,
-           multistate = TRUE,
-           base_colour = orange,
-           vline_at = quarantine_dates) +
-  ggtitle(label = "Transmission by overseas-acquired cases") +
-  ylab(expression(R["eff"]~of~"overseas-acquired"~cases))
-
-ggsave("outputs/figures/R_eff_imported.png",
-       width = multi_width,
-       height = multi_height,
-       scale = 0.8)
-
-
-# local average R_eff 
-plot_trend(R_eff_loc_trend_sim,
-           multistate = FALSE,
-           base_colour = green,
-           vline_at = intervention_dates()$date) + 
-  ggtitle(label = "Impact of social distancing",
-          subtitle = expression(Component~of~R["eff"]~due~to~social~distancing)) +
-  ylab(expression(R["eff"]~component))
+for (type in 1:5) {
   
-ggsave("outputs/figures/R_eff_trend_local.png",
-       width = panel_width,
-       height = panel_height * 1.25,
-       scale = 1)
+  dir <- file.path("outputs", output_directories[type])
+  
+  # subset or extend projections based on type of projection
+  if (type == 1) {
+    rows <- seq_len(n_dates)
+    projection_date <- NA
+  } else {
+    last_date <- as.Date("2020-06-08")
+    n_projected <- n_dates + as.numeric(last_date - max(dates))
+    rows <- pmin(n_dates + n_extra, seq_len(n_projected))
+    projection_date <- max(dates)
+  }
+                 
+  R_eff_loc_vec_type <- c(R_eff_loc[rows, ])
+  R_eff_imp_vec_type <- c(R_eff_imp[rows, ])
+  R_eff_loc_trend_type <- R_eff_loc_trend[rows]
+  R_eff_imp_trend_type <- R_eff_imp_trend[rows]
+  epsilon_L_vec_type <- c(epsilon_L[rows, ])
+  epsilon_O_vec_type <- c(epsilon_O[rows, ])
+  
+  # simulate from posterior for quantitities of interest
+  sims <- calculate(
+    R_eff_loc_vec_type,
+    R_eff_imp_vec_type,
+    R_eff_loc_trend_type,
+    R_eff_imp_trend_type,
+    epsilon_L_vec_type,
+    epsilon_O_vec_type,
+    values = draws,
+    nsim = nsim
+  )
+  
+  R_eff_loc_sim <- sims$R_eff_loc_vec_type
+  R_eff_imp_sim <- sims$R_eff_imp_vec_type
+  R_eff_loc_trend_sim <- sims$R_eff_loc_trend_type
+  R_eff_imp_trend_sim <- sims$R_eff_imp_trend_type
+  error_effect_L_sim <- sims$epsilon_L_vec_type
+  error_effect_O_sim <- sims$epsilon_L_vec_type
+  
+  dates_type <- min(dates) - 1 + seq_along(rows)
+  
+  # for counterfactuals, relevel the R0s after calculating them
+  if (type > 2) {
+    
+    counterfactual_Reff <- switch(as.character(type),
+                                  "3" = 1.1,
+                                  "4" = 1.2,
+                                  "5" = 1.5)
+    
+    change_date <- as.Date("2020-05-11")
+    dates_long <- rep(dates_type, n_states)
+    projected_dates_long <- dates_long >= change_date
+    projected_dates <- dates_type >= change_date
+    
+    mean_Reff <- mean(R_eff_loc_trend_sim[, projected_dates, ])
+    add_Reff <- counterfactual_Reff - mean_Reff
+    R_eff_loc_trend_sim[, projected_dates, ] <- R_eff_loc_trend_sim[, projected_dates, ] + add_Reff
+    R_eff_loc_sim[, projected_dates, ] <- R_eff_loc_sim[, projected_dates, ] + add_Reff
+  }
+  
+  blue <- "steelblue3"
+  green <- brewer.pal(8, "Set2")[1]
+  orange <- brewer.pal(8, "Set2")[2]
+  pink <- brewer.pal(8, "Set2")[4]
+  
+  # david does 8.27 x 11.69 (landscape A4) for 3x2 panels
+  # aspect ratio of 0.707:1 h:w
+  # want A4 *portrait* width (8.27) with same aspect ratio
+  
+  # get required aspect ratio
+  panel_width <- 11.69 / 2
+  panel_height <- 8.27 / 3
+  panel_ratio <- panel_height / panel_width
+  
+  # work out dimensions for 4x2 panels for reports
+  multi_mfrow <- c(4, 2)
+  multi_width <- 8.27
+  multi_height <- (multi_width / multi_mfrow[2]) * panel_ratio * multi_mfrow[1]
+  # add a bit of space for the title
+  multi_height <- multi_height * 1.2
+  
+  # local R_eff
+  plot_trend(R_eff_loc_sim,
+             dates = dates_type,
+             multistate = TRUE,
+             base_colour = green,
+             vline_at = intervention_dates()$date,
+             vline2_at = projection_date) +
+    ggtitle(label = "Local to local transmission potential") +
+    ylab(expression(R["eff"]~from~"locally-acquired"~cases))
+  
+  ggsave(file.path(dir, "figures/R_eff_local.png"),
+         width = multi_width,
+         height = multi_height,
+         scale = 0.8)
+  
+  # imported R_eff
+  plot_trend(R_eff_imp_sim,
+             dates = dates_type,
+             multistate = TRUE,
+             base_colour = orange,
+             vline_at = quarantine_dates,
+             vline2_at = projection_date) +
+    ggtitle(label = "Import to local transmission potential") +
+    ylab(expression(R["eff"]~from~"overseas-acquired"~cases))
+  
+  ggsave(file.path(dir, "figures/R_eff_imported.png"),
+         width = multi_width,
+         height = multi_height,
+         scale = 0.8)
+  
+  # local average R_eff 
+  plot_trend(R_eff_loc_trend_sim,
+             dates = dates_type,
+             multistate = FALSE,
+             base_colour = green,
+             vline_at = intervention_dates()$date,
+             vline2_at = projection_date) + 
+    ggtitle(label = "Impact of social distancing",
+            subtitle = expression(Component~of~R["eff"]~due~to~social~distancing)) +
+    ylab(expression(R["eff"]~component))
+  
+  ggsave(file.path(dir, "figures/R_eff_trend_local.png"),
+         width = panel_width,
+         height = panel_height * 1.25,
+         scale = 1)
+  
+  # imported average R_eff
+  plot_trend(R_eff_imp_trend_sim,
+             dates = dates_type,
+             multistate = FALSE,
+             base_colour = orange,
+             vline_at = quarantine_dates,
+             vline2_at = projection_date) + 
+    ggtitle(label = "Impact of quarantine of overseas arrivals",
+            subtitle = expression(Component~of~R["eff"]~due~to~quarantine~of~overseas~arrivals)) +
+    ylab(expression(R["eff"]~component))
+  
+  ggsave(file.path(dir, "figures/R_eff_trend_import.png"),
+         width = panel_width,
+         height = panel_height * 1.25,
+         scale = 1)
+  
+  # error trends
+  plot_trend(error_effect_L_sim,
+             dates = dates_type,
+             multistate = TRUE,
+             base_colour = pink,
+             hline_at = 0,
+             vline_at = intervention_dates()$date,
+             vline2_at = projection_date,
+             ylim = NULL) + 
+    ggtitle(label = "Trend in local cases not explained by social distancing",
+            subtitle = expression(Deviation~from~average~ln(R["eff"])~of~"locally-acquired"~cases)) +
+    ylab("Deviation")
+  
+  ggsave(file.path(dir, "figures/R_eff_error_local.png"),
+         width = multi_width,
+         height = multi_height,
+         scale = 0.8)
+  
+  # error trends
+  plot_trend(error_effect_O_sim,
+             dates = dates_type,
+             multistate = TRUE,
+             base_colour = pink,
+             hline_at = 0,
+             vline_at = quarantine_dates,
+             vline2_at = projection_date,
+             ylim = NULL) + 
+    ggtitle(label = "Trend in imported cases not explained by quarantine of overseas arrivals",
+            subtitle = expression(Deviation~from~average~ln(R["eff"])~of~"overseas-acquired"~cases)) +
+    ylab("Deviation")
+  
+  ggsave(file.path(dir, "figures/R_eff_error_import.png"),
+         width = multi_width,
+         height = multi_height,
+         scale = 0.8)
+  
+  # posterior summary of R0
+  R0_draws <- R_eff_loc_trend_sim[, 1, 1]
+  mean(R0_draws)
+  sd(R0_draws)
+  
+  # posterior summary of R_eff for the latest date
+  R_eff_now_draws <- R_eff_loc_trend_sim[, ncol(R_eff_loc_trend_sim), 1]
+  mean(R_eff_now_draws)
+  sd(R_eff_now_draws)
+  max(dates)
+  
+  mean <- colMeans(R_eff_loc_sim)
+  median <- apply(R_eff_loc_sim, 2, FUN = stats::median)
+  ci90 <- apply(R_eff_loc_sim, 2, quantile, c(0.05, 0.95))
+  ci50 <- apply(R_eff_loc_sim, 2, quantile, c(0.25, 0.75))
+  
+  # CSV of R_eff local
+  df_output <- tibble(
+    date = rep(dates_type, n_states),
+    state = rep(states, each = length(dates_type)),
+    bottom = ci90[1, ],
+    top = ci90[2, ],
+    lower = ci50[1, ],
+    upper = ci50[2, ],
+    median = median,
+    mean = mean
+  ) %>%
+    mutate(date_onset = date + 5)
+  
+  write_csv(
+    df_output,
+    file.path(dir, "r_eff_local_estimates.csv")
+  )
+  
+}
 
-# imported average R_eff
-plot_trend(R_eff_imp_trend_sim,
-           multistate = FALSE,
-           base_colour = orange,
-           vline_at = quarantine_dates) + 
-  ggtitle(label = "Impact of quarantine of overseas arrivals",
-          subtitle = expression(Component~of~R["eff"]~due~to~quarantine~of~overseas~arrivals)) +
-  ylab(expression(R["eff"]~component))
+# # posterior summary of R_eff for the peak of distancing
+# peak_distancing <- max(which(waning_index == 0))
+# R_eff_peak_draws <- R_eff_loc_trend_sim[, peak_distancing, 1]
+# mean(R_eff_peak_draws)
+# sd(R_eff_peak_draws)
+# min(dates) + peak_distancing - 1
 
-ggsave("outputs/figures/R_eff_trend_import.png",
-       width = panel_width,
-       height = panel_height * 1.25,
-       scale = 1)
+# # summary of the inferred waning amount
+# waning_amount_draws <- calculate(waning_amount, values = draws, nsim = 20000)[[1]][, 1, 1]
+# mean(waning_amount_draws * -100)
+# sd(waning_amount_draws * -100)
+# waning_amount_params
+# 
+# 
+# post_intervention_start <- as.numeric(max(intervention_dates()$date) - dates[1])
+# sum(local_infectious[post_intervention_start:n_dates, ])
+# sum(local_cases[post_intervention_start:n_dates, ])
 
-# error trends
-plot_trend(error_effect_L_sim,
-           multistate = TRUE,
-           base_colour = pink,
-           hline_at = 0,
-           vline_at = intervention_dates()$date,
-           ylim = NULL) + 
-  ggtitle(label = "Trend in local cases not explained by social distancing",
-          subtitle = expression(Deviation~from~average~ln(R["eff"])~of~"locally-acquired"~cases)) +
-  ylab("Deviation")
-
-ggsave("outputs/figures/R_eff_error_local.png",
-       width = multi_width,
-       height = multi_height,
-       scale = 0.8)
-
-# error trends
-plot_trend(error_effect_O_sim,
-           multistate = TRUE,
-           base_colour = pink,
-           hline_at = 0,
-           vline_at = quarantine_dates,
-           ylim = NULL) + 
-  ggtitle(label = "Trend in imported cases not explained by quarantine of overseas arrivals",
-          subtitle = expression(Deviation~from~average~ln(R["eff"])~of~"overseas-acquired"~cases)) +
-  ylab("Deviation")
-
-ggsave("outputs/figures/R_eff_error_import.png",
-       width = multi_width,
-       height = multi_height,
-       scale = 0.8)
-
-# posterior summary of R0
-R0_draws <- R_eff_loc_trend_sim[, 1, 1]
-mean(R0_draws)
-sd(R0_draws)
-
-# posterior summary of R_eff for the latest date
-R_eff_now_draws <- R_eff_loc_trend_sim[, ncol(R_eff_loc_trend_sim), 1]
-mean(R_eff_now_draws)
-sd(R_eff_now_draws)
-max(dates)
-
-# posterior summary of R_eff for the peak of distancing
-peak_distancing <- max(which(waning_index == 0))
-R_eff_peak_draws <- R_eff_loc_trend_sim[, peak_distancing, 1]
-mean(R_eff_peak_draws)
-sd(R_eff_peak_draws)
-min(dates) + peak_distancing - 1
-
-# summary of the inferred waning amount
-waning_amount_draws <- calculate(waning_amount, values = draws, nsim = 20000)[[1]][, 1, 1]
-mean(waning_amount_draws * -100)
-sd(waning_amount_draws * -100)
-waning_amount_params
-
-
-post_intervention_start <- as.numeric(max(intervention_dates()$date) - dates[1])
-sum(local_infectious[post_intervention_start:n_dates, ])
-sum(local_cases[post_intervention_start:n_dates, ])
-
-
-# Ratio of R_eff at minimum to R0 to
 
 # - switch to stacked version of GP (smaller covaraince matrix, faster inference)
 # - add a custom greta function for lognormal CDF (using TFP) and try
