@@ -566,6 +566,105 @@ for (type in 1:5) {
   
 }
 
+# summarise the proportion of local cases assumed to have been infected by imports
+expected_from_imports <- imported_infectious * R_eff_imp[1:n_dates, ]
+expected_from_locals <- local_infectious * R_eff_loc[1:n_dates, ]
+expected_total <- expected_from_imports + expected_from_locals
+prop_from_imports <- expected_from_imports / expected_total
+
+prop_from_imports_sim <- calculate(c(prop_from_imports), values = draws, nsim = nsim)[[1]]
+
+mean <- colMeans(prop_from_imports_sim)
+median <- apply(prop_from_imports_sim, 2, FUN = stats::median, na.rm = TRUE)
+ci90 <- apply(prop_from_imports_sim, 2, quantile, c(0.05, 0.95), na.rm = TRUE)
+ci50 <- apply(prop_from_imports_sim, 2, quantile, c(0.25, 0.75), na.rm = TRUE)
+
+# CSV of proportion of locally-acquired cases that were infected by imports
+prop_imports_output <- tibble(
+  date = rep(dates, n_states),
+  state = rep(states, each = length(dates)),
+  bottom = ci90[1, ],
+  top = ci90[2, ],
+  lower = ci50[1, ],
+  upper = ci50[2, ],
+  median = median,
+  mean = mean
+) %>%
+  mutate(date_onset = date + 5)
+
+write_csv(
+  prop_imports_output,
+  file.path(dir, "prop_local_from_imports_estimates.csv")
+)
+
+base_colour <- grey(0.5)
+ggplot(prop_imports_output) +
+  aes(date, mean) +
+  facet_wrap(~state, ncol = 2) +
+  geom_ribbon(aes(ymin = bottom,
+                  ymax = top),
+              alpha = 0.2) +
+  geom_ribbon(aes(ymin = lower,
+                  ymax = upper),
+              alpha = 0.5) +
+  geom_line(aes(y = bottom),
+            colour = base_colour,
+            alpha = 0.8) + 
+  geom_line(aes(y = top),
+            colour = base_colour,
+            alpha = 0.8) +
+  ggtitle("Proportion of local cases infected by imported cases") +
+  ylab("Proportion") +
+  xlab(element_blank()) +
+  theme_minimal()
+
+expected_from_imports <- prop_from_imports * local_cases
+
+
+exp_from_imports_sim <- calculate(c(expected_from_imports), values = draws, nsim = nsim)[[1]]
+
+mean <- colMeans(exp_from_imports_sim)
+median <- apply(exp_from_imports_sim, 2, FUN = stats::median, na.rm = TRUE)
+ci90 <- apply(exp_from_imports_sim, 2, quantile, c(0.05, 0.95), na.rm = TRUE)
+ci50 <- apply(exp_from_imports_sim, 2, quantile, c(0.25, 0.75), na.rm = TRUE)
+
+# CSV of proportion of locally-acquired cases that were infected by imports
+exp_imports_output <- tibble(
+  date = rep(dates, n_states),
+  state = rep(states, each = length(dates)),
+  bottom = ci90[1, ],
+  top = ci90[2, ],
+  lower = ci50[1, ],
+  upper = ci50[2, ],
+  median = median,
+  mean = mean
+) %>%
+  mutate(date_onset = date + 5)
+
+base_colour <- grey(0.5)
+ggplot(exp_imports_output) +
+  aes(date, mean) +
+  facet_wrap(~state, ncol = 2) +
+  geom_ribbon(aes(ymin = bottom,
+                  ymax = top),
+              alpha = 0.2) +
+  geom_ribbon(aes(ymin = lower,
+                  ymax = upper),
+              alpha = 0.5) +
+  geom_line(aes(y = bottom),
+            colour = base_colour,
+            alpha = 0.8) + 
+  geom_line(aes(y = top),
+            colour = base_colour,
+            alpha = 0.8) +
+  ggtitle("Total number of local cases infected by imported cases") +
+  ylab("Number") +
+  xlab(element_blank()) +
+  theme_minimal()
+
+
+
+
 # # posterior summary of R_eff for the peak of distancing
 # peak_distancing <- max(which(waning_index == 0))
 # R_eff_peak_draws <- R_eff_loc_trend_sim[, peak_distancing, 1]
