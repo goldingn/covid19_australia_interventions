@@ -319,15 +319,6 @@ n_eff <- coda::effectiveSize(draws)
 max(r_hats)
 min(n_eff)
 
-# # estimate the overall R_eff by weighting using the (interpolated) proportion of
-# # infectious cases that are imports
-# p_imported <- proportion_imported(local_infectious, imported_infectious)
-# log_Dt_weighted <- log_rel_Reff_loc + log1p(-p_imported)
-# log_Qt_weighted <- log_rel_Reff_imp + log(p_imported)
-# log_rel_R_eff <- log(exp(log_Dt_weighted) + exp(log_Qt_weighted))
-# log_R_eff <- log_R0 + log_rel_R_eff
-# R_eff_vec <- c(exp(log_R_eff))
-
 # R_eff of locally-acquired and overseas-acquired cases
 R_eff_loc <- exp(log_R0 + log_rel_Reff_loc)
 R_eff_imp <- exp(log_R0 + log_rel_Reff_imp)
@@ -388,7 +379,7 @@ for (type in 1:5) {
   R_eff_loc_trend_sim <- sims$R_eff_loc_trend_type
   R_eff_imp_trend_sim <- sims$R_eff_imp_trend_type
   error_effect_L_sim <- sims$epsilon_L_vec_type
-  error_effect_O_sim <- sims$epsilon_L_vec_type
+  error_effect_O_sim <- sims$epsilon_O_vec_type
   
   dates_type <- min(dates) - 1 + seq_along(rows)
   
@@ -429,6 +420,7 @@ for (type in 1:5) {
   multi_mfrow <- c(4, 2)
   multi_width <- 8.27
   multi_height <- (multi_width / multi_mfrow[2]) * panel_ratio * multi_mfrow[1]
+  
   # add a bit of space for the title
   multi_height <- multi_height * 1.2
   
@@ -541,26 +533,43 @@ for (type in 1:5) {
   sd(R_eff_now_draws)
   max(dates)
   
-  mean <- colMeans(R_eff_loc_sim)
-  median <- apply(R_eff_loc_sim, 2, FUN = stats::median)
-  ci90 <- apply(R_eff_loc_sim, 2, quantile, c(0.05, 0.95))
-  ci50 <- apply(R_eff_loc_sim, 2, quantile, c(0.25, 0.75))
-  
-  # CSV of R_eff local
-  df_output <- tibble(
+  # output 2000 posterior samples of R_eff for locals
+  R_eff_loc_samples <- t(R_eff_loc_sim[1:2000, , 1])
+  colnames(R_eff_loc_samples) <- paste0("sim", 1:2000)
+
+  df_base <- tibble(
     date = rep(dates_type, n_states),
     state = rep(states, each = length(dates_type)),
-    bottom = ci90[1, ],
-    top = ci90[2, ],
-    lower = ci50[1, ],
-    upper = ci50[2, ],
-    median = median,
-    mean = mean
   ) %>%
     mutate(date_onset = date + 5)
   
+  # CSV of R_eff local posterior samples
+  df_samples <- df_base %>%
+    cbind(R_eff_loc_samples)
+  
   write_csv(
     df_output,
+    file.path(dir, "r_eff_local_samples.csv")
+  )
+  
+  # CSV of estimates based on these
+  mean <- rowMeans(R_eff_loc_samples)
+  median <- apply(R_eff_loc_samples, 1, FUN = stats::median)
+  ci90 <- apply(R_eff_loc_samples, 1, quantile, c(0.05, 0.95))
+  ci50 <- apply(R_eff_loc_samples, 1, quantile, c(0.25, 0.75))
+  
+  df_estimates <- df_base %>%
+    mutate(
+      bottom = ci90[1, ],
+      top = ci90[2, ],
+      lower = ci50[1, ],
+      upper = ci50[2, ],
+      median = median,
+      mean = mean
+    )
+  
+  write_csv(
+    df_estimates,
     file.path(dir, "r_eff_local_estimates.csv")
   )
   
