@@ -198,13 +198,9 @@ q_index <- case_when(
 )
 q_index <- c(q_index, rep(3, n_extra))
 
-# q_index_vec <- rep(q_index, n_states)
 # q_raw <- uniform(0, 1, dim = 3)
-# q <- cumprod(q_raw)
-# log_q <- log(q)
 log_q_raw <- -exponential(1, dim = 3)
 log_q <- cumsum(log_q_raw)
-# log_Qt_vec <- log_q[q_index_vec]
 log_Qt <- log_q[q_index]
 
 # the reduction from R0 down to R_eff for locally-acquired cases due to social
@@ -213,7 +209,6 @@ log_Qt <- log_q[q_index]
 # social distanding index is proportional to the percentage change in mobility,
 # but we can express is as proportional reduction in mobility with: 1 - beta * sdi
 beta <- uniform(0, 1)
-# log_Dt_vec <- log1p(-beta * rep(social_distancing_index, n_states))
 log_Dt <- log1p(-beta * social_distancing_index)
 
 # temporally correlated errors in R_eff for local cases - representing all the
@@ -221,62 +216,78 @@ log_Dt <- log1p(-beta * social_distancing_index)
 # communities with higher or lower tranmission rates.
 
 # variation in R_eff for locally-acquired cases over time
-alpha_time_L <- lognormal(2, 0.5)
-alpha_time_O <- lognormal(2, 0.5)
-lengthscale_time_L <- lognormal(4, 0.5)
-lengthscale_time_O <- lognormal(4, 0.5)
-sigma_time_L <- normal(0, 0.5, truncation = c(0, Inf))
-sigma_time_O <- normal(0, 0.5, truncation = c(0, Inf))
+alpha_time_noise_L <- lognormal(2, 0.5)
+lengthscale_time_noise_L <- lognormal(2, 0.5)
+sigma_time_noise_L <- normal(0, 0.25, truncation = c(0, Inf))
 
-time_kernel_L <- rational_quadratic(
-  lengthscales = lengthscale_time_L,
-  variance = sigma_time_L ^ 2,
-  alpha = alpha_time_L,
-  columns = 1)
-
-time_kernel_O <- rational_quadratic(
-  lengthscales = lengthscale_time_O,
-  variance = sigma_time_O ^ 2,
-  alpha = alpha_time_O,
-  columns = 1)
-
-# variation in this timeseries between the states and territories
-sigma_state_L <- normal(0, 0.5, truncation = c(0, Inf), dim = n_states)
-# sigma_state_O <- normal(0, 0.5, truncation = c(0, Inf))
-# state_variation_kernel_L <- iid(sigma_state_L ^ 2, columns = 2)
-# state_variation_kernel_O <- iid(sigma_state_O ^ 2, columns = 2)
+time_noise_kernel_L <- rational_quadratic(
+  lengthscales = lengthscale_time_noise_L,
+  variance = sigma_time_noise_L ^ 2,
+  alpha = alpha_time_noise_L)
 
 # IID noise in log(R_eff) per day (overdispersion, or case clustering)
-sigma_noise_L <- normal(0, 0.5, truncation = c(0, Inf))
-noise_kernel_L <- white(sigma_noise_L ^ 2)
+sigma_noise_L <- normal(0, 0.25, truncation = c(0, Inf))
+iid_noise_kernel_L <- white(sigma_noise_L ^ 2)
+
 sigma_noise_O <- normal(0, 0.5, truncation = c(0, Inf))
-noise_kernel_O <- white(sigma_noise_O ^ 2)
+iid_noise_kernel_O <- white(sigma_noise_O ^ 2)
+sigma_bias_O <- normal(0, 0.5, truncation = c(0, Inf))
+bias_kernel_O <- bias(sigma_bias_O ^ 2)
 
-kernel_L <- noise_kernel_L + time_kernel_L  # * state_variation_kernel_L
-kernel_O <- noise_kernel_O + time_kernel_O  # * state_variation_kernel_O
+# combine noise kernels
+noise_kernel_L <- time_noise_kernel_L + iid_noise_kernel_L
+noise_kernel_O <- bias_kernel_O + iid_noise_kernel_O
 
-# # data for the GP to act on
-# X <- cbind(date = rep(date_nums, n_states),
-#            state = rep(seq_len(n_states), each = n_dates))
+# # for locally-acquired cases, do hierarchical smoother GPs as part of the state-level trends
+# lengthscale_time_signal_state_O <- lognormal(4, 0.5)
+# sigma_time_signal_state_O <- normal(0, 0.5, truncation = c(0, Inf))
+
+lengthscale_time_signal_state_L <- lognormal(4, 0.5)
+sigma_time_signal_state_L <- normal(0, 0.25, truncation = c(0, Inf))
+
+signal_kernel_state_L  <- rbf(
+  lengthscales = lengthscale_time_signal_state_L,
+  variance = sigma_time_signal_state_L ^ 2
+)
+
+kernel_state_L <- signal_kernel_state_L + noise_kernel_L
+kernel_state_O <- noise_kernel_O
+
+# variation in the Reff timeseries between the states and territories
+sigma_state_L <- normal(0, 0.25, truncation = c(0, Inf), dim = n_states)
+sigma_state_O <- normal(0, 0.5, truncation = c(0, Inf), dim = n_states)
 
 # build a matrix of inducing points, regularly spaced over time but with one on
 # the most recent date
 n_date_nums <- length(date_nums)
-inducing_date_nums <- rev(seq(n_date_nums, 1, by = -5))
-# inducing_index <- which(X[, 1] %in% inducing_date_nums)
-# X_inducing <- X[inducing_index, ]
+inducing_date_nums <- rev(seq(n_date_nums, 1, by = -3))
+n_inducing <- length(inducing_date_nums)
 
-# evaluate epsilon GP for imports
-epsilon_O <- gp(date_nums, kernel_O, inducing = inducing_date_nums, n = n_states, tol = 0)
+# evaluate epsilon GP for imports, with different error variance for each state
+v_O_raw <- normal(0, 1, dim = c(n_inducing, n_states))
+v_O <- sweep(v_O_raw, 2, sigma_state_O, FUN = "*")
+
+epsilon_O <- multi_gp(
+  x = date_nums,
+  v = v_O,
+  kernel = kernel_state_O,
+  inducing = inducing_date_nums,
+  tol = 0
+)
 
 # and for locals, with different variances
-n_inducing <- length(inducing_date_nums)
 v_L_raw <- normal(0, 1, dim = c(n_inducing, n_states))
 v_L <- sweep(v_L_raw, 2, sigma_state_L, FUN = "*")
 
-epsilon_L <- multi_gp(x = date_nums, v = v_L, kernel = kernel_L, inducing = inducing_date_nums, tol = 0)
+epsilon_state_L <- multi_gp(
+  x = date_nums,
+  v = v_L,
+  kernel = kernel_state_L,
+  inducing = inducing_date_nums,
+  tol = 0
+)
 
-# epsilon_L <- gp(date_nums, kernel_L, inducing = inducing_date_nums, n = n_states, tol = 0)
+epsilon_L <- epsilon_state_L
 
 # combine these components
 # N ~ Poisson(R0 * exp(epsilon_t) * (I_t^L * D_t  + I_t^O * Q_t))
@@ -309,9 +320,14 @@ expected_infections_vec <- exp(log_expected_infections_vec)
 
 distribution(local_cases[valid]) <- poisson(expected_infections_vec)
 
-m <- model(beta, log_q, epsilon_L, epsilon_O)
-draws <- mcmc(m, chains = 10, one_by_one = TRUE)
-draws <- extra_samples(draws, 2000, one_by_one = TRUE)
+m <- model(beta, log_q, log_R0, rel_new_vec)
+draws <- mcmc(
+  m,
+  sampler = hmc(Lmin = 10, Lmax = 15),
+  chains = 10,
+  one_by_one = TRUE
+)
+# draws <- extra_samples(draws, 1000, one_by_one = TRUE)
 
 # check convergence
 r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
@@ -355,12 +371,32 @@ for (type in 1:5) {
     projection_date <- max(dates)
   }
                  
-  R_eff_loc_vec_type <- c(R_eff_loc[rows, ])
   R_eff_imp_vec_type <- c(R_eff_imp[rows, ])
   R_eff_loc_trend_type <- R_eff_loc_trend[rows]
   R_eff_imp_trend_type <- R_eff_imp_trend[rows]
-  epsilon_L_vec_type <- c(epsilon_L[rows, ])
-  epsilon_O_vec_type <- c(epsilon_O[rows, ])
+  
+  # reproject epsilons without (and only with) noise components
+  epsilon_state_L_signal <- project(
+    f = epsilon_state_L,
+    x_new = date_nums,
+    kernel = signal_kernel_state_L
+  )
+  
+  epsilon_L_signal <- epsilon_state_L_signal
+  
+  log_rel_Reff_loc_signal <- sweep(epsilon_L_signal, 1, log_Dt, FUN = "+") 
+  Reff_loc_signal <- exp(log_R0 + log_rel_Reff_loc_signal)
+  R_eff_loc_vec_type <- c(Reff_loc_signal[rows, ])
+  
+  # noise only for plotting in pink
+  epsilon_L_noise <- project(
+    f = epsilon_state_L,
+    x_new = date_nums,
+    kernel = noise_kernel_L
+  )
+  
+  error_L_vec_type <- c(epsilon_L_noise[rows, ])
+  error_O_vec_type <- c(epsilon_O[rows, ])
   
   # simulate from posterior for quantitities of interest
   sims <- calculate(
@@ -368,8 +404,8 @@ for (type in 1:5) {
     R_eff_imp_vec_type,
     R_eff_loc_trend_type,
     R_eff_imp_trend_type,
-    epsilon_L_vec_type,
-    epsilon_O_vec_type,
+    error_L_vec_type,
+    error_O_vec_type,
     values = draws,
     nsim = nsim
   )
@@ -378,8 +414,8 @@ for (type in 1:5) {
   R_eff_imp_sim <- sims$R_eff_imp_vec_type
   R_eff_loc_trend_sim <- sims$R_eff_loc_trend_type
   R_eff_imp_trend_sim <- sims$R_eff_imp_trend_type
-  error_effect_L_sim <- sims$epsilon_L_vec_type
-  error_effect_O_sim <- sims$epsilon_O_vec_type
+  error_effect_L_sim <- sims$error_L_vec_type
+  error_effect_O_sim <- sims$error_O_vec_type
   
   dates_type <- min(dates) - 1 + seq_along(rows)
   
@@ -495,8 +531,8 @@ for (type in 1:5) {
              vline_at = intervention_dates()$date,
              vline2_at = projection_date,
              ylim = NULL) + 
-    ggtitle(label = "Trend in local cases not explained by social distancing",
-            subtitle = expression(Deviation~from~average~ln(R["eff"])~of~"locally-acquired"~cases)) +
+    ggtitle(label = "Short-term variation in local to local transmission rates",
+            subtitle = expression(Deviation~from~log(R["eff"])~from~local~cases)) +
     ylab("Deviation")
   
   ggsave(file.path(dir, "figures/R_eff_error_local.png"),
@@ -513,8 +549,8 @@ for (type in 1:5) {
              vline_at = quarantine_dates,
              vline2_at = projection_date,
              ylim = NULL) + 
-    ggtitle(label = "Trend in imported cases not explained by quarantine of overseas arrivals",
-            subtitle = expression(Deviation~from~average~ln(R["eff"])~of~"overseas-acquired"~cases)) +
+    ggtitle(label = "Short term variation in import to local transmission rates",
+            subtitle = expression(Deviation~from~log(R["eff"])~from~imported~cases)) +
     ylab("Deviation")
   
   ggsave(file.path(dir, "figures/R_eff_error_import.png"),
@@ -522,16 +558,22 @@ for (type in 1:5) {
          height = multi_height,
          scale = 0.8)
   
-  # posterior summary of R0
-  R0_draws <- R_eff_loc_trend_sim[, 1, 1]
-  mean(R0_draws)
-  sd(R0_draws)
-  
-  # posterior summary of R_eff for the latest date
-  R_eff_now_draws <- R_eff_loc_trend_sim[, ncol(R_eff_loc_trend_sim), 1]
-  mean(R_eff_now_draws)
-  sd(R_eff_now_draws)
-  max(dates)
+  if (type == 1) {
+    
+    # posterior summary of R0
+    R0_draws <- R_eff_loc_trend_sim[, 1, 1]
+    print(sprintf("R0 %.2f (%.2f)",
+                  mean(R0_draws),
+                  sd(R0_draws)))
+    
+    # posterior summary of R_eff for the latest date
+    R_eff_now_draws <- R_eff_loc_trend_sim[, ncol(R_eff_loc_trend_sim), 1]
+    print(sprintf("Reff %.2f (%.2f) on %s",
+                  mean(R_eff_now_draws),
+                  sd(R_eff_now_draws),
+                  format(max(dates), "%d %b")))
+    
+  }
   
   # output 2000 posterior samples of R_eff for locals
   R_eff_loc_samples <- t(R_eff_loc_sim[1:2000, , 1])
@@ -548,7 +590,7 @@ for (type in 1:5) {
     cbind(R_eff_loc_samples)
   
   write_csv(
-    df_output,
+    df_samples,
     file.path(dir, "r_eff_local_samples.csv")
   )
   

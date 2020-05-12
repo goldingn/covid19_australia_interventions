@@ -37,7 +37,7 @@ test_data <- get_tests() %>%
 
 # tests ~ poisson(expected_tests)
 # delay ~ negative_binomial(expected_delay)
-# log(expected_delay) = log(expected_tests) + e1
+# log(expected_delay) = beta * log(expected_tests) + e1
 # log(expected_tests) = e2
 
 
