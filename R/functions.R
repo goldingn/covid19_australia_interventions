@@ -563,6 +563,10 @@ plot_latent_factor <- function (factor, draws, dates, key_dates, cols = grey(c(0
         col.main = grey(0.3))
 }
 
+gamma_cdf <- function(x, shape, rate) {
+  stop("not yet implemented")
+}
+
 # greta function for the lognormal CDF (equivalent to plnorm(x, meanlog, sdlog))
 # x must not be a greta array, though meanlog and sdlog can be. A greta array of
 # CDF values is returned, equal to 0 wherex was 0 or lower.
@@ -611,7 +615,55 @@ parameter <- function(x, truncation = c(-Inf, Inf)) {
   normal(mean(x), sd(x), truncation = truncation)
 }
 
-# given a positive integer vector of (days since a case became symptomatic,
+# given a positive integer vector of days (since an infection began), compute
+# the probability that the generation interval values falls in that day
+generation_interval_probability <- function(days, fixed = FALSE) {
+  
+  # priors for the parameters of the lognormal distribution over the serial interval from Nishiura et
+  # al., as stored in the EpiNow source code 
+  
+  download.file(
+    "https://github.com/epiforecasts/EpiNow/raw/master/data-raw/gi.rds",
+    (f <- tempfile()),
+    quiet = TRUE
+  )
+  gi_param_samples <- readRDS(f)
+  
+  # compute the CDF of the lognormal distribution, for this and the next day
+  days_lower <- days
+  days_upper <- days + 1
+  
+  if (fixed) {
+    
+    # if fixed, we can do this in R
+    mean <- mean(gi_param_samples$mean)
+    sd <- mean(gi_param_samples$sd)
+    scale <- sd ^ 2 / mean
+    shape <- mean / scale
+    
+    p_lower <- pgamma(days_lower, shape = shape, scale = scale)
+    p_upper <- pgamma(days_upper, shape = shape, scale = scale)
+    
+  } else {
+    # otherwise create greta arrays for the parameters, with priors based on
+    # these samples
+    scale_draws <- gi_param_samples$sd ^ 2 / gi_param_samples$mean
+    shape_draws <- gi_param_samples$mean / scale_draws
+    rate_draws <- 1 / scale_draws
+    
+    rate <- parameter(rate_draws, c(0, Inf))
+    shape <- parameter(shape_draws, c(0, Inf))
+    
+    p_lower <- gamma_cdf(days_lower, shape, rate)
+    p_upper <- gamma_cdf(days_upper, shape, rate)
+  }
+  
+  # get the integral of the density over this day
+  p_upper - p_lower
+  
+}
+
+# given a positive integer vector of days (since a case became symptomatic),
 # compute the probability that the serial interval values falls in that day
 serial_interval_probability <- function(days, fixed = FALSE) {
   
@@ -773,6 +825,18 @@ apply_serial_interval <- function(cases, fixed = FALSE) {
   
   # get vector of probabilities (either an R or a greta array, based on 'fixed')
   probabilities <- serial_interval_probability(0:45, fixed = fixed)
+  
+  # get a square matrix of contributions of each date to each other, and
+  # matrix-multiply to disaggregate
+  si_disaggregation <- disaggregation_matrix(nrow(cases), probabilities)
+  si_disaggregation %*% cases
+  
+}
+
+apply_generation_interval <- function(cases, fixed = FALSE) {
+  
+  # get vector of probabilities (either an R or a greta array, based on 'fixed')
+  probabilities <- generation_interval_probability(0:45, fixed = fixed)
   
   # get a square matrix of contributions of each date to each other, and
   # matrix-multiply to disaggregate
