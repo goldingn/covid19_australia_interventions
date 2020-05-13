@@ -599,6 +599,7 @@ for(i in 1:4) {
 
 save.image("outputs/latent_social_distancing_temp.RData")
 
+# summarise state-level variation in waning
 distancing_change_data %>%
   mutate(value = pmin(0, value * 100)) %>%
   group_by(datastream) %>%
@@ -607,6 +608,12 @@ distancing_change_data %>%
     min = max(value),
     max = min(value)
   )
+
+distancing_change_data %>%
+  mutate(value = pmin(0, value * 100)) %>%
+  filter(datastream %in% target_datastreams) %>%
+  arrange(datastream, state) %>%
+  as.data.frame()
 
 peak_draws <- calculate(peak, values = draws, nsim = 20000)[[1]][, 1, 1]
 peak_mean <- first_date + mean(peak_draws)
@@ -675,10 +682,6 @@ saveRDS(waning_amount_params,
 # lines(distancing_overall_est[, 2] ~ dates, lty = 2)
 # lines(distancing_overall_est[, 3] ~ dates, lty = 2)
 # lines(distancing_overall_est[, 1] ~ dates, lwd = 3)
-# 
-# # 0.1, 0.1, 0.8: 10.1% (6.6% - 13.3%) 
-# # 0.1, 0.3, 0.6: 10.7% (5.0% - 15.6%) 
-# # 0.2, 0.4, 0.4: 12.5% (5.3% - 18.6%) 
 
 
 # - plot state-by-factor loading plots
