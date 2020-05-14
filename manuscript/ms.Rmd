@@ -1,5 +1,5 @@
 ---
-title: "Quantifying social distancing behaviour across Australia in response to COVID-19"
+title: "The impacts of public health policy measures on reducing SARS-CoV-2 transmission in Australia"
 author:
   - Nick Golding$^1$, ...$^2$ & ...$^3$
   - $^1$ Telethon Kids Institute and Curtin University, Perth WA, Australia
@@ -15,6 +15,8 @@ header-includes: \usepackage{float}
 ---
 
 ## Gist 
+
+NOTE: this manuscript was initially focussed solely on quantifying the reduction in mobility in Australia in response to social distancing policies, but the focus is now on quantifying the impact of this on transmission, and comparin with the impacts of other measures, including quarantining of overseas imports and improved surveillance. However the manuscript has not yet been updated to relfect this.
 
 To add:
  - relative effectiveness of three different policies
@@ -50,6 +52,125 @@ Here we synthesise these varied measures of population mixing behaviour into a s
 
 
 ## Methods
+
+## Modelling changes in transmission rate
+
+We developed a semi-mechanistic Bayesian statistical model to estimate $R_t$, the effective rate of transmission of of SARS-CoV-2 over time, whilst quantifying the impacts on $R_t$ of a range of policy measures introcudced at national and regional levels in Australia.
+
+### Observation model
+
+A straightforward observation model to relate case counts to the rate of transmission is to assume that the number of new locally-acquired cases $N_{t,i}^L$ at time $t$ in region $i$ is (conditionally on its expectation) Poisson-distributed with mean $lambda_{t,i}$ given by the product of the total infectiousness of infected individuals $I_{t,i}$ and the time-varying reproduction rate $R_{t,i}$:
+
+\begin{align}
+  N_{t,i}^L &\sim Poisson(\lambda_{t,i}) \\
+  \lambda_{t,i} &= I_{t,i} R_{t,i} \\
+  I_{t,i} &= \sum_{t'=1}^t g(t') N_{t',i} \\
+  N_{t',i} &= N_{t,i}^L + N_{t,i}^O
+\end{align}  
+
+where the total infectiousness is the sum of all active infections $N_{t,i}^L$ - both locally-acquired and overseas-acquired $N_{t',i}^O$ - initiated at times $t'$ prior to $t$, each weighted by an infectivity function $g(t')$ giving the proportion of new infections that occur $t'$ days post-infection. $g(t')$ is equivalent to a discretised probability density function of the generation interval - the probability that the generation interval for an infector-infectee pair is $t'$ days.
+
+This observation model forms the basis of the maximum-likelihood method proposed by White and Pagano (2007) and the variations of that method by Cori et al. (2013), and Abbott et al. (2020) that have previously been used to estimate time-varying SARS-CoV-2 reproduction numbers in Australia.
+
+We extend this model to consider separate reproduction rates for two groups of infectious cases, in order to model the effects of different interventions targetted at each group: those with locally-acquired cases $I_{t,i}^L$, and those with overseas acquired cases $I_{t,i}^O$, with corresponding reproduction rates $R_{t,i}^L$ and $R_{t,i}^O$. These respectively are the rates of transmission from imported cases to locals, and from locally-acquired cases to locals:
+
+\begin{align}
+  N_{t,i}^L &\sim Poisson(\lambda_{t,i}) \\
+  \lambda_{t,i} &= I_{t,i}^L R_{t,i}^L + I_{t,i}^O R_{t,i}^O \\
+  I_{t,i}^L &= \sum_{t'=1}^t g(t') N_{t',i}^L \\
+  I_{t,i}^O &= \sum_{t'=1}^t g(t') N_{t',i}^O
+\end{align}  
+
+Note that if data were available on the whether the source of infection for each locally-acquired case was another locally-acquired case or an overseas-acquired cases, we could split this into two separate analyses using the observation model above; one for each transmission source. In the absence of such data, the fractions of all transmission attributed to sources of each type is implicitly inferred by the model, with an associated increase in parameter uncertainty.
+
+### Reproduction rate models
+
+We model the reproduction rates of the two subpopulations in a semi-mechanistic way:
+
+\begin{align}
+  R_{t,i}^L &= R_0 D_t e^{\epsilon_{t,i}^L} \\
+  R_{t,i}^O &= R_0 Q_t e^{\epsilon_{t,i}^O}
+\end{align}
+
+with each reproduction rate is modelled as a product of: the reproduction rate under initial conditions and no interventions $R_0$; deterministic functions $D_t$ and $Q_t$ that modify $R_0$ over time to respectively represent the impacts of physical distancing and quarantine interventions at a national level, and correlated timeseries of random effects $\epsilon_{t,i}^L$ and $\epsilon_{t,i}^O$ to represent stochastic fluctuations in the reporting rate in each state. These error terms are themselves decomposed into population-wide changes in $R_{t,i}$ not captured by the impacts of the policy measures, and the more stochastic fluctuations in the reproduction rate among cases at each point in time - for example due to the clusters in subpopulations with higher or lower reproduction rates than the general
+population.
+
+### Intervention models
+
+We model the effect of $D_t$ as being proportional (on the log scale) to an index of the proportional change in population mobility in response to physical distancing measures $d_t$ - estimated from multiple datastreams of population mobility as described in the next section - which has initial value 0 before distancing measures were implemented and value 1 at its maximum extent:
+
+\begin{align}
+  D_t &= e^{\beta d_t}
+\end{align}
+
+We model $Q_t$ via a monotone decreasing step function with values constrained to the unit interval, and with steps at the known dates $\tau_1$ and $\tau_2$ of changes in quarantine policy:
+
+\begin{equation}
+ Q_t = \begin{cases}
+  q1 & t < \tau_1 \\
+  q2 & \tau_1 \leq t < \tau_2 \\
+  q3 & \tau_2 \leq t
+ \end{cases}
+\end{equation}
+
+where $q1 > q2 > q3$ and all parameters are constrained to the unit interval.
+
+### Error models
+
+The correlated timeseries of errors in the log of the effective reproduction rate for each group $\epsilon_{t,i}^L$ and $\epsilon_{t,i}^O$ are each modelled as a zero-mean Gaussian process (GP) with covariance structured to reflect temporal correlation in errors within each state (but independent between states). The covariance function (kernel) for each Gaussian process is constructed as the sum of covariance functions representing different components of error in the observed reproduction rates. Below we follow the notation of additive GP kernels that is more common in the field of probabilistic machine learning than in statistics when discussing correlated error terms. This corresponds to the summation of the covariance matrices returned by these functions and equally to the summation of GPs, each following these functions.
+
+The structure for error in locally-acquired cases is as follows:
+
+\begin{align}
+  \epsilon_i^L &\sim GP(\mathbf{0}, k^L(t, t')) \\
+  k^L(t, t') &= k_{SE}(t, t') + k_{RQ}(t, t') + k_{IID}^L(t, t') \\
+  k_{SE}(t, t') &= \sigma_1^2 \, exp \left( -\frac{(t - t')^2}{2 l_1^2} \right) \\
+  k_{RQ}(t, t') &= \sigma_2^2 \, exp \left(1 + \frac{(t - t')^2}{2 \alpha l_1^2} \right)^{-\alpha} \\
+  k_{IID}^L(t, t') &= \begin{cases}
+    \sigma_3^2 & t = t' \\ 
+    0 & t \neq t'
+ \end{cases}
+\end{align}
+
+where $k_{SE}()$ is a squared-exponential kernel encoding smooth, long-term deviations from the mean, $k_{RQ}()$ is a rational-quadratic kernel encoding shorter-term deviations from the mean with varying smoothness, and $k_{IID}()$ is an IID or white-noise kernel encoding independent deviations from the mean on each day. The three kernels are used to separately encode three different types of variation. The squared exponential kernel represents long-term trends in the population-wide transmission rate $R_{t,i}^L$ that are not captured by the effects of social distancing - such as improvements in surveillance, or behavioural changes not captured by changes in mobility data. This kernel also represents time-independent region-level differences in transmission rates. The rational quadratic kernel represents the short-term fluctuations in the reproduction rate that are due to large clusters of cases, with infections occurring over a period of days to weeks. The IID kernel represents clustering of cases on a single day - overdispersion in the observed numbers of new local infections per day relative to the assumption of independent events implicit in the Poisson observation model. This is equivalent to using a Poisson-lognormal observation distribution conditional on the timeseries component of the model; functionally equivalent to a negative binomial observation distribution.
+
+The structure for error in overseas-acquired cases is somewhat simpler:
+
+\begin{align}
+  \epsilon_i^O &\sim GP(\mathbf{0}, k^O(t, t')) \\
+  k^O(t, t') &= k_{bias}(t, t') + k_{IID}^O(t, t') \\
+  k_{bias}(t, t') &= \sigma_4^2 \\ 
+  k_{IID}^O(t, t') &= \begin{cases}
+    \sigma_5^2 & t = t' \\ 
+    0 & t \neq t'
+ \end{cases}
+\end{align}
+
+which consists of a bias kernel representing time-independent region-level differences in transmission rates, and an IID kernel representing daily overdispersion due to clustering in new cases acquired from individuals with overseas-acquired infections. Note that this GP formulation is equivalent to the following IID Gaussian random effects model:
+
+\begin{align}
+  \epsilon_{t,i}^O &\sim N(\mu_i, \sigma_5 ^ 2) \\
+  \mu_i &\sim N(0, \sigma_4 ^ 2)
+\end{align}
+
+### Components of the local reproduction rate
+
+We model the rate of transmision from locally acquired cases using the basic reproduction rate, the impact of social distancing, and an error term. However it is easier to consider these epidemiologically by decomposing the expression for $R_{t,i}^L$ into three different components:
+
+\begin{enumerate}
+\item the national trend in $R_t$ due to social distancing,
+\item the state-level trends in population-wide $R_{t,i}$, and
+\item the deviation in this statewide average transmission rate due to case clusters.
+\end{enumerate}
+
+Component 1 of the transmission rate for locally-acquired cases is simply given by $R_0D_t$.
+
+The latter two correspond to different sub-components of the correlated error term $\epsilon_{t,i}^L$: $\epsilon_{i}^{L,1}$ which comprises long-term variation in the region-wide transmission rate, characterised by $k_{SE}()$; and $\epsilon_{t,i}^{L,2}$, characterised by $k_{RQ}() + k_{IID}^L()$, which comprises short-term variation in the transmission rate among the infectious cases due to clusters of cases in subpopulations with transmission rates that are higher (or possibly lower) than the population average. The additive structure of the kernel enables use to perfom an additive decomposition of $\epsilon_{t,i}^L$ into these two terms.
+
+Component 2 is therefore given by $R_0D_te^{\epsilon_{i}^{L,1}}$, and Component 3 (which we consider on the log-scale for ease of visualisation) is $\epsilon_{t,i}^{L,2}$.
+
+
+## Modelling changes in population mobility
 
 *NB. this is currently a lot of copy-pasta from reports etc. which will be massaged into a report*
 
@@ -211,7 +332,6 @@ where $\mathbf{x}$ is an $N$-by-$M+1$ design matrix of covariates, including a c
 
 <!-- $\gamma_i$ is a second vector of coefficints for the interactions between these covariates and the trend. These interaction terms allow the model to reflect the fact that the impact of of these other drivers may diminish or be exacerbated by COVID-19 -related behaviours, for example a reduced difference in behaviours between weekends and weekdays when the population is exhibiting strong social distancing behaviour. -->
     
-
 ## Results
 
 Figures:

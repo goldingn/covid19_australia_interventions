@@ -1,79 +1,8 @@
 # fit a Bayesian model-based estimate of R_effective over time, quantifying the
 # impacts of both quarantine and physical distancing measures.
 
-# The basic model assumes that the number of new locally-acquired cases
-# $N_{t,i}^L$ at time $t$ in region $i$ is *conditionally* Poisson-distributed
-# with expectation $lambda_{t,i}$ given by the product of the number of
-# infectious cases $I_{t,i}$ and the time-varying reproduction rate $R_{t,i}$:
-
-#   N_{t,i}^L &\sim Poisson(lambda_{t,i})
-#   lambda_{t,i} &= I_{t,i} R_{t,i}
-
-# We extend this model by considering separate reproduction rates for two groups
-# of infectious cases in order to model the effects of different interventions
-# targetted at each group: those with locally-acquired cases $I_{t,i}^L$, and
-# those with overseas acquired cases $I_{t,i}^O$, with corresponding reproduction
-# rates $R_{t,i}^L$ and $R_{t,i}^O$:
-
-#   lambda_{t,i} &= I_{t,i}^L R_{t,i}^L + I_{t,i}^O R_{t,i}^O
-#   R_{t,i}^L &= R_0 D_t e^{\epsilon_{t,i}^L}
-#   R_{t,i}^O &= R_0 Q_t e^{\epsilon_{t,i}^O}
-
-# where each of these reproduction rates is modelled as a product of: the
-# reproduction rate under initial conditions and no interventions $R_0$;
-# deterministic functions $D_t$ and $Q_t$ that modify $R_0$ over time to
-# respectively represent the impacts of physical distancing and quarantine
-# interventions at a national level, and correlated timeseries of random effects
-# $\epsilon_{t,i}^L$ and $\epsilon_{t,i}^O$ to represent stochastic fluctuations
-# in the reporting rate in each state, for example due to the clusters in
-# subpopulations with higher or lower reproduction rates than the general
-# population
-
-# We model the effect of $D_t$ as being proportional (on the log scale) to an
-# index of the proportional change in population mobility in response to
-# physical distancing measures $d_t$ (estimated from multiple datastreams of
-# poplulation mobility), which has initial value 0 before distancing measures
-# were implemented and value 1 at its maximum extent:
-
-#   D_t &= e^{\beta d_t}
-
-# We model $Q_t$ via a monotone decreasing step function with values constrained
-# to the unit interval, and with steps at the known dates $\tau_1$ and $\tau_2$ of
-# changes in quarantine policy:
-
-# \[ Q_t = \begin{cases}
-#    q1 & t < \tau_1 \\
-#    q2 & \tau_1 \leq t < \tau_2 \\
-#    q3 & \tau_2 \leq t
-#    \end{cases}
-# \]
-
-# where $q1 > q2 > q3$ and all parameters are constrained to the unit interval.
-
-# The correlated timeseries of errors in the log of the effective reproduction
-# rate for each group $\epsilon_{t,i}^L$ and $\epsilon_{t,i}^O$ are each modelled
-# as a zero-mean Gaussian processes with covariance structured to reflect
-# temporal correlation in errors within each state (but independent between
-# states), plus IID Gaussian error on each observation. The IID Gaussian errors
-# account for overdispersion in the numbers of new infections arising on a given
-# day. This is equivalent to a Poisson-lognormal observation distribution
-# conditional on the timeseries component of the model, which is very similar to
-# a negative binomial distribution (which can be viewed as a Poisson-gamma
-# distribution).
-
-# The number of infectious people in each group is computed by disaggregating
-# the number of cases (assigned to their assumed date of infection) over a
-# subsequent period of time, with probability distribution given by a serial
-# interval distribution. The serial interval distribution is computed from a
-# linelist of cases, and is represented by a discretized cumulative density
-# function $p-serial-interval(t')$, giving the probability of a serial interval
-# (average time between subsequent cases) of $t'$.
-
-#   I_{t,i}^L = sum_{t'=1}^t p-serial-interval(t') N_{t',i}^L
-#   I_{t,i}^O = sum_{t'=1}^t p-serial-interval(t') N_{t',i}^O
-
-# where $N_{t,i}^O$ is the number of cases with overseas-acquired infections in
-# the linelist in state $i$ and with infection date on time $t$.
+# see the manuscript for an exaplanation of the model that may or may not be out
+# of date.
 
 library(dplyr)
 library(readr)
