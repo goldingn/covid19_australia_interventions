@@ -3,4 +3,5 @@ outputs/*
 .Rproj.user
 *.rds
 *.pdf
+*.tex
 
