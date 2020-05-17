@@ -14,6 +14,10 @@ output:
 header-includes: \usepackage{float}
 ---
 
+```{r setup, echo = FALSE, message = FALSE}
+library(dplyr)
+```
+
 ## Gist 
 
 NOTE: this manuscript was initially focussed solely on quantifying the reduction in mobility in Australia in response to social distancing policies, but the focus is now on quantifying the impact of this on transmission, and comparin with the impacts of other measures, including quarantining of overseas imports and improved surveillance. However the manuscript has not yet been updated to relfect this.
@@ -100,20 +104,20 @@ population.
 We model the effect of $D_t$ as being proportional (on the log scale) to an index of the proportional change in population mobility in response to physical distancing measures $d_t$ - estimated from multiple datastreams of population mobility as described in the next section - which has initial value 0 before distancing measures were implemented and value 1 at its maximum extent:
 
 \begin{align}
-  D_t &= e^{\beta d_t}
+  D_t &= 1 - \beta d_t
 \end{align}
 
 We model $Q_t$ via a monotone decreasing step function with values constrained to the unit interval, and with steps at the known dates $\tau_1$ and $\tau_2$ of changes in quarantine policy:
 
 \begin{equation}
  Q_t = \begin{cases}
-  q1 & t < \tau_1 \\
-  q2 & \tau_1 \leq t < \tau_2 \\
-  q3 & \tau_2 \leq t
+  q_1 & t < \tau_1 \\
+  q_2 & \tau_1 \leq t < \tau_2 \\
+  q_3 & \tau_2 \leq t
  \end{cases}
 \end{equation}
 
-where $q1 > q2 > q3$ and all parameters are constrained to the unit interval.
+where $q_1 > q_2 > q_3$ and all parameters are constrained to the unit interval.
 
 ### Error models
 
@@ -125,7 +129,7 @@ The structure for error in locally-acquired cases is as follows:
   \epsilon_i^L &\sim GP(\mathbf{0}, k^L(t, t')) \\
   k^L(t, t') &= k_{SE}(t, t') + k_{RQ}(t, t') + k_{IID}^L(t, t') \\
   k_{SE}(t, t') &= \sigma_1^2 \, exp \left( -\frac{(t - t')^2}{2 l_1^2} \right) \\
-  k_{RQ}(t, t') &= \sigma_2^2 \, exp \left(1 + \frac{(t - t')^2}{2 \alpha l_1^2} \right)^{-\alpha} \\
+  k_{RQ}(t, t') &= \sigma_2^2 \, exp \left(1 + \frac{(t - t')^2}{2 \alpha l_2^2} \right)^{-\alpha} \\
   k_{IID}^L(t, t') &= \begin{cases}
     \sigma_3^2 & t = t' \\ 
     0 & t \neq t'
@@ -168,6 +172,95 @@ Component 1 of the transmission rate for locally-acquired cases is simply given 
 The latter two correspond to different sub-components of the correlated error term $\epsilon_{t,i}^L$: $\epsilon_{i}^{L,1}$ which comprises long-term variation in the region-wide transmission rate, characterised by $k_{SE}()$; and $\epsilon_{t,i}^{L,2}$, characterised by $k_{RQ}() + k_{IID}^L()$, which comprises short-term variation in the transmission rate among the infectious cases due to clusters of cases in subpopulations with transmission rates that are higher (or possibly lower) than the population average. The additive structure of the kernel enables use to perfom an additive decomposition of $\epsilon_{t,i}^L$ into these two terms.
 
 Component 2 is therefore given by $R_0D_te^{\epsilon_{i}^{L,1}}$, and Component 3 (which we consider on the log-scale for ease of visualisation) is $\epsilon_{t,i}^{L,2}$.
+
+### Parameters and priors
+
+Tables \@ref(tab:mechanistic_priors) and \@ref(tab:timeseries_priors) give the prior distributions of parameters in the semi-mechanistic and timeseries ($\epsilon^L$ and $\epsilon^O$) parts of the model respectively. Table \@ref(tab:mechanistic_parameters) gives fixed parameter values usedin the semi-mechanistic part of the model.
+
+The parameters of the generation interval distribution are the posterior means of the lognormal distribution over the serial interval estimated by Nishiura et al. (2020).
+
+The parameters of lognormal prior over $R_0$ were computed such that the distribution matched the averages of the posterior means and 95% credible intervals for 11 European countries as estimated by Flaxman et al. (2020) (Imperial College report 13) in a sensitivity analysis where the mean generation interval was 5 days - similar to the serial interval distribution assumed here. This corresponds to a prior mean of 2.79, and a standard deviation of 1.70.
+
+We assumed slightly informative priors over the lengthscales of components 2 and 3 of the timeseries over R effective for local-local transmission (parameters $l_1$ and $l_2$), such that longer lengthscales were more likely for component 2 (timeseries of the state-wide average transmission rate) than for component 3 (timeseries of the average transmission rate over active cases).
+
+```{r mechanistic_priors, echo = FALSE}
+tibble::tribble(
+  
+  ~"Prior distribution",
+  ~"Parameter description",
+    
+  "$R_0 \\sim \\mathrm{lognormal}(1.02, 0.10^2)$",
+  "Basic reproduction number",
+  
+  "$\\beta \\sim \\mathrm{U}(0, 1)$",
+  "Effect of social distancing behaviours",
+  
+  "$q_1 \\sim \\mathrm{U}(0, 1)$",
+  "Effect of quarantine of overseas arrivals (phase 1)",
+  
+  "$q_2 / q_1 \\sim \\mathrm{U}(0, 1)$",
+  "Relative effect of quarantine (phase 2 vs 1)",
+  
+  "$q_3 / q_2 \\sim \\mathrm{U}(0, 1)$",
+  "Relative effect of quarantine (phase 3 vs 2)"
+  
+) %>%
+  knitr::kable(caption = "Prior distributions for parameters in the semi-mechanistic part of the time-varying model of $R_eff$", escape = FALSE)
+```
+
+
+```{r mechanistic_parameters, echo = FALSE}
+tibble::tribble(
+  
+  ~"Parameter value",
+  ~"Parameter description",
+    
+  "$\\tau_1$ = 2020-03-15",
+  "Date of change from overseas quarantine policy phase 1 to 2",
+
+  "$\\tau_2$ = 2020-03-28",
+  "Date of change from overseas quarantine policy phase 2 to 3",
+  
+  "$g(t) = \\int_{t-1}^{t} \\mathrm{lognormal}(t | 1.377, 0.567^2) \\mathrm{d}t$",
+  "Generation interval function",
+  
+) %>%
+  knitr::kable(caption = "Values of fixed parameters in the semi-mechanistic part of the time-varying model of $R_eff$", escape = FALSE)
+```
+
+```{r timeseries_priors, echo = FALSE}
+tibble::tribble(
+  
+  ~"Prior distribution",
+  ~"Parameter description",
+  
+  "$\\sigma_1 \\sim \\mathrm{N}^+(0, 0.25^2)$",
+  "Amplitude of deviation; local $R_{eff}$ statewide",
+  
+  "$l_1 \\sim \\mathrm{lognormal}(4, 0.5^2)$",
+  "Temporal correlation; local $R_{eff}$ statewide",
+  
+  "$\\sigma_2 \\sim \\mathrm{N}^+(0, 0.25^2)$",
+  "Amplitude of deviation; local $R_{eff}$ active cases",
+  
+  "$l_2 \\sim \\mathrm{lognormal}(2, 0.5^2)$",
+  "Temporal correlation; local $R_{eff}$ active cases",
+  
+  "$\\alpha\\sim \\mathrm{lognormal}(2, 0.5^2)$",
+  "Correlation mixture weights; local $R_{eff}$ active cases",
+  
+  "$\\sigma_3 \\sim \\mathrm{N}^+(0, 0.25^2)$",
+  "Overdispersion; local $R_{eff}$ active cases",
+  
+  "$\\sigma_4 \\sim \\mathrm{N}^+(0, 0.5^2)$",
+  "Amplitude of deviation; import $R_{eff}$ statewide",
+  
+  "$\\sigma_5\\sim \\mathrm{N}^+(0, 0.5^2)$",
+  "Overdispersion; import $R_{eff}$ active cases",
+  
+) %>%
+  knitr::kable(caption = "Prior distributions for parameters used in the timeseries part of the time-varying model of $R_eff$", escape = FALSE)
+```
 
 
 ## Modelling changes in population mobility
