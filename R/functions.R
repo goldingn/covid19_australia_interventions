@@ -1073,7 +1073,7 @@ as.greta_array <- greta:::as.greta_array
 
 # copy of greta.gp::gp with v manually passed in, enabling different
 # (hierarchical) variance on each gp draw
-multi_gp <- function (x, v, kernel, inducing, tol = 1e-04) {
+multi_gp <- function (x, v, kernel, inducing = NULL, tol = 1e-04) {
   
   sparse <- !is.null(inducing)
   

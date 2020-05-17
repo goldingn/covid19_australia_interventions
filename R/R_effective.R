@@ -160,27 +160,26 @@ iid_noise_kernel_L <- white(sigma_noise_L ^ 2)
 
 sigma_noise_O <- normal(0, 0.5, truncation = c(0, Inf))
 iid_noise_kernel_O <- white(sigma_noise_O ^ 2)
-sigma_bias_O <- normal(0, 0.5, truncation = c(0, Inf))
-bias_kernel_O <- bias(sigma_bias_O ^ 2)
 
 # combine noise kernels
 noise_kernel_L <- time_noise_kernel_L + iid_noise_kernel_L
-noise_kernel_O <- bias_kernel_O + iid_noise_kernel_O
+noise_kernel_O <- iid_noise_kernel_O
 
-# # for locally-acquired cases, do hierarchical smoother GPs as part of the state-level trends
-# lengthscale_time_signal_state_O <- lognormal(4, 0.5)
-# sigma_time_signal_state_O <- normal(0, 0.5, truncation = c(0, Inf))
+# for for local-local cases, use smooth term for state-level trends, for
+# import-local, use random intercepts
+lengthscale_time_signal_L <- lognormal(4, 0.5)
+sigma_time_signal_L <- normal(0, 0.25, truncation = c(0, Inf))
 
-lengthscale_time_signal_state_L <- lognormal(4, 0.5)
-sigma_time_signal_state_L <- normal(0, 0.25, truncation = c(0, Inf))
-
-signal_kernel_state_L  <- rbf(
-  lengthscales = lengthscale_time_signal_state_L,
-  variance = sigma_time_signal_state_L ^ 2
+signal_kernel_L  <- rbf(
+  lengthscales = lengthscale_time_signal_L,
+  variance = sigma_time_signal_L ^ 2
 )
 
-kernel_state_L <- signal_kernel_state_L + noise_kernel_L
-kernel_state_O <- noise_kernel_O
+sigma_bias_O <- normal(0, 0.5, truncation = c(0, Inf))
+signal_kernel_O <- bias(sigma_bias_O ^ 2)
+
+kernel_L <- signal_kernel_L + noise_kernel_L
+kernel_O <- signal_kernel_O + noise_kernel_O
 
 # variation in the Reff timeseries between the states and territories
 sigma_state_L <- normal(0, 0.25, truncation = c(0, Inf), dim = n_states)
@@ -199,7 +198,7 @@ v_O <- sweep(v_O_raw, 2, sigma_state_O, FUN = "*")
 epsilon_O <- multi_gp(
   x = date_nums,
   v = v_O,
-  kernel = kernel_state_O,
+  kernel = kernel_O,
   inducing = inducing_date_nums,
   tol = 0
 )
@@ -208,15 +207,13 @@ epsilon_O <- multi_gp(
 v_L_raw <- normal(0, 1, dim = c(n_inducing, n_states))
 v_L <- sweep(v_L_raw, 2, sigma_state_L, FUN = "*")
 
-epsilon_state_L <- multi_gp(
+epsilon_L <- multi_gp(
   x = date_nums,
   v = v_L,
-  kernel = kernel_state_L,
+  kernel = kernel_L,
   inducing = inducing_date_nums,
   tol = 0
 )
-
-epsilon_L <- epsilon_state_L
 
 # combine these components
 # N ~ Poisson(R0 * exp(epsilon_t) * (I_t^L * D_t  + I_t^O * Q_t))
@@ -264,13 +261,30 @@ n_eff <- coda::effectiveSize(draws)
 max(r_hats)
 min(n_eff)
 
-# R_eff of locally-acquired and overseas-acquired cases
-R_eff_loc <- exp(log_R0 + log_rel_Reff_loc)
-R_eff_imp <- exp(log_R0 + log_rel_Reff_imp)
+# split epsilons into signal (2) and noise (3) Reff components
+epsilon_L_2 <- project(epsilon_L, x_new = date_nums, kernel = signal_kernel_L)
+epsilon_L_3 <- project(epsilon_L, x_new = date_nums, kernel = noise_kernel_L)
 
-# average R_eff of locally-acquired and overseas-acquired cases
-R_eff_loc_trend <- exp(log_R0 + log_Dt)
-R_eff_imp_trend <- exp(log_R0 + log_Qt)
+epsilon_O_2 <- project(epsilon_O, x_new = date_nums, kernel = signal_kernel_O)
+epsilon_O_3 <- project(epsilon_O, x_new = date_nums, kernel = noise_kernel_O)
+
+# R_eff for local-local and import-local among national population
+# (component 1 only)
+R_eff_loc_1 <- exp(log_R0 + log_Dt)
+R_eff_imp_1 <- exp(log_R0 + log_Qt)
+
+# R_eff for local-local and import-local among state populations
+# (components 1 and 2)
+log_rel_R_eff_loc_12 <- sweep(epsilon_L_2, 1, log_Dt, FUN = "+") 
+R_eff_loc_12 <- exp(log_R0 + log_rel_R_eff_loc_12)
+log_rel_R_eff_imp_12 <- sweep(epsilon_O_2, 1, log_Qt, FUN = "+") 
+R_eff_imp_12 <- exp(log_R0 + log_rel_R_eff_imp_12)
+
+# R_eff ofor local-local and import-local among active cases per state
+# (components 1, 2, and 3)
+R_eff_loc_123 <- exp(log_R0 + log_rel_Reff_loc)
+R_eff_imp_123 <- exp(log_R0 + log_rel_Reff_imp)
+
 nsim <- coda::niter(draws) * coda::nchain(draws)
 
 # make 4 different versions of the plots and outputs:
@@ -300,52 +314,45 @@ for (type in 1:5) {
     projection_date <- max(dates)
   }
                  
-  R_eff_imp_vec_type <- c(R_eff_imp[rows, ])
-  R_eff_loc_trend_type <- R_eff_loc_trend[rows]
-  R_eff_imp_trend_type <- R_eff_imp_trend[rows]
+  R_eff_loc_1_type <- R_eff_loc_1[rows]
+  R_eff_imp_1_type <- R_eff_imp_1[rows]
+  R_eff_imp_12_vec_type <- c(R_eff_imp_12[rows, ])
+  R_eff_loc_12_vec_type <- c(R_eff_loc_12[rows, ])
+  R_eff_imp_123_vec_type <- c(R_eff_imp_123[rows, ])
+  R_eff_loc_123_vec_type <- c(R_eff_loc_123[rows, ])
   
-  # reproject epsilons without (and only with) noise components
-  epsilon_state_L_signal <- project(
-    f = epsilon_state_L,
-    x_new = date_nums,
-    kernel = signal_kernel_state_L
-  )
-  
-  epsilon_L_signal <- epsilon_state_L_signal
-  
-  log_rel_Reff_loc_signal <- sweep(epsilon_L_signal, 1, log_Dt, FUN = "+") 
-  Reff_loc_signal <- exp(log_R0 + log_rel_Reff_loc_signal)
-  R_eff_loc_vec_type <- c(Reff_loc_signal[rows, ])
-  
-  # noise only for plotting in pink
-  epsilon_L_noise <- project(
-    f = epsilon_state_L,
-    x_new = date_nums,
-    kernel = noise_kernel_L
-  )
-  
-  error_L_vec_type <- c(epsilon_L_noise[rows, ])
-  error_O_vec_type <- c(epsilon_O[rows, ])
+  epsilon_L_2_vec_type <- c(epsilon_L_2[rows, ])
+  epsilon_L_3_vec_type <- c(epsilon_L_3[rows, ])
+  epsilon_O_2_vec_type <- c(epsilon_O_2[rows, ])
+  epsilon_O_3_vec_type <- c(epsilon_O_3[rows, ])
   
   # simulate from posterior for quantitities of interest
   sims <- calculate(
-    R_eff_loc_vec_type,
-    R_eff_imp_vec_type,
-    R_eff_loc_trend_type,
-    R_eff_imp_trend_type,
-    error_L_vec_type,
-    error_O_vec_type,
+    R_eff_loc_1_type,
+    R_eff_imp_1_type,
+    R_eff_loc_12_vec_type,
+    R_eff_imp_12_vec_type,
+    R_eff_loc_123_vec_type,
+    R_eff_imp_123_vec_type,
+    epsilon_L_2_vec_type,
+    epsilon_L_3_vec_type,
+    epsilon_O_2_vec_type,
+    epsilon_O_3_vec_type,
     values = draws,
     nsim = nsim
   )
   
-  R_eff_loc_sim <- sims$R_eff_loc_vec_type
-  R_eff_imp_sim <- sims$R_eff_imp_vec_type
-  R_eff_loc_trend_sim <- sims$R_eff_loc_trend_type
-  R_eff_imp_trend_sim <- sims$R_eff_imp_trend_type
-  error_effect_L_sim <- sims$error_L_vec_type
-  error_effect_O_sim <- sims$error_O_vec_type
-  
+  R_eff_loc_1_sim <- sims$R_eff_loc_1_type
+  R_eff_imp_1_sim <- sims$R_eff_imp_1_type
+  R_eff_loc_12_sim <- sims$R_eff_loc_12_vec_type
+  R_eff_imp_12_sim <- sims$R_eff_imp_12_vec_type
+  R_eff_loc_123_sim <- sims$R_eff_loc_123_vec_type
+  R_eff_imp_123_sim <- sims$R_eff_imp_123_vec_type
+  epsilon_L_2_sim <- sims$epsilon_L_2_vec_type
+  epsilon_L_3_sim <- sims$epsilon_L_3_vec_type
+  epsilon_O_2_sim <- sims$epsilon_O_2_vec_type
+  epsilon_O_3_sim <- sims$epsilon_O_3_vec_type
+
   dates_type <- min(dates) - 1 + seq_along(rows)
   
   # for counterfactuals, relevel the R0s after calculating them
@@ -361,10 +368,11 @@ for (type in 1:5) {
     projected_dates_long <- dates_long >= change_date
     projected_dates <- dates_type >= change_date
     
-    mean_Reff <- mean(R_eff_loc_trend_sim[, projected_dates, ])
+    mean_Reff <- mean(R_eff_loc_1_sim[, projected_dates, ])
     add_Reff <- counterfactual_Reff - mean_Reff
-    R_eff_loc_trend_sim[, projected_dates, ] <- R_eff_loc_trend_sim[, projected_dates, ] + add_Reff
-    R_eff_loc_sim[, projected_dates, ] <- R_eff_loc_sim[, projected_dates, ] + add_Reff
+    R_eff_loc_1_sim[, projected_dates, ] <- R_eff_loc_1_sim[, projected_dates, ] + add_Reff
+    R_eff_loc_12_sim[, projected_dates, ] <- R_eff_loc_12_sim[, projected_dates, ] + add_Reff
+    R_eff_loc_123_sim[, projected_dates, ] <- R_eff_loc_123_sim[, projected_dates, ] + add_Reff
   }
   
   blue <- "steelblue3"
@@ -389,38 +397,8 @@ for (type in 1:5) {
   # add a bit of space for the title
   multi_height <- multi_height * 1.2
   
-  # local R_eff
-  plot_trend(R_eff_loc_sim,
-             dates = dates_type,
-             multistate = TRUE,
-             base_colour = green,
-             vline_at = intervention_dates()$date,
-             vline2_at = projection_date) +
-    ggtitle(label = "Local to local transmission potential") +
-    ylab(expression(R["eff"]~from~"locally-acquired"~cases))
-  
-  ggsave(file.path(dir, "figures/R_eff_local.png"),
-         width = multi_width,
-         height = multi_height,
-         scale = 0.8)
-  
-  # imported R_eff
-  plot_trend(R_eff_imp_sim,
-             dates = dates_type,
-             multistate = TRUE,
-             base_colour = orange,
-             vline_at = quarantine_dates,
-             vline2_at = projection_date) +
-    ggtitle(label = "Import to local transmission potential") +
-    ylab(expression(R["eff"]~from~"overseas-acquired"~cases))
-  
-  ggsave(file.path(dir, "figures/R_eff_imported.png"),
-         width = multi_width,
-         height = multi_height,
-         scale = 0.8)
-  
-  # local average R_eff 
-  plot_trend(R_eff_loc_trend_sim,
+  # R_eff for national population 
+  plot_trend(R_eff_loc_1_sim,
              dates = dates_type,
              multistate = FALSE,
              base_colour = green,
@@ -430,13 +408,12 @@ for (type in 1:5) {
             subtitle = expression(Component~of~R["eff"]~due~to~social~distancing)) +
     ylab(expression(R["eff"]~component))
   
-  ggsave(file.path(dir, "figures/R_eff_trend_local.png"),
+  ggsave(file.path(dir, "figures/R_eff_1_local.png"),
          width = panel_width,
          height = panel_height * 1.25,
          scale = 1)
   
-  # imported average R_eff
-  plot_trend(R_eff_imp_trend_sim,
+  plot_trend(R_eff_imp_1_sim,
              dates = dates_type,
              multistate = FALSE,
              base_colour = orange,
@@ -446,13 +423,112 @@ for (type in 1:5) {
             subtitle = expression(Component~of~R["eff"]~due~to~quarantine~of~overseas~arrivals)) +
     ylab(expression(R["eff"]~component))
   
-  ggsave(file.path(dir, "figures/R_eff_trend_import.png"),
+  ggsave(file.path(dir, "figures/R_eff_1_import.png"),
          width = panel_width,
          height = panel_height * 1.25,
          scale = 1)
   
-  # error trends
-  plot_trend(error_effect_L_sim,
+  # R_eff for state populations
+  plot_trend(R_eff_loc_12_sim,
+             dates = dates_type,
+             multistate = TRUE,
+             base_colour = green,
+             vline_at = intervention_dates()$date,
+             vline2_at = projection_date) + 
+    ggtitle(label = "Local to local transmission potential",
+            subtitle = "Average across the population") +
+    ylab(expression(R["eff"]~of~"local-local"~transmission))
+  
+  ggsave(file.path(dir, "figures/R_eff_12_local.png"),
+         width = multi_width,
+         height = multi_height,
+         scale = 0.8)
+  
+  plot_trend(R_eff_imp_12_sim,
+             dates = dates_type,
+             multistate = TRUE,
+             base_colour = orange,
+             vline_at = quarantine_dates,
+             vline2_at = projection_date) + 
+    ggtitle(label = "Import to local transmission potential",
+            subtitle = "Average across the population") +
+    ylab(expression(R["eff"]~of~"import-local"~transmission))
+  
+  ggsave(file.path(dir, "figures/R_eff_12_import.png"),
+         width = multi_width,
+         height = multi_height,
+         scale = 0.8)
+  
+  # Reff for active cases
+  plot_trend(R_eff_loc_123_sim,
+             dates = dates_type,
+             multistate = TRUE,
+             base_colour = green,
+             vline_at = intervention_dates()$date,
+             vline2_at = projection_date) +
+    ggtitle(label = "Local to local transmission potential",
+            subtitle = "Average across active cases") +
+    ylab(expression(R["eff"]~from~"locally-acquired"~cases))
+  
+  ggsave(file.path(dir, "figures/R_eff_123_local.png"),
+         width = multi_width,
+         height = multi_height,
+         scale = 0.8)
+  
+  plot_trend(R_eff_imp_123_sim,
+             dates = dates_type,
+             multistate = TRUE,
+             base_colour = orange,
+             vline_at = quarantine_dates,
+             vline2_at = projection_date) +
+    ggtitle(label = "Import to local transmission potential",
+            subtitle = "Average across active cases") +
+    ylab(expression(R["eff"]~from~"overseas-acquired"~cases))
+  
+  ggsave(file.path(dir, "figures/R_eff_123_imported.png"),
+         width = multi_width,
+         height = multi_height,
+         scale = 0.8)
+  
+
+  # component 2 (smooth error trends)
+  plot_trend(epsilon_L_2_sim,
+             dates = dates_type,
+             multistate = TRUE,
+             base_colour = pink,
+             hline_at = 0,
+             vline_at = intervention_dates()$date,
+             vline2_at = projection_date,
+             ylim = NULL) + 
+    ggtitle(label = "Long-term variation in local to local transmission rates",
+            subtitle = expression(Deviation~from~log(R["eff"])~of~"local-local"~transmission)) +
+    ylab("Deviation")
+  
+  ggsave(file.path(dir, "figures/R_eff_2_local.png"),
+         width = multi_width,
+         height = multi_height,
+         scale = 0.8)
+  
+  plot_trend(epsilon_O_2_sim,
+             dates = dates_type,
+             multistate = TRUE,
+             base_colour = pink,
+             hline_at = 0,
+             vline_at = quarantine_dates,
+             vline2_at = projection_date,
+             ylim = NULL) + 
+    ggtitle(label = "Long-term variation in import to local transmission rates",
+            subtitle = expression(Deviation~from~log(R["eff"])~of~"import-local"~transmission)) +
+    ylab("Deviation")
+  
+  ggsave(file.path(dir, "figures/R_eff_2_import.png"),
+         width = multi_width,
+         height = multi_height,
+         scale = 0.8)
+  
+  
+  # component 3 (noisy error trends)
+  plot_trend(epsilon_L_3_sim,
              dates = dates_type,
              multistate = TRUE,
              base_colour = pink,
@@ -461,16 +537,16 @@ for (type in 1:5) {
              vline2_at = projection_date,
              ylim = NULL) + 
     ggtitle(label = "Short-term variation in local to local transmission rates",
-            subtitle = expression(Deviation~from~log(R["eff"])~from~local~cases)) +
+            subtitle = expression(Deviation~from~log(R["eff"])~of~"local-local"~transmission)) +
     ylab("Deviation")
   
-  ggsave(file.path(dir, "figures/R_eff_error_local.png"),
+  ggsave(file.path(dir, "figures/R_eff_3_local.png"),
          width = multi_width,
          height = multi_height,
          scale = 0.8)
   
   # error trends
-  plot_trend(error_effect_O_sim,
+  plot_trend(epsilon_O_3_sim,
              dates = dates_type,
              multistate = TRUE,
              base_colour = pink,
@@ -479,10 +555,10 @@ for (type in 1:5) {
              vline2_at = projection_date,
              ylim = NULL) + 
     ggtitle(label = "Short term variation in import to local transmission rates",
-            subtitle = expression(Deviation~from~log(R["eff"])~from~imported~cases)) +
+            subtitle = expression(Deviation~from~log(R["eff"])~of~"import-local"~transmission)) +
     ylab("Deviation")
   
-  ggsave(file.path(dir, "figures/R_eff_error_import.png"),
+  ggsave(file.path(dir, "figures/R_eff_3_import.png"),
          width = multi_width,
          height = multi_height,
          scale = 0.8)
@@ -490,23 +566,33 @@ for (type in 1:5) {
   if (type == 1) {
     
     # posterior summary of R0
-    R0_draws <- R_eff_loc_trend_sim[, 1, 1]
-    print(sprintf("R0 %.2f (%.2f)",
+    R0_draws <- R_eff_loc_1_sim[, 1, 1]
+    cat(sprintf("\nR0 %.2f (%.2f)\n",
                   mean(R0_draws),
                   sd(R0_draws)))
     
+    # # posterior summary of R_eff for the peak of distancing
+    # peak_distancing <- max(which(waning_index == 0))
+    # R_eff_peak_draws <- R_eff_loc_1_sim[, peak_distancing, 1]
+    
     # posterior summary of R_eff for the latest date
-    R_eff_now_draws <- R_eff_loc_trend_sim[, ncol(R_eff_loc_trend_sim), 1]
-    print(sprintf("Reff %.2f (%.2f) on %s",
+    R_eff_now_draws <- R_eff_loc_1_sim[, ncol(R_eff_loc_1_sim), 1]
+    cat(sprintf("\nReff %.2f (%.2f) on %s\n",
                   mean(R_eff_now_draws),
                   sd(R_eff_now_draws),
                   format(max(dates), "%d %b")))
     
+    # covariance of these estimates
+    covar <- cov(cbind(R0_draws, R_eff_now_draws))
+    cat("\nCovariance of R0 and Reff:\n")
+    print(covar)
+    
+    
   }
   
-  # output 2000 posterior samples of R_eff for locals
-  R_eff_loc_samples <- t(R_eff_loc_sim[1:2000, , 1])
-  colnames(R_eff_loc_samples) <- paste0("sim", 1:2000)
+  # output 2000 posterior samples of R_eff for active local cases
+  R_eff_123_samples <- t(R_eff_loc_123_sim[1:2000, , 1])
+  colnames(R_eff_123_samples) <- paste0("sim", 1:2000)
 
   df_base <- tibble(
     date = rep(dates_type, n_states),
@@ -516,7 +602,7 @@ for (type in 1:5) {
   
   # CSV of R_eff local posterior samples
   df_samples <- df_base %>%
-    cbind(R_eff_loc_samples)
+    cbind(R_eff_123_samples)
   
   write_csv(
     df_samples,
@@ -524,10 +610,10 @@ for (type in 1:5) {
   )
   
   # CSV of estimates based on these
-  mean <- rowMeans(R_eff_loc_samples)
-  median <- apply(R_eff_loc_samples, 1, FUN = stats::median)
-  ci90 <- apply(R_eff_loc_samples, 1, quantile, c(0.05, 0.95))
-  ci50 <- apply(R_eff_loc_samples, 1, quantile, c(0.25, 0.75))
+  mean <- rowMeans(R_eff_123_samples)
+  median <- apply(R_eff_123_samples, 1, FUN = stats::median)
+  ci90 <- apply(R_eff_123_samples, 1, quantile, c(0.05, 0.95))
+  ci50 <- apply(R_eff_123_samples, 1, quantile, c(0.25, 0.75))
   
   df_estimates <- df_base %>%
     mutate(
@@ -547,12 +633,14 @@ for (type in 1:5) {
 }
 
 # summarise the proportion of local cases assumed to have been infected by imports
-expected_from_imports <- imported_infectious * R_eff_imp[1:n_dates, ]
-expected_from_locals <- local_infectious * R_eff_loc[1:n_dates, ]
+expected_from_imports <- imported_infectious * R_eff_imp_123[1:n_dates, ]
+expected_from_locals <- local_infectious * R_eff_loc_123[1:n_dates, ]
 expected_total <- expected_from_imports + expected_from_locals
 prop_from_imports <- expected_from_imports / expected_total
 
-prop_from_imports_sim <- calculate(c(prop_from_imports), values = draws, nsim = nsim)[[1]]
+prop_from_imports_sim <- calculate(c(prop_from_imports),
+                                   values = draws,
+                                   nsim = nsim)[[1]]
 
 mean <- colMeans(prop_from_imports_sim)
 median <- apply(prop_from_imports_sim, 2, FUN = stats::median, na.rm = TRUE)
@@ -647,7 +735,7 @@ ggplot(exp_imports_output) +
 
 # # posterior summary of R_eff for the peak of distancing
 # peak_distancing <- max(which(waning_index == 0))
-# R_eff_peak_draws <- R_eff_loc_trend_sim[, peak_distancing, 1]
+# R_eff_peak_draws <- R_eff_loc_1_sim[, peak_distancing, 1]
 # mean(R_eff_peak_draws)
 # sd(R_eff_peak_draws)
 # min(dates) + peak_distancing - 1
@@ -663,7 +751,5 @@ ggplot(exp_imports_output) +
 # sum(local_infectious[post_intervention_start:n_dates, ])
 # sum(local_cases[post_intervention_start:n_dates, ])
 
-
-# - switch to stacked version of GP (smaller covaraince matrix, faster inference)
 # - add a custom greta function for lognormal CDF (using TFP) and try
 #   sampling with that
