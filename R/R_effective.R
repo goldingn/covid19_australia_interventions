@@ -54,7 +54,7 @@ dates <- seq(min(linelist$date), max(linelist$date), by = 1)
 
 n_states <- length(states)
 n_dates <- length(dates)
-n_extra <- 21
+n_extra <- as.numeric(Sys.Date() - max(dates)) + 7 * 6
 date_nums <- seq_len(n_dates + n_extra)
 
 # pad this with full set of dates, states, and import statuses
@@ -243,8 +243,16 @@ rel_new_vec <- exp(log_rel_new_from_loc_vec) + exp(log_rel_new_from_imp_vec)
 
 log_expected_infections_vec <- log_R0 + log(rel_new_vec)
 expected_infections_vec <- exp(log_expected_infections_vec)
-
 distribution(local_cases[valid]) <- poisson(expected_infections_vec)
+
+# # try negative binomial likelihood
+# valid <- which(is.finite(log_loc_infectious + log_imp_infectious), arr.ind = TRUE)
+# sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf), dim = n_states)
+# size <- 1 / sqrt(sqrt_inv_size[valid[, 2]])
+# prob <- 1 / (1 + expected_infections_vec / size)
+# distribution(local_cases[valid]) <- negative_binomial(size, prob)
+
+# add correlated errors on the quarantine model too
 
 m <- model(beta, log_q, log_R0, rel_new_vec)
 draws <- mcmc(
@@ -308,7 +316,7 @@ for (type in 1:5) {
     rows <- seq_len(n_dates)
     projection_date <- NA
   } else {
-    last_date <- as.Date("2020-06-08")
+    last_date <- min(dates) + n_date_nums - 1
     n_projected <- n_dates + as.numeric(last_date - max(dates))
     rows <- pmin(n_dates + n_extra, seq_len(n_projected))
     projection_date <- max(dates)
@@ -606,28 +614,27 @@ for (type in 1:5) {
   
   write_csv(
     df_samples,
-    file.path(dir, "r_eff_local_samples.csv")
+    file.path(dir, "r_eff_123_local_samples.csv")
   )
   
-  # CSV of estimates based on these
-  mean <- rowMeans(R_eff_123_samples)
-  median <- apply(R_eff_123_samples, 1, FUN = stats::median)
-  ci90 <- apply(R_eff_123_samples, 1, quantile, c(0.05, 0.95))
-  ci50 <- apply(R_eff_123_samples, 1, quantile, c(0.25, 0.75))
   
-  df_estimates <- df_base %>%
-    mutate(
-      bottom = ci90[1, ],
-      top = ci90[2, ],
-      lower = ci50[1, ],
-      upper = ci50[2, ],
-      median = median,
-      mean = mean
-    )
+  # output 2000 posterior samples of R_eff for statewide local cases
+  R_eff_12_samples <- t(R_eff_loc_12_sim[1:2000, , 1])
+  colnames(R_eff_12_samples) <- paste0("sim", 1:2000)
+  
+  df_base <- tibble(
+    date = rep(dates_type, n_states),
+    state = rep(states, each = length(dates_type)),
+  ) %>%
+    mutate(date_onset = date + 5)
+  
+  # CSV of R_eff local posterior samples
+  df_samples <- df_base %>%
+    cbind(R_eff_12_samples)
   
   write_csv(
-    df_estimates,
-    file.path(dir, "r_eff_local_estimates.csv")
+    df_samples,
+    file.path(dir, "r_eff_12_local_samples.csv")
   )
   
 }
@@ -662,7 +669,7 @@ prop_imports_output <- tibble(
 
 write_csv(
   prop_imports_output,
-  file.path(dir, "prop_local_from_imports_estimates.csv")
+  "outputs/prop_local_from_imports_estimates.csv"
 )
 
 base_colour <- grey(0.5)
