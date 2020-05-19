@@ -241,8 +241,9 @@ for (j in seq_len(n_states)) {
   n_state_datastreams_j <- length(state_datastreams_j)
   
   par(mfrow = n2mfrow(n_state_datastreams_j),
-      mar = c(2, 2, 4, 2),
-      oma = c(0, 0, 2, 0))
+      mar = c(2, 2, 4, 3),
+      oma = c(0, 0, 2, 1),
+      las = 1)
   for (i in seq_len(n_state_datastreams_j)) {
     
     state_datastream_i <- state_datastreams_j[i]
@@ -265,7 +266,9 @@ for (j in seq_len(n_states)) {
          type = "n",
          ylim = ylim,
          ylab = "",
-         xlab = "")
+         xlab = "",
+         yaxt = "n")
+    axis(4)
     add_gridlines(interventions$date)
     add_mean_ci(est, dates_plot,
                 col = grey(0.9),
@@ -309,8 +312,8 @@ png("outputs/figures/multistate_model_fit.png",
     pointsize = 70)
 
 par(mfrow = c(8, 3),
-    mar = c(2, 2, 1, 1),
-    oma = c(1, 4, 6, 1),
+    mar = c(2, 2, 1, 3),
+    oma = c(1, 2, 6, 2),
     las = 1)
 
 for(this_state in states) {
@@ -353,7 +356,9 @@ for(this_state in states) {
            type = "n",
            ylim = ylim,
            ylab = "",
-           xlab = "")
+           xlab = "",
+           yaxt = "n")
+      axis(4)
       add_gridlines(interventions$date)
       add_mean_ci(est, dates_plot,
                   col = grey(0.9),
@@ -386,7 +391,7 @@ for(this_state in states) {
       state_name_formatted <- abbreviate_states(this_state)
       mtext(text = state_name_formatted,
             side = 2,
-            line = 3,
+            line = 1,
             cex = 1.6,
             xpd = NA,
             las = 0)
@@ -525,17 +530,30 @@ palette <- go_stop
 # write a function to create these plots
 
 # get positive value for proportional reduction in distancing
-distancing_change_data %>%
+p <- distancing_change_data %>%
   mutate(
     value = pmax(pmin(value, -0.01), -1),
     value = -value,
     col = case_when(
       !significant ~ grey(0.9),
       TRUE ~ palette[2]
-    )
+    ),
+    outer1 = 1.05,
+    outer2 = 1
   ) %>%
   ggplot() +
   # change this back to geom_circle, now there's scale_size?
+  # need to map these to get them into the legend
+  geom_point(aes(x = 1,
+                 y = 1,
+                 size = outer1,
+                 colour = grey(0.4)),
+             show.legend = NA) +
+  geom_point(aes(x = 1,
+                 y = 1,
+                 size = outer2,
+                 colour = "white"),
+             show.legend = NA) +
   geom_point(aes(x = 1,
                  y = 1,
                  size = abs(value),
@@ -545,20 +563,22 @@ distancing_change_data %>%
   scale_size_area(
     breaks = c(1, 0.5, 0.1),
     labels = c("100%", "50%", "10%"),
-    limits = c(0, 1),
+    limits = c(0, 1.05),
     guide = guide_legend(
       title = "reduction\nin adherence:",
       title.vjust = 5,
       override.aes = list(
-        col = palette[2]
+        col = palette[2],
+        outer1 = 1,
+        outer2 = 2
       ),
       order = 1
     )
   ) +
   scale_fill_identity(
     aesthetics = c("fill", "colour"),
-    breaks = c(grey(0.9)),
-    labels = c("uncertain"),
+    breaks = grey(0.9),
+    labels = "uncertain",
     guide = guide_legend(
       title = "",
       order = 2
@@ -567,19 +587,30 @@ distancing_change_data %>%
   facet_grid(state ~ datastream,
              switch = "y") +
   coord_fixed() +
-  ggtitle("Indicators of reduced adherence to social distancing",
-          "NB: prone to false-positives") +
+  ggtitle("Indicators of reduced adherence to social distancing") +
   theme_void() +
   theme(
     plot.title = element_text(hjust = 0, vjust = 6, size = 16),
     plot.subtitle = element_text(hjust = 0, vjust = 8, size = 10),
     strip.text.y.left = element_text(angle = 0, hjust = 1, size = 10),
-    strip.text.x = element_text(angle = 90, hjust = 0, size = 8),
+    strip.text.x = element_text(angle = 45,
+                                hjust = 0,
+                                size = 9,
+                                vjust = 2.5),
     plot.margin = unit(rep(0.5, 4), "cm"),
     legend.spacing.y = unit(-0.1, "cm")
   )
 
+## GGPLOT BEND TO MY WILL.
+pg <- ggplotGrob(p)
+for(i in which(grepl("strip-t-", pg$layout$name))) {
+  pg$grobs[[i]]$layout$clip <- "off"
+  pg$layout[i, "t"] <- pg$layout[i, "b"] <- 20
+}
+# grid::grid.draw(pg)
+
 ggsave("outputs/figures/state_distancing_waning_warning.png",
+       plot = pg,
        width = 8,
        height = 6)
 
@@ -602,6 +633,7 @@ save.image("outputs/latent_social_distancing_temp.RData")
 # summarise state-level variation in waning
 distancing_change_data %>%
   mutate(value = pmin(0, value * 100)) %>%
+  mutate(value = pmax(-100, value)) %>%
   group_by(datastream) %>%
   summarise(
     mean = mean(value),
@@ -611,6 +643,7 @@ distancing_change_data %>%
 
 distancing_change_data %>%
   mutate(value = pmin(0, value * 100)) %>%
+  mutate(value = pmax(-100, value)) %>%
   filter(datastream %in% target_datastreams) %>%
   arrange(datastream, state) %>%
   as.data.frame()
