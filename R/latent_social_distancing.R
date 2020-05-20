@@ -698,6 +698,32 @@ waning_amount_params <- list(
 saveRDS(waning_amount_params,
         file = "outputs/waning_amount_parameters.RDS")
 
+# save state-level posteriors over % change in google metrics
+datastreams_keep <- grepl("^Google: ", state_datastream_lookup$datastream)
+loadings_keep <- latent_names %in% c("Social distancing", "Waning distancing")
+# state_datastream_lookup[datastreams_keep, ]
+# dim(loadings_ntnl)
+
+perc_change_google <- latents_ntnl[,loadings_keep] %*% loadings_ntnl[loadings_keep, datastreams_keep]
+change_google <- 1 + (perc_change_google / 100)
+
+nsim <- coda::niter(draws) * coda::nchain(draws)
+change_google_sim <- calculate(change_google, values = draws, nsim = nsim)[[1]]
+change_google_means <- apply(change_google_sim, 2:3, mean)
+tile <- rep(seq_len(8 * 6), each = n_dates)
+google_change <- state_datastream_lookup[datastreams_keep, ][tile, ]
+google_change$change <- c(change_google_means)
+google_change$date <- rep(dates, 8 * 6)
+
+saveRDS(google_change,
+        file = "outputs/google_change_trends.RDS")
+
+# google_change %>%
+#   ggplot() +
+#   aes(date, change, group = state) +
+#   facet_wrap(~datastream, ncol = 2) +
+#   geom_line(aes(col = state))
+
 # # get posterior over combined distancing effect curve
 # distancing_overall <- distancing + distancing_effect * regression
 # distancing_overall_vals <- calculate(distancing_overall, values = draws, nsim = 10000)[[1]][, , 1]
