@@ -1168,3 +1168,353 @@ weighted_se <- function(x, mu, w, na.rm = TRUE) {
                   FUN.VALUE = numeric(1))
   sd(means)
 }
+
+# get a (mean and se) number of total contacts at baseline that is comparable to
+# the numbers in Freya's survey from Prem/polymod (similar survey methodology)
+baseline_total_contacts <- function() {
+  
+  # load Prem contact matrix for Australia
+  f <- "data/contacts/contact_matrices_152_countries/MUestimates_all_locations_1.xlsx"
+  all_aus <- readxl::read_xlsx(
+    path = f,
+    sheet = "Australia"
+  ) %>%
+    as.matrix()
+  
+  # load Australian population data
+  pop <- read_csv(
+    file = "data/contacts/ERP_QUARTERLY_20052020195358149.csv",
+    col_types = cols(
+      MEASURE = col_double(),
+      Measure = col_character(),
+      STATE = col_double(),
+      State = col_character(),
+      SEX_ABS = col_double(),
+      Sex = col_character(),
+      AGE = col_character(),
+      Age = col_character(),
+      FREQUENCY = col_character(),
+      Frequency = col_character(),
+      TIME = col_character(),
+      Time = col_character(),
+      Value = col_double(),
+      `Flag Codes` = col_logical(),
+      Flags = col_logical()
+    )
+  ) %>%
+    filter(
+      Measure == "Estimated Resident Population",
+      Sex == "Persons",
+      State == "Australia",
+      Time == "Sep-2019",
+      Age != "All ages"
+    ) %>%
+    select(age = Age, pop = Value) %>%
+    mutate(age = as.numeric(age)) %>%
+    arrange(age) %>%
+    mutate(
+      age_bin = cut(age, seq(0, 100, by = 5), include.lowest = TRUE, right = FALSE)
+    ) %>%
+    group_by(age_bin) %>%
+    summarise(
+      min = min(age),
+      max = max(age),
+      pop = sum(pop)
+    )
+  
+  # get the age-binned population represented by the survey (of adults)
+  survey_pop <- pop %>%
+    group_by(age_bin) %>%
+    mutate(
+      fraction = mean((min:max) >= 18),
+      weighted_pop = pop * fraction
+    ) %>%
+    ungroup() %>%
+    filter(min < 80)
+  
+  mean_wt_aus <- weighted_mean(colSums(all_aus), survey_pop$weighted_pop)
+  
+  # get standard error of the total number of contacts in the UK arm of polymod,
+  # as a measure of prior uncertainty in the Australian estimate of total
+  # contacts
+  download.file("https://raw.githubusercontent.com/jarvisc1/comix_covid-19-first_wave/master/data/polymod_contacts_part.rds",
+                (f <- tempfile()))
+  
+  standard_error_uk <- readRDS(f) %>%
+    filter(part_age_group != "[0,18)") %>%
+    group_by(part_id) %>%
+    summarise(
+      contacts = n_distinct(cont_id)
+    ) %>%
+    ungroup() %>%
+    summarise(
+      se = sd(contacts) / sqrt(n())
+    ) %>%
+    pull(se)
+  
+  tibble::tibble(
+    mean = mean_wt_aus,
+    se = standard_error_uk
+  )
+  
+}
+
+# get the numbers of household contacts and distribution among types of
+# locations from Rolls et al.
+rolls_contact_data <- function() {
+  
+  # load data on encounters of individuals and format
+  individuals <- read_csv(
+    file = "data/contacts/covid_full.csv",
+    col_types = cols(
+      participant_id = col_double(),
+      contact_id = col_character(),
+      contact_duration = col_double(),
+      location_duration = col_double(),
+      hh_member = col_double(),
+      location_code = col_double(),
+      location_type = col_character(),
+      weight = col_double()
+    ),
+    na = c("NULL", "", "NA")
+  ) %>%
+    select(-location_duration, -location_code) %>%
+    mutate(location = case_when(
+      location_type == "Home" ~ "home",
+      location_type == "Retail and hospitality (bars, cafes, shops, hair dressing, etc.)" ~ "retail",
+      location_type == "Public spaces (parks, streets, stations, airports etc.)" ~ "public",
+      location_type == "Public Transport (train, tram, bus or taxi)" ~ "transit",
+      location_type == "Work" ~ "work",
+      TRUE ~ "other",
+    ))
+  
+  # convert encounters to numbers and total durations of unique contacts in each
+  # locationand contact type
+  contact_data <- individuals %>%
+    # this encounter as a proportion of all encounters with this contact
+    group_by(participant_id, contact_id) %>%
+    mutate(proportion = 1 / n()) %>%
+    # sum proportions and durations in each location, using the average duration with that contact where it's missing
+    group_by(participant_id, contact_id, hh_member, location, weight) %>%
+    summarise(
+      proportion = sum(proportion),
+      contact_duration = mean(contact_duration, na.rm = TRUE) / n(),
+    ) %>%
+    # count (proportional) unique contacts and average durations in household/non
+    # household in each location for each participant
+    group_by(participant_id, hh_member, location, weight) %>%
+    summarise(
+      contacts = sum(proportion),
+      contact_duration = mean(contact_duration, na.rm = TRUE)
+    ) %>%
+    # convert duration to hours
+    mutate(contact_duration = contact_duration / (60)) %>%
+    ungroup() %>%
+    mutate(
+      hh_member = ifelse(hh_member == 1,
+                         "household",
+                         "non_household")
+    ) %>%
+    group_by(weight) %>%
+    # expand out to include 0s for different categories, to averages are unbiased
+    complete(participant_id, hh_member, location, fill = list(contacts = 0)) %>%
+    arrange(participant_id, hh_member, location)
+  
+  contact_data
+  
+}
+
+
+baseline_contact_parameters <- function() {
+  
+  # get the average number and duration contacts by household/non-household
+  baseline_contact_params <- rolls_contact_data() %>%
+    group_by(participant_id, hh_member, weight) %>%
+    summarise(contacts = round(sum(contacts)),
+              contact_duration = mean(contact_duration, na.rm = TRUE)) %>%
+    ungroup() %>%
+    group_by(hh_member) %>%
+    summarise(
+      mean_contacts = weighted_mean(
+        contacts,
+        w = weight,
+        na.rm = TRUE
+      ),
+      se_contacts = weighted_se(
+        contacts,
+        mean_contacts,
+        w = weight,
+        na.rm = TRUE
+      ),
+      mean_duration = weighted_mean(
+        contact_duration,
+        w = weight,
+        na.rm = TRUE
+      ),
+      se_duration = weighted_se(
+        contact_duration,
+        mean_duration,
+        w = weight,
+        na.rm = TRUE
+      )
+    )  
+  
+  # replace the prior over mean non-household contacts with a more comparable
+  # estimate from Prem/Polymod
+  TC_0_prior <- baseline_total_contacts()
+  OC_0_prior <- tibble::tibble(
+    mean = TC_0_prior$mean - baseline_contact_params$mean_contacts[1],
+    se = sqrt(TC_0_prior$se ^ 2 + baseline_contact_params$se_contacts[1] ^ 2)
+  )
+  baseline_contact_params$mean_contacts[2] <- OC_0_prior$mean
+  baseline_contact_params$se_contacts[2] <- OC_0_prior$se
+  
+  baseline_contact_params
+  
+}
+
+# Results of Freya's survey
+freya_survey_results <- function() {
+  
+  results <- tibble::tribble(
+    ~date,        ~estimate, ~lower, ~upper,
+    "2020-04-04",      2.78,   2.44,   3.17,
+    "2020-05-02",      3.80,     NA,     NA,
+  ) %>%
+    mutate(
+      date = as.Date(date),
+      sd = mean(c(estimate[1] - lower[1], upper[1] - estimate[1])) / qnorm(0.95)
+    )
+  
+  results
+  
+}
+
+# infectious period in hours
+infectious_period <- function() {
+  si_pmf <- serial_interval_probability(0:100, fixed = TRUE)
+  si_cdf <- cumsum(si_pmf)
+  infectious_days <- which(si_cdf >= 0.95)[1]
+  infectious_days * 24
+}
+
+# find a prior over logit(p) that corresponds to the prior over R0, at the mean
+# values of the baseline contact data, by moment matching
+logit_p_prior <- function() {
+  
+  baseline_contact_params <- baseline_contact_parameters()
+  HC0 <- baseline_contact_params$mean_contacts[1]
+  OC0 <- baseline_contact_params$mean_contacts[2]
+  HD0 <- baseline_contact_params$mean_duration[1]
+  OD0 <- baseline_contact_params$mean_duration[2]
+  
+  infectious_hours <- infectious_period()
+  
+  transform <- function(free) {
+    list(meanlogit = free[1],
+         sdlogit = exp(free[2]))
+  }
+  
+  R0 <- function(logit_p) {
+    p <- plogis(logit_p)
+    hourly_infections <- HC0 * (1 - p ^ HD0) + OC0 * (1 - p ^ OD0)
+    infectious_hours * hourly_infections
+  }
+  
+  R0_params <- function(logit_p_params) {
+    logit_p_draws <- rnorm(1e5, logit_p_params$meanlogit, logit_p_params$sdlogit)
+    R0_draws <- vapply(logit_p_draws, R0, FUN.VALUE = numeric(1))
+    log_R0_draws <- log(R0_draws)
+    list(meanlog = mean(log_R0_draws),
+         sdlog = sd(log_R0_draws))
+  }
+  
+  obj <- function(free) {
+    logit_p_params <- transform(free)
+    R0_params <- R0_params(logit_p_params)
+    R0_expected <- R0_prior()
+    (R0_expected$meanlog - R0_params$meanlog) ^ 2 + sqrt((R0_expected$sdlog - R0_params$sdlog) ^ 2)
+  }
+  
+  set.seed(2020-05-18)
+  o <- optim(c(5, -2), fn = obj, method = "BFGS")
+  
+  transform(o$par)
+  
+}
+
+
+# get change in visits to locations - used as covariates for numbers of
+# non-household contacts, and residential as proportional to household contact
+# duration 
+location_change <- function() {
+  
+  google_change_trends <- readRDS("outputs/google_change_trends.RDS") 
+  
+  location_change_trends <- google_change_trends %>%
+    mutate(location = case_when(
+      datastream == "Google: time at residential" ~ "home",
+      datastream == "Google: time at transit stations" ~ "transit",
+      datastream == "Google: time at parks" ~ "public",
+      datastream == "Google: time at workplaces" ~ "work",
+      datastream == "Google: time at retail and recreation" ~ "retail",
+      TRUE ~ "other"
+    )) %>%
+    filter(location != "other") %>%
+    select(-state_datastream, -datastream) %>% 
+    pivot_wider(names_from = location, values_from = change)
+  
+  location_change_trends
+  
+}
+
+# change in time at residential locations in each state
+h_t_state <- function() {
+  
+  location_change() %>%
+    group_by(date, state, home) %>%
+    select(date, state, home) %>%
+    pivot_wider(names_from = state, values_from = home) %>%
+    ungroup() %>%
+    select(-date) %>%
+    as.matrix()
+  
+}
+
+# compute fractions of non-household (unique) contacts
+# in each location 
+location_contacts <- function() {
+  
+  rolls_contact_data() %>%
+    filter(hh_member == "non_household") %>%
+    group_by(participant_id, location, weight) %>%
+    summarise(contacts = sum(contacts)) %>%
+    group_by(location) %>%
+    summarise(
+      mean_contacts = weighted_mean(
+        contacts,
+        w = weight
+      )
+    ) %>%
+    mutate(
+      proportion_contacts = mean_contacts / sum(mean_contacts)
+    )
+  
+}
+
+# get the overall index of distancing (no waning) on the current dates and
+# optionally add extra 1s at the end
+social_distancing_national <- function(dates, n_extra = 0) {
+  
+  distancing_file <- "outputs/social_distancing_latent.RDS"
+  distancing_index <- distancing_file %>%
+    readRDS() %>%
+    select(mean, date) %>%
+    right_join(tibble(date = dates)) %>%
+    replace_na(list(mean = 0)) %>%
+    pull(mean)
+  
+  distancing_index <- c(distancing_index, rep(1, n_extra))
+  distancing_index
+  
+}

@@ -3,247 +3,173 @@
 
 source("R/functions.R")
 
+# modelled change (after/before ratio) in time at types of locations, from Google
+location_change_trends <- location_change()
 
-# load Prem contact matrix for Australia
-f <- "data/contacts/contact_matrices_152_countries/MUestimates_all_locations_1.xlsx"
-all_aus <- readxl::read_xlsx(
-  path = f,
-  sheet = "Australia"
-) %>%
+# reshape to state/date x location matrix
+location_matrix <- location_change_trends %>%
+  select(-state, -date) %>%
   as.matrix()
 
-# load Australian population data
-pop <- read_csv(
-  file = "data/contacts/ERP_QUARTERLY_20052020195358149.csv",
-  col_types = cols(
-    MEASURE = col_double(),
-    Measure = col_character(),
-    STATE = col_double(),
-    State = col_character(),
-    SEX_ABS = col_double(),
-    Sex = col_character(),
-    AGE = col_character(),
-    Age = col_character(),
-    FREQUENCY = col_character(),
-    Frequency = col_character(),
-    TIME = col_character(),
-    Time = col_character(),
-    Value = col_double(),
-    `Flag Codes` = col_logical(),
-    Flags = col_logical()
-  )
-) %>%
-  filter(
-    Measure == "Estimated Resident Population",
-    Sex == "Persons",
-    State == "Australia",
-    Time == "Sep-2019",
-    Age != "All ages"
-  ) %>%
-  select(age = Age, pop = Value) %>%
-  mutate(age = as.numeric(age)) %>%
-  arrange(age) %>%
-  mutate(
-    age_bin = cut(age, seq(0, 100, by = 5), include.lowest = TRUE, right = FALSE)
-  ) %>%
-  group_by(age_bin) %>%
-  summarise(
-    min = min(age),
-    max = max(age),
-    pop = sum(pop)
-  )
+# prior weights on the relationship between numbers of non-houshold contacts and
+# time spent in those locations, from baseline proportions of contacts in those
+# locations
+location_weights <- location_contacts()
+location_idx <- match(colnames(location_matrix), location_weights$location)
+relative_weights_prior <- location_weights[location_idx, ]$proportion_contacts
 
-# get the age-binned population represented by the survey (of adults)
-survey_pop <- pop %>%
-  group_by(age_bin) %>%
-  mutate(
-    fraction = mean((min:max) >= 18),
-    weighted_pop = pop * fraction
-  ) %>%
-  ungroup() %>%
-  filter(min < 80)
+# state population weights, to relate to national survey
+states <- unique(location_change_trends$state)
+state_weights <- state_populations()$population / sum(state_populations()$population)
 
-baseline_total_contacts <- weighted_mean(colSums(all_aus), survey_pop$weighted_pop)
+# Freya's survey results and index to dates
+dates <- unique(location_change_trends$date)
+freya_survey <- freya_survey_results()
+survey_date_idx <- match(freya_survey$date, dates)
 
-# get the numbers of household contacts and distribution among types of
-# locations from Rolls et al.
+# model for R_t of locally-acquired infections
+library(greta)
 
-# load data on encounters of individuals and format
-individuals <- read_csv(
-  file = "data/contacts/covid_full.csv",
-  col_types = cols(
-    participant_id = col_double(),
-    contact_id = col_character(),
-    contact_duration = col_double(),
-    location_duration = col_double(),
-    hh_member = col_double(),
-    location_code = col_double(),
-    location_type = col_character(),
-    weight = col_double()
-  ),
-  na = c("NULL", "", "NA")
-) %>%
-  select(-location_duration, -location_code) %>%
-  mutate(location = case_when(
-    location_type == "Home" ~ "home",
-    location_type == "Retail and hospitality (bars, cafes, shops, hair dressing, etc.)" ~ "retail",
-    location_type == "Public spaces (parks, streets, stations, airports etc.)" ~ "public",
-    location_type == "Public Transport (train, tram, bus or taxi)" ~ "transit",
-    location_type == "Work" ~ "work",
-    TRUE ~ "other",
-  ))
+# informative priors on variables for contacts at t = 0 (Hx = household, Ox =
+# non-household, Tx = total, xC = contacts. xD = duration)
+baseline_contact_params <- baseline_contact_parameters()
+HC_0 <- normal(baseline_contact_params$mean_contacts[1],
+               baseline_contact_params$se_contacts[1])
+OC_0 <- normal(baseline_contact_params$mean_contacts[2],
+               baseline_contact_params$se_contacts[2])
+HD_0 <- normal(baseline_contact_params$mean_duration[1],
+               baseline_contact_params$se_duration[1])
+OD_0 <- normal(baseline_contact_params$mean_duration[2],
+               baseline_contact_params$se_duration[2])
 
-# convert encounters to numbers and total durations of unique contacts in each
-# locationand contact type
-contact_data <- individuals %>%
-  # this encounter as a proportion of all encounters with this contact
-  group_by(participant_id, contact_id) %>%
-  mutate(proportion = 1 / n()) %>%
-  # sum proportions and durations in each location, using the average duration with that contact where it's missing
-  group_by(participant_id, contact_id, hh_member, location, weight) %>%
-  summarise(
-    proportion = sum(proportion),
-    contact_duration = mean(contact_duration, na.rm = TRUE) / n(),
-  ) %>%
-  # count (proportional) unique contacts and average durations in household/non
-  # household in each location for each participant
-  group_by(participant_id, hh_member, location, weight) %>%
-  summarise(
-    contacts = sum(proportion),
-    contact_duration = mean(contact_duration, na.rm = TRUE)
-  ) %>%
-  # convert duration to hours
-  mutate(contact_duration = contact_duration / (60)) %>%
-  ungroup() %>%
-  mutate(
-    hh_member = ifelse(hh_member == 1,
-                       "household",
-                       "non_household")
-  ) %>%
-  group_by(weight) %>%
-  # expand out to include 0s for different categories, to averages are unbiased
-  complete(participant_id, hh_member, location, fill = list(contacts = 0)) %>%
-  arrange(participant_id, hh_member, location)
+# get HD_t in each state
+h_t <- h_t_state()
+HD_t <- HD_0 * h_t
 
-# get the average number and duration contacts by household/non-household
-baseline_contact_params <- contact_data %>%
-  group_by(participant_id, hh_member, weight) %>%
-  summarise(contacts = round(sum(contacts)),
-            contact_duration = mean(contact_duration, na.rm = TRUE)) %>%
-  ungroup() %>%
-  group_by(hh_member) %>%
-  summarise(
-    mean_contacts = weighted_mean(
-      contacts,
-      w = weight,
-      na.rm = TRUE
-    ),
-    se_contacts = weighted_se(
-      contacts,
-      mean_contacts,
-      w = weight,
-      na.rm = TRUE
-    ),
-    mean_duration = weighted_mean(
-      contact_duration,
-      w = weight,
-      na.rm = TRUE
-    ),
-    se_duration = weighted_se(
-      contact_duration,
-      mean_duration,
-      w = weight,
-      na.rm = TRUE
-    )
-  )
+# relative contribution of time in each location type to the number of
+# non-household contacts
+relative_weights <- dirichlet(t(relative_weights_prior))
 
-# compute fractions of non-household (unique) contacts
-# in each location 
-location_weights <- contact_data %>%
-  filter(hh_member == "non_household") %>%
-  group_by(participant_id, location, weight) %>%
-  summarise(contacts = sum(contacts)) %>%
-  group_by(location) %>%
-  summarise(
-    mean_contacts = weighted_mean(
-      contacts,
-      w = weight
-    )
-  ) %>%
-  mutate(
-    proportion_contacts = mean_contacts / sum(mean_contacts)
-  )
+# scaling to account for greater/lower reductions than implied by the mobility
+weight_scale <- lognormal(0, 1)
+
+# this is constrained  so that OC_t = OC_0 before distancing
+OC_t_state_long <- OC_0 * (location_matrix %*% t(relative_weights)) ^ weight_scale
+
+# reshape to time-by-state matrix
+wide_dim <- c(n_distinct(location_change_trends$date),
+              n_distinct(location_change_trends$state))
+OC_t_state <- greta_array(OC_t_state_long, dim = wide_dim)
+
+# compute likelihood of national survey result
+OC_t <- OC_t_state %*% as.matrix(state_weights)
+distribution(freya_survey$estimate) <- normal(OC_t[survey_date_idx], freya_survey$sd)
+
+# model gamma_t: reduction in duration and transmission probability of
+# non-household contacts over time
+d_t <- social_distancing_national(dates)
+beta <- uniform(0, 1)
+gamma_t <- 1 - beta * d_t
+
+# define prior on p: the probability of *not* transmitting per hour of contact
+logit_p_params <- logit_p_prior()
+logit_p <- normal(logit_p_params$meanlogit, logit_p_params$sdlogit)
+p <- ilogit(logit_p)
+
+# compute component of R_eff for local cases
+household_infections <- HC_0 * (1 - p ^ HD_t)
+non_household_infections <- OC_t * (1 - p ^ OD_0) * gamma_t
+hourly_infections <- sweep(household_infections, 1, non_household_infections, FUN = "+")
+R_t <- infectious_period() * hourly_infections
+
+# simulate from prior over R(t) conditioned on survey data (I.e. considering
+# that part of the likelihood to be a prior)
+m <- model(relative_weights, p, beta, HC_0, HD_0, OC_0, OD_0)
+draws <- mcmc(m)
+
+# check convergence
+r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
+n_eff <- coda::effectiveSize(draws)
+max(r_hats)
+min(n_eff)
+
+nsim <- coda::niter(draws) * coda::nchain(draws)
 
 
-# saveRDS(baseline_contact_params,
-#         "outputs/baseline_contact_params.RDS")
+# plot national OC_t
+OC_t_sim <- calculate(OC_t, values = draws, nsim = nsim)[[1]]
+OC_t_mean <- apply(OC_t_sim, 2:3, mean)
+OC_t_lower <- apply(OC_t_sim, 2:3, quantile, 0.025)
+OC_t_upper <- apply(OC_t_sim, 2:3, quantile, 0.975)
 
-# find a prior over logit(p) that corresponds to the prior over R0, at the mean
-# values of the baseline contact data
-# R0 = HC0(1 - p ^ HD0) + OC0(1 - p ^ OD0)
+plot(OC_t_mean ~ dates, type = "l", ylim = c(0, 12))
+lines(OC_t_lower ~ dates, lty = 2)
+lines(OC_t_upper ~ dates, lty = 2)
+points(freya_survey$estimate ~ freya_survey$date)
 
-HC0 <- baseline_contact_params$mean_contacts[1]
-OC0 <- baseline_contact_params$mean_contacts[2]
-HD0 <- baseline_contact_params$mean_duration[1]
-OD0 <- baseline_contact_params$mean_duration[2]
 
-# get the infectious period in hours
-si_pmf <- serial_interval_probability(0:100, fixed = TRUE)
-si_cdf <- cumsum(si_pmf)
-infectious_days <- which(si_cdf >= 0.95)[1]
-infectious_period <- infectious_days * 24
+# calculate state-level OC_t
+OC_t_state_sim <- calculate(OC_t_state, values = draws, nsim = nsim)[[1]]
+OC_t_state_mean <- apply(OC_t_state_sim, 2:3, mean)
+OC_t_state_sd <- apply(OC_t_state_sim, 2:3, sd)
 
-transform <- function(free) {
-  list(meanlogit = free[1],
-       sdlogit = exp(free[2]))
+plot(OC_t_state_mean[, 1] ~ dates,
+     type = "n",
+     ylim = c(0, 12),
+     ylab = "OC_t",
+     xlab = "")
+for (i in 1:8) {
+  lines(OC_t_state_mean[, i] ~ dates, col = i)
+  lines(OC_t_state_mean[, i] + 1.96 * OC_t_state_sd[, i] ~ dates, lty = 2, col = i)
+  lines(OC_t_state_mean[, i] - 1.96 * OC_t_state_sd[, i] ~ dates, lty = 2, col = i)
 }
 
-R0 <- function(logit_p) {
-  p <- plogis(logit_p)
-  daily_infections <- HC0 * (1 - p ^ HD0) + OC0 * (1 - p ^ OD0)
-  infectious_period * daily_infections
+# very reduction due to micro-distancing
+gamma_t_sim <- calculate(gamma_t, values = draws, nsim = nsim)[[1]]
+gamma_t_mean <- apply(gamma_t_sim, 2:3, mean)
+gamma_t_lower <- apply(gamma_t_sim, 2:3, quantile, 0.025)
+gamma_t_upper <- apply(gamma_t_sim, 2:3, quantile, 0.975)
+
+plot(gamma_t_mean ~ dates, type = "l", ylim = c(0, 1))
+lines(gamma_t_lower ~ dates, lty = 2)
+lines(gamma_t_upper ~ dates, lty = 2)
+
+# slightly increased risk of household infections
+hi_sim <- calculate(household_infections, values = draws, nsim = nsim)[[1]]
+hi_mean <- apply(hi_sim, 2:3, mean)
+hi_lower <- apply(hi_sim, 2:3, quantile, 0.025)
+hi_upper <- apply(hi_sim, 2:3, quantile, 0.975)
+
+plot(hi_mean[, 1] ~ dates,
+     type = "n",
+     ylim = range(c(hi_lower, hi_upper)),
+     ylab = "household local hourly infections",
+     xlab = "")
+for (i in 1:8) {
+  lines(hi_mean[, i] ~ dates, col = i)
+  lines(hi_lower[, i] ~ dates, lty = 2, col = i)
+  lines(hi_upper[, i] ~ dates, lty = 2, col = i)
 }
 
-R0_params <- function(logit_p_params) {
-  logit_p_draws <- rnorm(1e5, logit_p_params$meanlogit, logit_p_params$sdlogit)
-  R0_draws <- vapply(logit_p_draws, R0, FUN.VALUE = numeric(1))
-  log_R0_draws <- log(R0_draws)
-  list(meanlog = mean(log_R0_draws),
-       sdlog = sd(log_R0_draws))
+R_t_sim <- calculate(R_t, values = draws, nsim = nsim)[[1]]
+R_t_mean <- apply(R_t_sim, 2:3, mean)
+R_t_lower <- apply(R_t_sim, 2:3, quantile, 0.025)
+R_t_upper <- apply(R_t_sim, 2:3, quantile, 0.975)
+
+plot(R_t_mean[, 1] ~ dates,
+     type = "n",
+     ylim = c(0, 3),
+     ylab = "R_t",
+     xlab = "")
+for (i in 1:8) {
+  lines(R_t_mean[, i] ~ dates, col = i)
+  lines(R_t_lower[, i] ~ dates, lty = 2, col = i)
+  lines(R_t_upper[, i] ~ dates, lty = 2, col = i)
 }
 
-obj <- function(free) {
-  logit_p_params <- transform(free)
-  R0_params <- R0_params(logit_p_params)
-  R0_expected <- R0_prior()
-  (R0_expected$meanlog - R0_params$meanlog) ^ 2 + sqrt((R0_expected$sdlog - R0_params$sdlog) ^ 2)
-}
-
-set.seed(2020-05-18)
-o <- optim(c(5, -2), fn = obj, method = "BFGS")
-logit_p_params <- transform(o$par)
-# R0_params(logit_p_params)
-# R0_prior()
-# summary(rlnorm(1e4, R0_params(logit_p_params)[[1]], R0_params(logit_p_params)[[2]]))
-# summary(rlnorm(1e4, R0_prior()[[1]], R0_prior()[[2]]))
-
-# # infection probability per hour of contact
-# summary(1 - plogis(rnorm(1e4, logit_p_params$meanlogit, logit_p_params$sdlogit)))
-saveRDS(logit_p_params,
-        "outputs/logit_p_params.RDS")
-
-# model OC_t using the Rolls et al. baseline by location, Freya's survey
-# results, and the trends in time change for google locations from the mobility
-# model.
-
-
-
-
-# get output for HD_t from HD_0 and h_t
 
 # In the Reff model, input HD_t, OC_t, HC_0, OD_0, duration of infectiousness,
 # prior on p, and model using d_t
-
 
 
 # to do:
