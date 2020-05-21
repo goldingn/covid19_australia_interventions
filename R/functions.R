@@ -3,6 +3,7 @@ library(dplyr)
 library(stringr)
 library(rjson)
 library(tidyr)
+library(greta)
 
 # read in and tidy up Facebook movement data
 facebook_mobility <- function() {
@@ -1237,7 +1238,7 @@ baseline_total_contacts <- function() {
   # get standard error of the total number of contacts in the UK arm of polymod,
   # as a measure of prior uncertainty in the Australian estimate of total
   # contacts
-  download.file("https://raw.githubusercontent.com/jarvisc1/comix_covid-19-first_wave/master/data/polymod_contacts_part.rds",
+  download.file("https://raw.githubusercontent.com/goldingn/comix_covid-19-first_wave/master/data/polymod_contacts_part.rds",
                 (f <- tempfile()))
   
   standard_error_uk <- readRDS(f) %>%
@@ -1400,13 +1401,7 @@ infectious_period <- function() {
 
 # find a prior over logit(p) that corresponds to the prior over R0, at the mean
 # values of the baseline contact data, by moment matching
-logit_p_prior <- function() {
-  
-  baseline_contact_params <- baseline_contact_parameters()
-  HC0 <- baseline_contact_params$mean_contacts[1]
-  OC0 <- baseline_contact_params$mean_contacts[2]
-  HD0 <- baseline_contact_params$mean_duration[1]
-  OD0 <- baseline_contact_params$mean_duration[2]
+logit_p_prior <- function(params) {
   
   infectious_hours <- infectious_period()
   
@@ -1415,15 +1410,20 @@ logit_p_prior <- function() {
          sdlogit = exp(free[2]))
   }
   
-  R0 <- function(logit_p) {
-    p <- plogis(logit_p)
-    hourly_infections <- HC0 * (1 - p ^ HD0) + OC0 * (1 - p ^ OD0)
+  R0 <- function(p, HC_0, HD_0, OC_0, OD_0) {
+    hourly_infections <- HC_0 * (1 - p ^ HD_0) + OC_0 * (1 - p ^ OD_0)
     infectious_hours * hourly_infections
   }
   
-  R0_params <- function(logit_p_params) {
-    logit_p_draws <- rnorm(1e5, logit_p_params$meanlogit, logit_p_params$sdlogit)
-    R0_draws <- vapply(logit_p_draws, R0, FUN.VALUE = numeric(1))
+  R0_params <- function(logit_p_params, n = 1e5) {
+    logit_p <- rnorm(n, logit_p_params$meanlogit, logit_p_params$sdlogit)
+    R0_draws <- R0(
+      p = plogis(logit_p),
+      HC_0 = rnorm(n, params$mean_contacts[1], params$se_contacts[1]),
+      OC_0 = rnorm(n, params$mean_contacts[2], params$se_contacts[2]),
+      HD_0 = rnorm(n, params$mean_duration[1], params$se_duration[1]),
+      OD_0 = rnorm(n, params$mean_duration[2], params$se_duration[2])
+    )
     log_R0_draws <- log(R0_draws)
     list(meanlog = mean(log_R0_draws),
          sdlog = sd(log_R0_draws))
@@ -1469,13 +1469,22 @@ location_change <- function() {
 }
 
 # change in time at residential locations in each state
-h_t_state <- function() {
+h_t_state <- function(dates) {
   
   location_change() %>%
     group_by(date, state, home) %>%
     select(date, state, home) %>%
-    pivot_wider(names_from = state, values_from = home) %>%
+    right_join(
+      expand_grid(
+        state = unique(.$state),
+        date = dates
+      )
+    ) %>%
     ungroup() %>%
+    mutate(
+      home = replace_na(home, 1)
+    ) %>%
+    pivot_wider(names_from = state, values_from = home) %>%
     select(-date) %>%
     as.matrix()
   
@@ -1516,5 +1525,118 @@ social_distancing_national <- function(dates, n_extra = 0) {
   
   distancing_index <- c(distancing_index, rep(1, n_extra))
   distancing_index
+  
+}
+
+# greta sub-model for the component R_eff due to macro- and micro-distancing
+distancing_effect_model <- function(dates) {
+  
+  # modelled change (after/before ratio) in time at types of locations, from
+  # Google, aligned with dates
+  location_change_trends <- location_change() %>%
+    right_join(
+      expand_grid(
+        state = unique(.$state),
+        date = dates
+      )
+    ) %>%
+    mutate_at(
+      vars(public, home, retail, transit, work),
+      ~replace_na(., 1)
+    )
+
+  # reshape to state/date x location matrix
+  location_matrix <- location_change_trends %>%
+    select(-state, -date) %>%
+    as.matrix()
+  
+  # prior weights on the relationship between numbers of non-houshold contacts and
+  # time spent in those locations, from baseline proportions of contacts in those
+  # locations
+  location_weights <- location_contacts()
+  location_idx <- match(colnames(location_matrix), location_weights$location)
+  relative_weights_prior <- location_weights[location_idx, ]$proportion_contacts
+  
+  # state population weights, to relate to national survey
+  states <- unique(location_change_trends$state)
+  state_weights <- state_populations()$population / sum(state_populations()$population)
+  
+  # Freya's survey results and index to dates
+  dates <- unique(location_change_trends$date)
+  freya_survey <- freya_survey_results()
+  survey_date_idx <- match(freya_survey$date, dates)
+  
+  # informative priors on variables for contacts at t = 0 (Hx = household, Ox =
+  # non-household, Tx = total, xC = contacts. xD = duration)
+  baseline_contact_params <- baseline_contact_parameters()
+  
+  # prior on the probability of *not* transmitting, per hour of contact
+  # (define to match moments of R0 prior)
+  logit_p_params <- logit_p_prior(baseline_contact_params)
+  logit_p <- normal(logit_p_params$meanlogit, logit_p_params$sdlogit)
+  p <- ilogit(logit_p)
+  
+  HC_0 <- normal(baseline_contact_params$mean_contacts[1],
+                 baseline_contact_params$se_contacts[1])
+  OC_0 <- normal(baseline_contact_params$mean_contacts[2],
+                 baseline_contact_params$se_contacts[2])
+  HD_0 <- normal(baseline_contact_params$mean_duration[1],
+                 baseline_contact_params$se_duration[1])
+  OD_0 <- normal(baseline_contact_params$mean_duration[2],
+                 baseline_contact_params$se_duration[2])
+  
+  # get HD_t in each state
+  h_t <- h_t_state(dates)
+  HD_t <- HD_0 * h_t
+  
+  # relative contribution of time in each location type to the number of
+  # non-household contacts
+  relative_weights <- dirichlet(t(relative_weights_prior * 50))
+  
+  # scaling to account for greater/lower reductions than implied by the mobility
+  scaling <- lognormal(0, 1)
+  
+  location_changes <- as_data(location_matrix)
+  relative_contacts <- location_changes %*% t(relative_weights)
+  relative_contacts_scaled <- relative_contacts ^ scaling
+
+  # this is constrained  so that OC_t = OC_0 before distancing
+  OC_t_state_long <- OC_0 * relative_contacts_scaled
+  
+  # reshape to time-by-state matrix
+  wide_dim <- c(n_distinct(location_change_trends$date),
+                n_distinct(location_change_trends$state))
+  OC_t_state <- greta_array(OC_t_state_long, dim = wide_dim)
+  
+  # compute likelihood of national survey result
+  OC_t <- OC_t_state %*% as.matrix(state_weights)
+  distribution(freya_survey$estimate) <- normal(OC_t[survey_date_idx], freya_survey$sd)
+  
+  # model gamma_t: reduction in duration and transmission probability of
+  # non-household contacts over time
+  d_t <- social_distancing_national(dates)
+  beta <- uniform(0, 1)
+  gamma_t <- 1 - beta * d_t
+  
+  # compute component of R_eff for local cases
+  household_infections <- HC_0 * (1 - p ^ HD_t)
+  non_household_infections <- OC_t * (1 - p ^ OD_0) * gamma_t
+  hourly_infections <- sweep(household_infections, 1, non_household_infections, FUN = "+")
+  R_t <- infectious_period() * hourly_infections
+  
+  # return greta arrays
+  list(R_t = R_t, 
+       gamma_t = gamma_t,
+       OC_t = OC_t,
+       OC_t_state = OC_t_state,
+       p = p,
+       relative_weights = relative_weights,
+       scaling = scaling,
+       beta = beta,
+       HC_0 = HC_0,
+       HD_0 = HD_0,
+       OC_0 = OC_0,
+       OD_0 = OD_0,
+       dates = dates)
   
 }

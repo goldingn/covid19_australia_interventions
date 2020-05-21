@@ -85,35 +85,6 @@ local_cases <- date_by_state %>%
 
 library(greta.gp)
 
-# build the social distancing index, with fixed shape for main effect, and informative prior on the amount of waning
-distancing_file <- "outputs/social_distancing_latent.RDS"
-social_distancing_main_index <- distancing_file %>%
-  readRDS() %>%
-  select(mean, date) %>%
-  right_join(tibble(date = dates)) %>%
-  replace_na(list(mean = 0)) %>%
-  pull(mean)
-# 
-# waning_file <- "outputs/waning_distancing_latent.RDS"
-# waning_index <- waning_file %>%
-#   readRDS() %>%
-#   select(mean, date) %>%
-#   right_join(tibble(date = dates)) %>%
-#   replace_na(list(mean = 0)) %>%
-#   pull(mean)
-#   
-# waning_amount_params <- readRDS("outputs/waning_amount_parameters.RDS")
-# waning_amount <- do.call(normal, waning_amount_params)
-
-# social_distancing_index <- social_distancing_main_index + waning_index * waning_amount
-social_distancing_index <- c(social_distancing_main_index, rep(1, n_extra))
-
-# lognormal prior on R0 (normal prior on log(R0)) based on estimates for
-# Northern Europe from Flaxman et al. (Imperial report 13, lowest R0s from their
-# sensitivity analysis)
-R0_europe <- R0_prior()
-log_R0 <- normal(R0_europe$meanlog, R0_europe$sdlog)
-
 # the reduction from R0 down to R_eff for imported cases due to different
 # quarantine measures each measure applied during a different period. Q_t is
 # R_eff_t / R0 for each time t, modelled as a monotone decreasing step function
@@ -137,8 +108,19 @@ log_Qt <- log_q[q_index]
 # mobility (and therefore contacts) measured from the mobility datastreams. The
 # social distanding index is proportional to the percentage change in mobility,
 # but we can express is as proportional reduction in mobility with: 1 - beta * sdi
-beta <- uniform(0, 1)
-log_Dt <- log1p(-beta * social_distancing_index)
+distancing_effect <- distancing_effect_model(dates)
+
+# pull out R_t component due to distancing for locally-acquired cases, and
+# extend to correct length
+extend_idx <- pmin(seq_along(date_nums), nrow(distancing_effect$R_t))
+R_eff_loc_1 <- distancing_effect$R_t[extend_idx, ]
+log_R_eff_loc_1 <- log(R_eff_loc_1)
+
+# extract R0 from this model and estimate R_t component due to quarantine for
+# overseas-acquired cases
+log_R0 <- log_R_eff_loc_1[1, 1]
+log_R_eff_imp_1 <- log_R0 + log_Qt
+R_eff_imp_1 <- exp(log_R_eff_imp_1)
 
 # temporally correlated errors in R_eff for local cases - representing all the
 # stochastic transmission dynamics in the community, such as outbreaks in
@@ -234,15 +216,13 @@ log_imp_infectious <- log(imported_infectious)
 # work out which ones to exclude (because there were no infectious people)
 valid <- which(is.finite(log_loc_infectious + log_imp_infectious))
 
-log_rel_Reff_loc <- sweep(epsilon_L, 1, log_Dt, FUN = "+") 
-log_rel_Reff_imp <- sweep(epsilon_O, 1, log_Qt, FUN = "+") 
+log_R_eff_loc <- log_R_eff_loc_1 + epsilon_L
+log_R_eff_imp <- sweep(epsilon_O, 1, log_R_eff_imp_1, FUN = "+") 
 
-log_rel_new_from_loc_vec <- log_loc_infectious[valid] + log_rel_Reff_loc[1:n_dates, ][valid]
-log_rel_new_from_imp_vec <- log_imp_infectious[valid] + log_rel_Reff_imp[1:n_dates, ][valid]
-rel_new_vec <- exp(log_rel_new_from_loc_vec) + exp(log_rel_new_from_imp_vec)
+log_new_from_loc_vec <- log_loc_infectious[valid] + log_R_eff_loc[1:n_dates, ][valid]
+log_new_from_imp_vec <- log_imp_infectious[valid] + log_R_eff_imp[1:n_dates, ][valid]
+expected_infections_vec <- exp(log_new_from_loc_vec) + exp(log_new_from_imp_vec)
 
-log_expected_infections_vec <- log_R0 + log(rel_new_vec)
-expected_infections_vec <- exp(log_expected_infections_vec)
 distribution(local_cases[valid]) <- poisson(expected_infections_vec)
 
 # # try negative binomial likelihood
@@ -254,7 +234,7 @@ distribution(local_cases[valid]) <- poisson(expected_infections_vec)
 
 # add correlated errors on the quarantine model too
 
-m <- model(beta, log_q, log_R0, rel_new_vec)
+m <- model(log_q, log_R0, expected_infections_vec)
 draws <- mcmc(
   m,
   sampler = hmc(Lmin = 10, Lmax = 15),
@@ -276,22 +256,17 @@ epsilon_L_3 <- project(epsilon_L, x_new = date_nums, kernel = noise_kernel_L)
 epsilon_O_2 <- project(epsilon_O, x_new = date_nums, kernel = signal_kernel_O)
 epsilon_O_3 <- project(epsilon_O, x_new = date_nums, kernel = noise_kernel_O)
 
-# R_eff for local-local and import-local among national population
-# (component 1 only)
-R_eff_loc_1 <- exp(log_R0 + log_Dt)
-R_eff_imp_1 <- exp(log_R0 + log_Qt)
-
 # R_eff for local-local and import-local among state populations
 # (components 1 and 2)
-log_rel_R_eff_loc_12 <- sweep(epsilon_L_2, 1, log_Dt, FUN = "+") 
-R_eff_loc_12 <- exp(log_R0 + log_rel_R_eff_loc_12)
-log_rel_R_eff_imp_12 <- sweep(epsilon_O_2, 1, log_Qt, FUN = "+") 
-R_eff_imp_12 <- exp(log_R0 + log_rel_R_eff_imp_12)
+log_R_eff_loc_12 <- log_R_eff_loc_1 + epsilon_L_2 
+R_eff_loc_12 <- exp(log_R_eff_loc_12)
+log_R_eff_imp_12 <- sweep(epsilon_O_2, 1, log_R_eff_imp_1, FUN = "+") 
+R_eff_imp_12 <- exp(log_R_eff_imp_12)
 
 # R_eff ofor local-local and import-local among active cases per state
 # (components 1, 2, and 3)
-R_eff_loc_123 <- exp(log_R0 + log_rel_Reff_loc)
-R_eff_imp_123 <- exp(log_R0 + log_rel_Reff_imp)
+R_eff_loc_123 <- exp(log_R_eff_loc)
+R_eff_imp_123 <- exp(log_R_eff_imp)
 
 nsim <- coda::niter(draws) * coda::nchain(draws)
 
@@ -322,8 +297,8 @@ for (type in 1:5) {
     projection_date <- max(dates)
   }
                  
-  R_eff_loc_1_type <- R_eff_loc_1[rows]
-  R_eff_imp_1_type <- R_eff_imp_1[rows]
+  R_eff_loc_1_type_vec <- c(R_eff_loc_1[rows, ])
+  R_eff_imp_1_type_vec <- c(R_eff_imp_1[rows, ])
   R_eff_imp_12_vec_type <- c(R_eff_imp_12[rows, ])
   R_eff_loc_12_vec_type <- c(R_eff_loc_12[rows, ])
   R_eff_imp_123_vec_type <- c(R_eff_imp_123[rows, ])
@@ -336,8 +311,8 @@ for (type in 1:5) {
   
   # simulate from posterior for quantitities of interest
   sims <- calculate(
-    R_eff_loc_1_type,
-    R_eff_imp_1_type,
+    R_eff_loc_1_type_vec,
+    R_eff_imp_1_type_vec,
     R_eff_loc_12_vec_type,
     R_eff_imp_12_vec_type,
     R_eff_loc_123_vec_type,
@@ -350,8 +325,8 @@ for (type in 1:5) {
     nsim = nsim
   )
   
-  R_eff_loc_1_sim <- sims$R_eff_loc_1_type
-  R_eff_imp_1_sim <- sims$R_eff_imp_1_type
+  R_eff_loc_1_sim <- sims$R_eff_loc_1_type_vec
+  R_eff_imp_1_sim <- sims$R_eff_imp_1_type_vec
   R_eff_loc_12_sim <- sims$R_eff_loc_12_vec_type
   R_eff_imp_12_sim <- sims$R_eff_imp_12_vec_type
   R_eff_loc_123_sim <- sims$R_eff_loc_123_vec_type
@@ -408,7 +383,7 @@ for (type in 1:5) {
   # R_eff for national population 
   plot_trend(R_eff_loc_1_sim,
              dates = dates_type,
-             multistate = FALSE,
+             multistate = TRUE,
              base_colour = green,
              vline_at = intervention_dates()$date,
              vline2_at = projection_date) + 
