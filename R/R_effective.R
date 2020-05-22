@@ -417,9 +417,9 @@ for (type in 1:5) {
     ylab(expression(R["eff"]~component))
   
   ggsave(file.path(dir, "figures/R_eff_1_local_micro.png"),
-         width = multi_width,
-         height = multi_height,
-         scale = 0.8)
+         width = panel_width,
+         height = panel_height * 1.25,
+         scale = 1)
   
   # Component 1 for national / state populations
   plot_trend(R_eff_loc_1_macro_sim,
@@ -612,9 +612,14 @@ for (type in 1:5) {
                   mean(R0_draws),
                   sd(R0_draws)))
     
-    # # posterior summary of R_eff for the peak of distancing
-    # peak_distancing <- max(which(waning_index == 0))
-    # R_eff_peak_draws <- R_eff_loc_1_sim[, peak_distancing, 1]
+    # posterior summary of R_eff for the peak of distancing
+    peak_date <- as.Date("2020-04-11")
+    peak_idx <- which(dates == peak_date)
+    R_eff_peak_draws <- R_eff_loc_1_sim[, peak_idx, 1]
+    cat(sprintf("\nminimum Reff %.2f (%.2f) on %s\n",
+                mean(R_eff_peak_draws),
+                sd(R_eff_peak_draws),
+                format(peak_date, "%d %b")))
     
     # posterior summary of R_eff for the latest date
     R_eff_now_draws <- R_eff_loc_1_sim[, ncol(R_eff_loc_1_sim), 1]
@@ -624,10 +629,9 @@ for (type in 1:5) {
                   format(max(dates), "%d %b")))
     
     # covariance of these estimates
-    covar <- cov(cbind(R0_draws, R_eff_now_draws))
-    cat("\nCovariance of R0 and Reff:\n")
+    covar <- cov(cbind(R0_draws, R_eff_peak_draws))
+    cat("\nCovariance of R0 and minimum Reff:\n")
     print(covar)
-    
     
   }
   
