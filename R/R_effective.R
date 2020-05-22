@@ -268,6 +268,22 @@ R_eff_imp_12 <- exp(log_R_eff_imp_12)
 R_eff_loc_123 <- exp(log_R_eff_loc)
 R_eff_imp_123 <- exp(log_R_eff_imp)
 
+
+# Reff local component one under only micro- and only macro-distancing
+de <- distancing_effect
+
+household_infections_micro <- de$HC_0 * (1 - de$p ^ de$HD_0)
+non_household_infections_micro <- de$OC_0 * (1 - de$p ^ de$OD_0) * de$gamma_t
+hourly_infections_micro <- household_infections_micro + non_household_infections_micro
+R_eff_loc_1_micro <- infectious_period() * hourly_infections_micro
+
+h_t <- h_t_state(dates)
+HD_t <- de$HD_0 * h_t
+household_infections_macro <- de$HC_0 * (1 - de$p ^ HD_t)
+non_household_infections_macro <- de$OC_t_state * (1 - de$p ^ de$OD_0)
+hourly_infections_macro <- household_infections_macro + non_household_infections_macro
+R_eff_loc_1_macro <- infectious_period() * hourly_infections_macro
+
 nsim <- coda::niter(draws) * coda::nchain(draws)
 
 # make 4 different versions of the plots and outputs:
@@ -296,7 +312,7 @@ for (type in 1:5) {
     rows <- pmin(n_dates + n_extra, seq_len(n_projected))
     projection_date <- max(dates)
   }
-                 
+   
   R_eff_loc_1_type_vec <- c(R_eff_loc_1[rows, ])
   R_eff_imp_1_type_vec <- c(R_eff_imp_1[rows, ])
   R_eff_imp_12_vec_type <- c(R_eff_imp_12[rows, ])
@@ -308,6 +324,9 @@ for (type in 1:5) {
   epsilon_L_3_vec_type <- c(epsilon_L_3[rows, ])
   epsilon_O_2_vec_type <- c(epsilon_O_2[rows, ])
   epsilon_O_3_vec_type <- c(epsilon_O_3[rows, ])
+  
+  R_eff_loc_1_micro_type_vec <- c(R_eff_loc_1_micro[rows, ])
+  R_eff_loc_1_macro_type_vec <- c(R_eff_loc_1_macro[rows, ])
   
   # simulate from posterior for quantitities of interest
   sims <- calculate(
@@ -321,6 +340,8 @@ for (type in 1:5) {
     epsilon_L_3_vec_type,
     epsilon_O_2_vec_type,
     epsilon_O_3_vec_type,
+    R_eff_loc_1_micro_type_vec,
+    R_eff_loc_1_macro_type_vec,
     values = draws,
     nsim = nsim
   )
@@ -335,6 +356,8 @@ for (type in 1:5) {
   epsilon_L_3_sim <- sims$epsilon_L_3_vec_type
   epsilon_O_2_sim <- sims$epsilon_O_2_vec_type
   epsilon_O_3_sim <- sims$epsilon_O_3_vec_type
+  R_eff_loc_1_micro_sim <- sims$R_eff_loc_1_micro_type_vec
+  R_eff_loc_1_macro_sim <- sims$R_eff_loc_1_macro_type_vec
 
   dates_type <- min(dates) - 1 + seq_along(rows)
   
@@ -360,6 +383,8 @@ for (type in 1:5) {
   
   blue <- "steelblue3"
   green <- brewer.pal(8, "Set2")[1]
+  blue_green <- colorRampPalette(c("blue", green))(10)[8]
+  yellow_green <- colorRampPalette(c("yellow", green))(10)[8]
   orange <- brewer.pal(8, "Set2")[2]
   pink <- brewer.pal(8, "Set2")[4]
   
@@ -379,8 +404,41 @@ for (type in 1:5) {
   
   # add a bit of space for the title
   multi_height <- multi_height * 1.2
+
+  # Component 1 for national / state populations
+  plot_trend(R_eff_loc_1_micro_sim,
+             dates = dates_type,
+             multistate = FALSE,
+             base_colour = yellow_green,
+             vline_at = intervention_dates()$date,
+             vline2_at = projection_date) + 
+    ggtitle(label = "Impact of micro-distancing",
+            subtitle = expression(Component~of~R["eff"]~due~to~"micro-distancing")) +
+    ylab(expression(R["eff"]~component))
   
-  # R_eff for national population 
+  ggsave(file.path(dir, "figures/R_eff_1_local_micro.png"),
+         width = multi_width,
+         height = multi_height,
+         scale = 0.8)
+  
+  # Component 1 for national / state populations
+  plot_trend(R_eff_loc_1_macro_sim,
+             dates = dates_type,
+             multistate = TRUE,
+             base_colour = blue_green,
+             vline_at = intervention_dates()$date,
+             vline2_at = projection_date) + 
+    ggtitle(label = "Impact of macro-distancing",
+            subtitle = expression(Component~of~R["eff"]~due~to~"macro-distancing")) +
+    ylab(expression(R["eff"]~component))
+  
+  ggsave(file.path(dir, "figures/R_eff_1_local_macro.png"),
+         width = multi_width,
+         height = multi_height,
+         scale = 0.8)
+  
+  
+  # Component 1 for national / state populations
   plot_trend(R_eff_loc_1_sim,
              dates = dates_type,
              multistate = TRUE,
@@ -392,9 +450,9 @@ for (type in 1:5) {
     ylab(expression(R["eff"]~component))
   
   ggsave(file.path(dir, "figures/R_eff_1_local.png"),
-         width = panel_width,
-         height = panel_height * 1.25,
-         scale = 1)
+         width = multi_width,
+         height = multi_height,
+         scale = 0.8)
   
   plot_trend(R_eff_imp_1_sim,
              dates = dates_type,

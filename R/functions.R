@@ -1620,8 +1620,12 @@ distancing_effect_model <- function(dates) {
   
   # compute component of R_eff for local cases
   household_infections <- HC_0 * (1 - p ^ HD_t)
-  non_household_infections <- OC_t * (1 - p ^ OD_0) * gamma_t
-  hourly_infections <- sweep(household_infections, 1, non_household_infections, FUN = "+")
+  non_household_infections_ntnl <-(1 - p ^ OD_0) * gamma_t
+  non_household_infections <- sweep(OC_t_state,
+                                    1,
+                                    non_household_infections_ntnl,
+                                    FUN = "*")
+  hourly_infections <- household_infections + non_household_infections
   R_t <- infectious_period() * hourly_infections
   
   # return greta arrays

@@ -78,5 +78,18 @@ for (i in 1:8) {
 }
 abline(h = 1, lty = 3)
 
-# In the Reff model, input HD_t, OC_t, HC_0, OD_0, duration of infectiousness,
-# prior on p, and model using d_t
+# compute counterfactuals of Reff with only reduced macrodistancing and only
+# reduced microdistancing
+
+h_t <- h_t_state(dates)
+HD_t <- HD_0 * h_t
+household_infections_macro <- HC_0 * (1 - p ^ HD_t)
+non_household_infections_macro <- OC_t_state * (1 - p ^ OD_0)
+hourly_infections_macro <- sweep(household_infections_macro, 1, non_household_infections_macro, FUN = "+")
+R_t_macro <- infectious_period() * hourly_infections_macro
+
+household_infections_micro <- HC_0 * (1 - p ^ HD_0)
+non_household_infections_micro <- OC_0 * (1 - p ^ OD_0) * gamma_t
+hourly_infections_micro <- sweep(household_infections_micro, 1, non_household_infections_micro, FUN = "+")
+R_t_micro <- infectious_period() * hourly_infections_micro
+
