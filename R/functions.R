@@ -1391,11 +1391,11 @@ freya_survey_results <- function() {
   
 }
 
-# infectious period in hours
+# mean infectious period in hours
 infectious_period <- function() {
-  si_pmf <- serial_interval_probability(0:100, fixed = TRUE)
-  si_cdf <- cumsum(si_pmf)
-  infectious_days <- which(si_cdf >= 0.95)[1]
+  days <- 0:100
+  si_pmf <- serial_interval_probability(days, fixed = TRUE)
+  infectious_days <- weighted_mean(days, si_pmf)
   infectious_days * 24
 }
 
