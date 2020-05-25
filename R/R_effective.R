@@ -50,7 +50,15 @@ linelist <- linelist %>%
 
 import_statuses <- sort(unique(linelist$import_status))
 states <- sort(unique(linelist$state))
-dates <- seq(min(linelist$date), max(linelist$date), by = 1)
+
+# dates in the linelist (used for fitting)
+latest_date <- max(linelist$date)
+dates <- seq(min(linelist$date), latest_date, by = 1)
+
+# last date in the mobility data (used for plotting)
+google_change_data <- readRDS("outputs/google_change_trends.RDS")
+last_mobility_date <- max(google_change_data$date)
+mobility_dates <- seq(min(dates), last_mobility_date, by = 1)
 
 n_states <- length(states)
 n_dates <- length(dates)
@@ -108,7 +116,7 @@ log_Qt <- log_q[q_index]
 # mobility (and therefore contacts) measured from the mobility datastreams. The
 # social distanding index is proportional to the percentage change in mobility,
 # but we can express is as proportional reduction in mobility with: 1 - beta * sdi
-distancing_effect <- distancing_effect_model(dates)
+distancing_effect <- distancing_effect_model(mobility_dates)
 
 # pull out R_t component due to distancing for locally-acquired cases, and
 # extend to correct length
@@ -237,11 +245,11 @@ distribution(local_cases[valid]) <- poisson(expected_infections_vec)
 m <- model(log_q, log_R0, expected_infections_vec)
 draws <- mcmc(
   m,
-  sampler = hmc(Lmin = 10, Lmax = 15),
-  chains = 10,
+  sampler = hmc(Lmin = 15, Lmax = 20),
+  chains = 15,
   one_by_one = TRUE
 )
-# draws <- extra_samples(draws, 1000, one_by_one = TRUE)
+draws <- extra_samples(draws, 1000, one_by_one = TRUE)
 
 # check convergence
 r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
@@ -276,16 +284,18 @@ household_infections_micro <- de$HC_0 * (1 - de$p ^ de$HD_0)
 non_household_infections_micro <- de$OC_0 * (1 - de$p ^ de$OD_0) * de$gamma_t
 hourly_infections_micro <- household_infections_micro + non_household_infections_micro
 R_eff_loc_1_micro <- infectious_period() * hourly_infections_micro
+R_eff_loc_1_micro <- R_eff_loc_1_micro[extend_idx, ]
 
-h_t <- h_t_state(dates)
+h_t <- h_t_state(mobility_dates)
 HD_t <- de$HD_0 * h_t
 household_infections_macro <- de$HC_0 * (1 - de$p ^ HD_t)
 non_household_infections_macro <- de$OC_t_state * (1 - de$p ^ de$OD_0)
 hourly_infections_macro <- household_infections_macro + non_household_infections_macro
 R_eff_loc_1_macro <- infectious_period() * hourly_infections_macro
+R_eff_loc_1_macro <- R_eff_loc_1_macro[extend_idx, ]
 
 nsim <- coda::niter(draws) * coda::nchain(draws)
-
+nsim <- min(10000, nsim)
 # make 4 different versions of the plots and outputs:
 # 1. up to latest date of infection
 # 2. up to June 8
@@ -304,15 +314,17 @@ for (type in 1:5) {
   
   # subset or extend projections based on type of projection
   if (type == 1) {
-    rows <- seq_len(n_dates)
+    # for the nowcast, estimate up to the latest mobility data
+    last_date <- last_mobility_date
     projection_date <- NA
   } else {
     last_date <- min(dates) + n_date_nums - 1
-    n_projected <- n_dates + as.numeric(last_date - max(dates))
-    rows <- pmin(n_dates + n_extra, seq_len(n_projected))
-    projection_date <- max(dates)
+    projection_date <- last_mobility_date + 1
   }
-   
+  n_projected <- n_dates + as.numeric(last_date - max(dates))
+  rows <- pmin(n_dates + n_extra, seq_len(n_projected))
+
+  
   R_eff_loc_1_type_vec <- c(R_eff_loc_1[rows, ])
   R_eff_imp_1_type_vec <- c(R_eff_imp_1[rows, ])
   R_eff_imp_12_vec_type <- c(R_eff_imp_12[rows, ])
@@ -369,7 +381,7 @@ for (type in 1:5) {
                                   "4" = 1.2,
                                   "5" = 1.5)
     
-    change_date <- as.Date("2020-05-11")
+    change_date <- last_mobility_date + 1
     dates_long <- rep(dates_type, n_states)
     projected_dates_long <- dates_long >= change_date
     projected_dates <- dates_type >= change_date
