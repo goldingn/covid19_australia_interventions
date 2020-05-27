@@ -299,7 +299,7 @@ de <- distancing_effect
 household_infections_micro <- de$HC_0 * (1 - de$p ^ de$HD_0)
 non_household_infections_micro <- de$OC_0 * (1 - de$p ^ de$OD_0) * de$gamma_t
 hourly_infections_micro <- household_infections_micro + non_household_infections_micro
-R_eff_loc_1_micro <- infectious_period() * hourly_infections_micro
+R_eff_loc_1_micro <- hourly_infections_micro
 R_eff_loc_1_micro <- R_eff_loc_1_micro[extend_idx, ]
 
 h_t <- h_t_state(mobility_dates)
@@ -307,7 +307,7 @@ HD_t <- de$HD_0 * h_t
 household_infections_macro <- de$HC_0 * (1 - de$p ^ HD_t)
 non_household_infections_macro <- de$OC_t_state * (1 - de$p ^ de$OD_0)
 hourly_infections_macro <- household_infections_macro + non_household_infections_macro
-R_eff_loc_1_macro <- infectious_period() * hourly_infections_macro
+R_eff_loc_1_macro <- hourly_infections_macro
 R_eff_loc_1_macro <- R_eff_loc_1_macro[extend_idx, ]
 
 # make 4 different versions of the plots and outputs:

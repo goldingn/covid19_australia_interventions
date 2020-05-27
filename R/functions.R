@@ -1330,12 +1330,23 @@ rolls_contact_data <- function() {
 
 baseline_contact_parameters <- function() {
   
+  # mean duration of infection in days
+  infectious_days <- infectious_period()
+  
   # get the average number and duration contacts by household/non-household
   baseline_contact_params <- rolls_contact_data() %>%
+    # contact duration in hours per day, multiply by infecious days to get
+    # number of contact hours of entire infectious period
+    mutate(
+      contact_duration = contact_duration * infectious_days
+    ) %>%
+    # summarise number and duration of household/non-household contacts per
+    # respondent
     group_by(participant_id, hh_member, weight) %>%
     summarise(contacts = round(sum(contacts)),
               contact_duration = mean(contact_duration, na.rm = TRUE)) %>%
     ungroup() %>%
+    # summarise over respondents
     group_by(hh_member) %>%
     summarise(
       mean_contacts = weighted_mean(
@@ -1376,7 +1387,7 @@ baseline_contact_parameters <- function() {
   
 }
 
-# Results of Freya's survey
+  # Results of Freya's survey
 freya_survey_results <- function() {
   
   results <- tibble::tribble(
@@ -1393,19 +1404,19 @@ freya_survey_results <- function() {
   
 }
 
-# mean infectious period in hours
+# mean infectious period in days
 infectious_period <- function() {
   days <- 0:100
   si_pmf <- serial_interval_probability(days, fixed = TRUE)
   infectious_days <- weighted_mean(days, si_pmf)
-  infectious_days * 24
+  infectious_days
 }
 
 # find a prior over logit(p) that corresponds to the prior over R0, at the mean
 # values of the baseline contact data, by moment matching
 logit_p_prior <- function(params) {
   
-  infectious_hours <- infectious_period()
+  infectious_days <- infectious_period()
   
   transform <- function(free) {
     list(meanlogit = free[1],
@@ -1413,8 +1424,7 @@ logit_p_prior <- function(params) {
   }
   
   R0 <- function(p, HC_0, HD_0, OC_0, OD_0) {
-    hourly_infections <- HC_0 * (1 - p ^ HD_0) + OC_0 * (1 - p ^ OD_0)
-    infectious_hours * hourly_infections
+    HC_0 * (1 - p ^ HD_0) + OC_0 * (1 - p ^ OD_0)
   }
   
   R0_params <- function(logit_p_params, n = 1e5) {
@@ -1622,13 +1632,12 @@ distancing_effect_model <- function(dates) {
   
   # compute component of R_eff for local cases
   household_infections <- HC_0 * (1 - p ^ HD_t)
-  non_household_infections_ntnl <-(1 - p ^ OD_0) * gamma_t
+  non_household_transmission <- (1 - p ^ OD_0) * gamma_t
   non_household_infections <- sweep(OC_t_state,
                                     1,
-                                    non_household_infections_ntnl,
+                                    non_household_transmission,
                                     FUN = "*")
-  hourly_infections <- household_infections + non_household_infections
-  R_t <- infectious_period() * hourly_infections
+  R_t <- household_infections + non_household_infections
   
   # return greta arrays
   list(R_t = R_t, 
