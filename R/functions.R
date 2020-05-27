@@ -1335,10 +1335,15 @@ baseline_contact_parameters <- function() {
   
   # get the average number and duration contacts by household/non-household
   baseline_contact_params <- rolls_contact_data() %>%
-    # contact duration in hours per day, multiply by infecious days to get
-    # number of contact hours of entire infectious period
+    # contact duration in hours per day, multiply by infectious days *for
+    # household contacts only* to get number of contact hours of entire
+    # infectious period. For non-household contacts, we can assume they are
+    # different individuals so transmission can exceed contacts, so multiply
+    # infectious days by the daily R
     mutate(
-      contact_duration = contact_duration * infectious_days
+      contact_duration = contact_duration * ifelse(hh_member == "household",
+                                                   infectious_days,
+                                                   1)
     ) %>%
     # summarise number and duration of household/non-household contacts per
     # respondent
@@ -1424,7 +1429,7 @@ logit_p_prior <- function(params) {
   }
   
   R0 <- function(p, HC_0, HD_0, OC_0, OD_0) {
-    HC_0 * (1 - p ^ HD_0) + OC_0 * (1 - p ^ OD_0)
+    HC_0 * (1 - p ^ HD_0) + OC_0 * infectious_days * (1 - p ^ OD_0)
   }
   
   R0_params <- function(logit_p_params, n = 1e5) {
@@ -1588,6 +1593,8 @@ distancing_effect_model <- function(dates) {
   logit_p <- normal(logit_p_params$meanlogit, logit_p_params$sdlogit)
   p <- ilogit(logit_p)
   
+  infectious_days <- infectious_period()
+  
   HC_0 <- normal(baseline_contact_params$mean_contacts[1],
                  baseline_contact_params$se_contacts[1])
   OC_0 <- normal(baseline_contact_params$mean_contacts[2],
@@ -1632,7 +1639,7 @@ distancing_effect_model <- function(dates) {
   
   # compute component of R_eff for local cases
   household_infections <- HC_0 * (1 - p ^ HD_t)
-  non_household_transmission <- (1 - p ^ OD_0) * gamma_t
+  non_household_transmission <- infectious_days * (1 - p ^ OD_0) * gamma_t
   non_household_infections <- sweep(OC_t_state,
                                     1,
                                     non_household_transmission,

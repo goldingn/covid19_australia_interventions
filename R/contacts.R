@@ -80,16 +80,17 @@ abline(h = 1, lty = 3)
 
 # compute counterfactuals of Reff with only reduced macrodistancing and only
 # reduced microdistancing
+infectious_days <- infectious_period()
 
 h_t <- h_t_state(dates)
 HD_t <- HD_0 * h_t
 household_infections_macro <- HC_0 * (1 - p ^ HD_t)
-non_household_infections_macro <- OC_t_state * (1 - p ^ OD_0)
+non_household_infections_macro <- OC_t_state * infectious_days * (1 - p ^ OD_0)
 hourly_infections_macro <- sweep(household_infections_macro, 1, non_household_infections_macro, FUN = "+")
 R_t_macro <- infectious_period() * hourly_infections_macro
 
 household_infections_micro <- HC_0 * (1 - p ^ HD_0)
-non_household_infections_micro <- OC_0 * (1 - p ^ OD_0) * gamma_t
+non_household_infections_micro <- OC_0 * infectious_days * (1 - p ^ OD_0) * gamma_t
 hourly_infections_micro <- sweep(household_infections_micro, 1, non_household_infections_micro, FUN = "+")
 R_t_micro <- infectious_period() * hourly_infections_micro
 
