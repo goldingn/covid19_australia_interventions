@@ -1088,6 +1088,8 @@ multi_gp <- function (x, v, kernel, inducing = NULL, tol = 1e-04) {
   # calculate key objects
   Kmm <- kernel(inducing)
   
+  m <- nrow(v)
+  
   if (!identical(tol, 0))
     Kmm <- Kmm + diag(m) * tol
   

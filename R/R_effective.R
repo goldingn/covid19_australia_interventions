@@ -144,16 +144,16 @@ time_noise_kernel_L <- rational_quadratic(
   variance = sigma_time_noise_L ^ 2,
   alpha = alpha_time_noise_L)
 
-# IID noise in log(R_eff) per day (overdispersion, or case clustering)
-sigma_noise_L <- normal(0, 0.25, truncation = c(0, Inf))
-iid_noise_kernel_L <- white(sigma_noise_L ^ 2)
+# # IID noise in log(R_eff) per day (overdispersion, or case clustering)
+# sigma_noise_L <- normal(0, 0.25, truncation = c(0, Inf))
+# iid_noise_kernel_L <- white(sigma_noise_L ^ 2)
 
-sigma_noise_O <- normal(0, 0.5, truncation = c(0, Inf))
-iid_noise_kernel_O <- white(sigma_noise_O ^ 2)
+# sigma_noise_O <- normal(0, 0.5, truncation = c(0, Inf))
+# iid_noise_kernel_O <- white(sigma_noise_O ^ 2)
 
 # combine noise kernels
-noise_kernel_L <- time_noise_kernel_L + iid_noise_kernel_L
-noise_kernel_O <- iid_noise_kernel_O
+noise_kernel_L <- time_noise_kernel_L #+ iid_noise_kernel_L
+# noise_kernel_O <- iid_noise_kernel_O
 
 # for for local-local cases, use smooth term for state-level trends, for
 # import-local, use random intercepts
@@ -169,7 +169,7 @@ sigma_bias_O <- normal(0, 0.5, truncation = c(0, Inf))
 signal_kernel_O <- bias(sigma_bias_O ^ 2)
 
 kernel_L <- signal_kernel_L + noise_kernel_L
-kernel_O <- signal_kernel_O + noise_kernel_O
+kernel_O <- signal_kernel_O #+ noise_kernel_O
 
 # variation in the Reff timeseries between the states and territories
 sigma_state_L <- normal(0, 0.25, truncation = c(0, Inf), dim = n_states)
@@ -178,7 +178,7 @@ sigma_state_O <- normal(0, 0.5, truncation = c(0, Inf), dim = n_states)
 # build a matrix of inducing points, regularly spaced over time but with one on
 # the most recent date
 n_date_nums <- length(date_nums)
-inducing_date_nums <- rev(seq(n_date_nums, 1, by = -3))
+inducing_date_nums <- rev(seq(n_date_nums, 1, by = -7))
 n_inducing <- length(inducing_date_nums)
 
 # evaluate epsilon GP for imports, with different error variance for each state
@@ -190,7 +190,7 @@ epsilon_O <- multi_gp(
   v = v_O,
   kernel = kernel_O,
   inducing = inducing_date_nums,
-  tol = 0
+  tol = 1e-6
 )
 
 # and for locals, with different variances
@@ -202,7 +202,7 @@ epsilon_L <- multi_gp(
   v = v_L,
   kernel = kernel_L,
   inducing = inducing_date_nums,
-  tol = 0
+  tol = 1e-6
 )
 
 # combine these components
@@ -231,25 +231,25 @@ log_new_from_loc_vec <- log_loc_infectious[valid] + log_R_eff_loc[1:n_dates, ][v
 log_new_from_imp_vec <- log_imp_infectious[valid] + log_R_eff_imp[1:n_dates, ][valid]
 expected_infections_vec <- exp(log_new_from_loc_vec) + exp(log_new_from_imp_vec)
 
-distribution(local_cases[valid]) <- poisson(expected_infections_vec)
+# distribution(local_cases[valid]) <- poisson(expected_infections_vec)
 
-# # try negative binomial likelihood
-# valid <- which(is.finite(log_loc_infectious + log_imp_infectious), arr.ind = TRUE)
-# sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf), dim = n_states)
-# size <- 1 / sqrt(sqrt_inv_size[valid[, 2]])
-# prob <- 1 / (1 + expected_infections_vec / size)
-# distribution(local_cases[valid]) <- negative_binomial(size, prob)
+# try negative binomial likelihood
+valid <- which(is.finite(log_loc_infectious + log_imp_infectious), arr.ind = TRUE)
+sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf), dim = n_states)
+size <- 1 / sqrt(sqrt_inv_size[valid[, 2]])
+prob <- 1 / (1 + expected_infections_vec / size)
+distribution(local_cases[valid]) <- negative_binomial(size, prob)
 
 # add correlated errors on the quarantine model too
 
 m <- model(log_q, log_R0, expected_infections_vec)
 draws <- mcmc(
   m,
-  sampler = hmc(Lmin = 15, Lmax = 20),
-  chains = 15,
+  sampler = hmc(Lmin = 10, Lmax = 15),
+  chains = 10,
   one_by_one = TRUE
 )
-draws <- extra_samples(draws, 1000, one_by_one = TRUE)
+# draws <- extra_samples(draws, 1000, one_by_one = TRUE)
 
 # check convergence
 r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
@@ -262,7 +262,7 @@ epsilon_L_2 <- project(epsilon_L, x_new = date_nums, kernel = signal_kernel_L)
 epsilon_L_3 <- project(epsilon_L, x_new = date_nums, kernel = noise_kernel_L)
 
 epsilon_O_2 <- project(epsilon_O, x_new = date_nums, kernel = signal_kernel_O)
-epsilon_O_3 <- project(epsilon_O, x_new = date_nums, kernel = noise_kernel_O)
+# epsilon_O_3 <- project(epsilon_O, x_new = date_nums, kernel = noise_kernel_O)
 
 # R_eff for local-local and import-local among state populations
 # (components 1 and 2)
@@ -335,7 +335,7 @@ for (type in 1:5) {
   epsilon_L_2_vec_type <- c(epsilon_L_2[rows, ])
   epsilon_L_3_vec_type <- c(epsilon_L_3[rows, ])
   epsilon_O_2_vec_type <- c(epsilon_O_2[rows, ])
-  epsilon_O_3_vec_type <- c(epsilon_O_3[rows, ])
+  # epsilon_O_3_vec_type <- c(epsilon_O_3[rows, ])
   
   R_eff_loc_1_micro_type_vec <- c(R_eff_loc_1_micro[rows, ])
   R_eff_loc_1_macro_type_vec <- c(R_eff_loc_1_macro[rows, ])
@@ -351,7 +351,7 @@ for (type in 1:5) {
     epsilon_L_2_vec_type,
     epsilon_L_3_vec_type,
     epsilon_O_2_vec_type,
-    epsilon_O_3_vec_type,
+    # epsilon_O_3_vec_type,
     R_eff_loc_1_micro_type_vec,
     R_eff_loc_1_macro_type_vec,
     values = draws,
@@ -367,7 +367,7 @@ for (type in 1:5) {
   epsilon_L_2_sim <- sims$epsilon_L_2_vec_type
   epsilon_L_3_sim <- sims$epsilon_L_3_vec_type
   epsilon_O_2_sim <- sims$epsilon_O_2_vec_type
-  epsilon_O_3_sim <- sims$epsilon_O_3_vec_type
+  # epsilon_O_3_sim <- sims$epsilon_O_3_vec_type
   R_eff_loc_1_micro_sim <- sims$R_eff_loc_1_micro_type_vec
   R_eff_loc_1_macro_sim <- sims$R_eff_loc_1_macro_type_vec
 
