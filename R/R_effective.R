@@ -257,6 +257,22 @@ n_eff <- coda::effectiveSize(draws)
 max(r_hats)
 min(n_eff)
 
+# check fit
+nsim <- coda::niter(draws) * coda::nchain(draws)
+nsim <- min(10000, nsim)
+cases <- negative_binomial(size, prob)
+cases_sim <- calculate(cases, values = draws, nsim = nsim)[[1]][, , 1]
+
+# overall PPC check
+bayesplot::ppc_ecdf_overlay(
+  local_cases[valid],
+  cases_sim,
+  discrete = TRUE
+)
+
+# check by state and time
+plot_fit(local_cases[valid], cases_sim, valid)
+
 # split epsilons into signal (2) and noise (3) Reff components
 epsilon_L_2 <- project(epsilon_L, x_new = date_nums, kernel = signal_kernel_L)
 epsilon_L_3 <- project(epsilon_L, x_new = date_nums, kernel = noise_kernel_L)
@@ -294,8 +310,6 @@ hourly_infections_macro <- household_infections_macro + non_household_infections
 R_eff_loc_1_macro <- infectious_period() * hourly_infections_macro
 R_eff_loc_1_macro <- R_eff_loc_1_macro[extend_idx, ]
 
-nsim <- coda::niter(draws) * coda::nchain(draws)
-nsim <- min(10000, nsim)
 # make 4 different versions of the plots and outputs:
 # 1. up to latest date of infection
 # 2. up to June 8
@@ -593,7 +607,7 @@ for (type in 1:5) {
             subtitle = expression(Deviation~from~log(R["eff"])~of~"local-local"~transmission)) +
     ylab("Deviation")
   
-  ggsave(file.path(dir, "figures/R_eff_3_local.png"),
+    ggsave(file.path(dir, "figures/R_eff_3_local.png"),
          width = multi_width,
          height = multi_height,
          scale = 0.8)
