@@ -3,6 +3,7 @@
 source("R/functions.R")
 
 barometer <- barometer_results()
+interventions <- intervention_dates()
 
 # recode and collapse responses into percentage adherence
 state <- barometer %>%
@@ -10,9 +11,9 @@ state <- barometer %>%
   mutate(
     response = case_when(
       question == "1.5m compliance" &
-        response %in% c("Always", "Often") ~ "yes",
+        response %in% c("Always") ~ "yes",
       question == "1.5m compliance" &
-        response %in% c("Sometimes", "Rarely", "No") ~ "no",
+        response %in% c("Often", "Sometimes", "Rarely", "No") ~ "no",
       TRUE ~ response) 
   ) %>%
   # recode hand washing to yes/no (whether they did it immediately afterwards)
@@ -51,18 +52,12 @@ state <- barometer %>%
 # and that waning starts at the same time, butdon't assume it wanes at the same
 # rate
 
-distancing <- readRDS("~/Dropbox/github/covid19_australia_distancing/outputs/social_distancing_latent.RDS")
-waning <- readRDS("~/Dropbox/github/covid19_australia_distancing/outputs/waning_distancing_latent.RDS")
+distancing <- readRDS("outputs/social_distancing_latent.RDS")
 
 # get data to predict to
 pred_data <- distancing %>%
   rename(distancing = mean) %>%
   select(date, distancing) %>%
-  left_join(
-    waning %>%
-      rename(waning = mean) %>%
-      select(date, waning)
-  ) %>%
   left_join(
     expand_grid(
       date = .$date,
@@ -70,11 +65,12 @@ pred_data <- distancing %>%
     )
   ) %>%
   mutate(
-    location_id = match(location, unique(location))
+    location_id = match(location, unique(location)),
+    time = as.numeric(date - max(interventions$date)),
+    time = time / max(time)
   )
-  
 
-# subset to 1.5m question and add distancing and waning indices
+# subset to 1.5m question and add data for modelling
 state_distance <- state %>%
   filter(question == "1.5m compliance") %>%
   left_join(pred_data)
@@ -85,25 +81,42 @@ library(greta)
 
 n_locations <- max(state_distance$location_id)
 
+# timing of peak microdistancing between the date of the last intervention and
+# today's date
+peak <- normal(0, 1, truncation = c(0, 1))
+
+# scale (rate of change) of microdistancing
+distancing_scale <- normal(0, 1, truncation = c(0, Inf))
+
 # hierarchical structure on state-level waning
-logit_waning_effect_mean <- normal(0, 10)
-logit_waning_effect_sd <- normal(0, 0.5, truncation = c(0, Inf))
-logit_waning_effect_raw <- normal(0, 1, dim = n_locations)
-logit_waning_effect <- logit_waning_effect_mean + logit_waning_effect_raw * logit_waning_effect_sd
-waning_effect <- -ilogit(logit_waning_effect)
-distancing_effect <- uniform(0, 1)
+logit_waning_effects_mean <- normal(0, 10)
+logit_waning_effects_sd <- normal(0, 0.5, truncation = c(0, Inf))
+logit_waning_effects_raw <- normal(0, 1, dim = n_locations)
+logit_waning_effects <- logit_waning_effects_mean + logit_waning_effects_raw * logit_waning_effects_sd
+waning_effects <- -ilogit(logit_waning_effects)
 
-# try a power transform on the distancing coefficient, to get a better fit from
-# the peak
+# hierarchical structure on state-level peak effect (proportion adhering) 
+logit_distancing_effects_mean <- normal(0, 10)
+logit_distancing_effects_sd <- normal(0, 0.5, truncation = c(0, Inf))
+logit_distancing_effects_raw <- normal(0, 1, dim = n_locations)
+logit_distancing_effects <- logit_distancing_effects_mean + logit_distancing_effects_raw * logit_distancing_effects_sd
+distancing_effects <- ilogit(logit_distancing_effects)
 
-expected_proportion <- function(data, distancing_coef, waning_coefs) {
-  data$distancing * distancing_coef + data$waning * waning_coefs[data$location_id]
-}
 
-prob <- expected_proportion(state_distance, distancing_effect, waning_effect)
-distribution(state_distance$count) <- binomial(state_distance$respondents, prob)
+prob <- microdistancing_model(
+  data = state_distance,
+  peak = peak,
+  distancing_effects = distancing_effects,
+  distancing_scale = distancing_scale,
+  waning_effects = waning_effects
+)
 
-m <- model(waning_effect, distancing_effect)
+distribution(state_distance$count) <- binomial(
+  state_distance$respondents,
+  prob
+)
+
+m <- model(waning_effects, distancing_effects, peak, distancing_scale)
 
 set.seed(2020-05-30)
 draws <- mcmc(m, chains = 4)
@@ -114,7 +127,13 @@ n_eff <- coda::effectiveSize(draws)
 max(r_hats)
 min(n_eff)
 
-prob_pred <- expected_proportion(pred_data, distancing_effect, waning_effect)
+prob_pred <- microdistancing_model(
+  data = pred_data,
+  peak = peak,
+  distancing_effects = distancing_effects,
+  distancing_scale = distancing_scale,
+  waning_effects = waning_effects
+)
 
 prob_pred_sim <- calculate(prob_pred, values = draws, nsim = 5000)[[1]][, , 1]
 quants <- t(apply(prob_pred_sim, 2, quantile, c(0.05, 0.25, 0.75, 0.95)))
@@ -173,20 +192,26 @@ point_df <- state_distance %>%
   select(-location, -ACT_or_NT) %>%
   mutate(type = "Nowcast")
 
-# compute a confidence interval for the proportion
-glm <- lme4::glmer(cbind(count, respondents - count) ~ (1 | id),
-           data = point_df %>%
-             mutate(id = factor(row_number())),
-           family = stats::binomial)
+# Compute confidence intervals for the proportions for plotting. Need to fudge
+# the sample size for one survey round with 100% adherence on a small sample
+pred <- point_df %>%
+  mutate(
+    id = factor(row_number()),
+    respondents = ifelse(respondents == count,
+                         respondents + 1,
+                         respondents)
+  ) %>%
+  glm(cbind(count, respondents - count) ~ id,
+      data = .,
+      family = stats::binomial) %>%
+  predict(se.fit = TRUE)
 
 # Monte Carlo integration based on normal approximation to logit-probability
-meanlogit <- predict(glm)
-sdlogit <- glm@theta
 logit_sims <- replicate(
-  1000,
-  rnorm(length(meanlogit),
-        meanlogit,
-        sdlogit)
+  10000,
+  rnorm(length(pred$fit),
+        pred$fit,
+        pred$se.fit)
 )
 p_sims <- plogis(logit_sims)
 estimate <- rowMeans(p_sims)
@@ -259,7 +284,7 @@ p <- ggplot(line_df) +
     label = "Micro-distancing trend",
     subtitle = "Calibrated against self-reported adherence to physical distancing"
   ) +
-  ylab("Estimate of percentage 'often' or 'always' keeping 1.5m distance")
+  ylab("Estimate of percentage 'always' keeping 1.5m distance")
 
 p
 
@@ -280,5 +305,25 @@ ggsave("outputs/figures/microdistancing_effect.png",
        width = multi_width,
        height = multi_height,
        scale = 0.8)
+
+# save the model fit
+saveRDS(pred_plot, file = "outputs/microdistancing_trends.RDS")
+
+# estimates at peak and at latest date
+pred_plot %>%
+  group_by(state) %>%
+  summarise(peak = which.max(mean),
+            peak_estimate = mean[peak] * 100,
+            peak_low = ci_90_lo[peak] * 100,
+            peak_high = ci_90_hi[peak] * 100,
+            peak_date = date[peak],
+            latest = which.max(date),
+            latest_estimate = mean[latest] * 100,
+            latest_low = ci_90_lo[latest] * 100,
+            latest_high = ci_90_hi[latest] * 100,
+            latest_date = date[latest]) %>%
+  select(-peak, -latest)
+  
+
 
 
