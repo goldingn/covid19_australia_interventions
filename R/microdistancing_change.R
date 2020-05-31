@@ -85,9 +85,6 @@ n_locations <- max(state_distance$location_id)
 # today's date
 peak <- normal(0, 1, truncation = c(0, 1))
 
-# scale (rate of change) of microdistancing
-distancing_scale <- normal(0, 1, truncation = c(0, Inf))
-
 # hierarchical structure on state-level waning
 logit_waning_effects_mean <- normal(0, 10)
 logit_waning_effects_sd <- normal(0, 0.5, truncation = c(0, Inf))
@@ -102,12 +99,10 @@ logit_distancing_effects_raw <- normal(0, 1, dim = n_locations)
 logit_distancing_effects <- logit_distancing_effects_mean + logit_distancing_effects_raw * logit_distancing_effects_sd
 distancing_effects <- ilogit(logit_distancing_effects)
 
-
 prob <- microdistancing_model(
   data = state_distance,
   peak = peak,
   distancing_effects = distancing_effects,
-  distancing_scale = distancing_scale,
   waning_effects = waning_effects
 )
 
@@ -116,7 +111,7 @@ distribution(state_distance$count) <- binomial(
   prob
 )
 
-m <- model(waning_effects, distancing_effects, peak, distancing_scale)
+m <- model(waning_effects, distancing_effects, peak)
 
 set.seed(2020-05-30)
 draws <- mcmc(m, chains = 4)
@@ -131,7 +126,6 @@ prob_pred <- microdistancing_model(
   data = pred_data,
   peak = peak,
   distancing_effects = distancing_effects,
-  distancing_scale = distancing_scale,
   waning_effects = waning_effects
 )
 

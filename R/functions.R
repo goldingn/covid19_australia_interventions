@@ -1794,7 +1794,6 @@ barometer_results <- function() {
 microdistancing_model <- function(data,
                                   peak,
                                   distancing_effects,
-                                  distancing_scale,
                                   waning_effects) {
   
   # shape of unscaled waning effect (0 at/before peak, to 1 at latest date)
@@ -1802,12 +1801,9 @@ microdistancing_model <- function(data,
   nullify <- (sign(waning_shape) + 1) / 2
   waning_shape <- waning_shape * nullify
   
-  # multiply by coefficient to get waning effect
+  # multiply by coefficients to get trends for each state
   waning <- waning_shape * waning_effects[data$location_id]  
-  
-  # rescale distancing effects on logit scale
-  logit_distancing <- qlogis(data$distancing) * distancing_scale
-  distancing <- ilogit(logit_distancing) * distancing_effects[data$location_id]
+  distancing <- data$distancing * distancing_effects[data$location_id]
   
   # combine the two
   distancing + waning
