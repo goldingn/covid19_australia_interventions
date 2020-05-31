@@ -10,13 +10,10 @@ library(tidyr)
 library(RColorBrewer)
 source("R/functions.R")
 
-# return a fake linelist based on the real case counts and samples of the
-# reporting delay distribution
 set.seed(2020-04-29)
 linelist <- readRDS("~/not_synced/nnds/linelist_formatted.RDS")
 
-# for now just do single imputation with the mean delay on the date of onset for
-# those missing it
+# impute with the mean delay on the date of onset for those missing it
 delay_samples <- read_csv(
   file = "data/cases/sampled_report_delay.csv",
   col_types = cols(x = col_integer())
@@ -30,15 +27,6 @@ linelist <- linelist %>%
       TRUE ~date_onset
     )
   )
-
-# Later marginalise over the reporting rate properly:
-#  - Get the counts of cases with known onsets by onset date, split by local and
-#  overseas
-#  - Get the continuously disaggregated cases without known onsets, by onset
-#  date, split by local and overseas.
-# - sum these when computing lambda_ti
-# - when defining the likelihood, marginalise over the sum of the known onsets
-# and probabilistic unknown onsets
 
 # build date-by-state matrices of the counts of new local and imported cases and
 # imports by assumed date of infection (with an incubation period of 5 days)
@@ -111,11 +99,12 @@ log_q_raw <- -exponential(1, dim = 3)
 log_q <- cumsum(log_q_raw)
 log_Qt <- log_q[q_index]
 
-# the reduction from R0 down to R_eff for locally-acquired cases due to social
-# distancing behaviour, modelled as a being proportional to the reduction in
-# mobility (and therefore contacts) measured from the mobility datastreams. The
-# social distanding index is proportional to the percentage change in mobility,
-# but we can express is as proportional reduction in mobility with: 1 - beta * sdi
+# The change in R_t for locally-acquired cases due to social distancing
+# behaviour, modelled as a sum of household R_t and non-household R_t
+# Non-household Reff is modelled as a function of the number of non-household
+# contacts per 24h (itself modelled from mobility data, calibrated against
+# contact surveys) and the relative transmission probability per contact,
+# inferred from surveys on micro-distancing behaviour.
 distancing_effect <- distancing_effect_model(mobility_dates)
 
 # pull out R_t component due to distancing for locally-acquired cases, and
@@ -144,16 +133,8 @@ time_noise_kernel_L <- rational_quadratic(
   variance = sigma_time_noise_L ^ 2,
   alpha = alpha_time_noise_L)
 
-# # IID noise in log(R_eff) per day (overdispersion, or case clustering)
-# sigma_noise_L <- normal(0, 0.25, truncation = c(0, Inf))
-# iid_noise_kernel_L <- white(sigma_noise_L ^ 2)
-
-# sigma_noise_O <- normal(0, 0.5, truncation = c(0, Inf))
-# iid_noise_kernel_O <- white(sigma_noise_O ^ 2)
-
 # combine noise kernels
 noise_kernel_L <- time_noise_kernel_L #+ iid_noise_kernel_L
-# noise_kernel_O <- iid_noise_kernel_O
 
 # for for local-local cases, use smooth term for state-level trends, for
 # import-local, use random intercepts
@@ -169,7 +150,7 @@ sigma_bias_O <- normal(0, 0.5, truncation = c(0, Inf))
 signal_kernel_O <- bias(sigma_bias_O ^ 2)
 
 kernel_L <- signal_kernel_L + noise_kernel_L
-kernel_O <- signal_kernel_O #+ noise_kernel_O
+kernel_O <- signal_kernel_O
 
 # variation in the Reff timeseries between the states and territories
 sigma_state_L <- normal(0, 0.25, truncation = c(0, Inf), dim = n_states)
@@ -205,10 +186,6 @@ epsilon_L <- multi_gp(
   tol = 1e-6
 )
 
-# combine these components
-# N ~ Poisson(R0 * exp(epsilon_t) * (I_t^L * D_t  + I_t^O * Q_t))
-# log_R0 + epsilon + log(exp(log(I_L) + log_Dt) + exp(log(I_O) + log_Qt))
-
 # disaggregate imported and local cases according to the serial interval
 # probabilities to get the expected number of infectious people in each state
 # and time. Fixing the SI parameters at their prior means for now
@@ -216,8 +193,6 @@ local_infectious <- apply_serial_interval(local_cases, fixed = TRUE)
 imported_infectious <- apply_serial_interval(imported_cases, fixed = TRUE) 
 
 # combine everything as vectors
-# log_loc_infectious_vec <- c(log(local_infectious))
-# log_imp_infectious_vec <- c(log(imported_infectious))
 log_loc_infectious <- log(local_infectious)
 log_imp_infectious <- log(imported_infectious)
 
@@ -231,8 +206,6 @@ log_new_from_loc_vec <- log_loc_infectious[valid] + log_R_eff_loc[1:n_dates, ][v
 log_new_from_imp_vec <- log_imp_infectious[valid] + log_R_eff_imp[1:n_dates, ][valid]
 expected_infections_vec <- exp(log_new_from_loc_vec) + exp(log_new_from_imp_vec)
 
-# distribution(local_cases[valid]) <- poisson(expected_infections_vec)
-
 # try negative binomial likelihood
 valid <- which(is.finite(log_loc_infectious + log_imp_infectious), arr.ind = TRUE)
 sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf), dim = n_states)
@@ -242,10 +215,10 @@ distribution(local_cases[valid]) <- negative_binomial(size, prob)
 
 # add correlated errors on the quarantine model too
 
-m <- model(log_q, log_R0, expected_infections_vec)
+m <- model(expected_infections_vec)
 draws <- mcmc(
   m,
-  sampler = hmc(Lmin = 10, Lmax = 15),
+  sampler = hmc(Lmin = 20, Lmax = 25),
   chains = 10,
   one_by_one = TRUE
 )
@@ -300,7 +273,7 @@ infectious_days <- infectious_period()
 
 household_infections_micro <- de$HC_0 * (1 - de$p ^ de$HD_0)
 non_household_infections_micro <- de$OC_0 * infectious_days *
-  (1 - de$p ^ de$OD_0) * de$gamma_t
+  (1 - de$p ^ de$OD_0) * de$gamma_t_state
 hourly_infections_micro <- household_infections_micro +
   non_household_infections_micro
 R_eff_loc_1_micro <- hourly_infections_micro

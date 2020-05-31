@@ -1529,6 +1529,35 @@ location_contacts <- function() {
   
 }
 
+# get the index of microdistancing in each state as a date-by-state matrix
+microdistancing_state <- function (dates, states) {
+  
+  microdistancing_file <- "outputs/microdistancing_trends.RDS"
+  microdistancing_index <- microdistancing_file %>%
+    readRDS() %>%
+    # expand to all required dates and states
+    select(state, date, mean) %>%
+    right_join(
+      expand_grid(
+        state = states,
+        date = dates
+      )
+    ) %>%
+    replace_na(list(mean = 0)) %>%
+    # scale to have a maximum of 1
+    mutate(mean = mean / max(mean)) %>%
+    # turn into a date-by-state matrix
+    pivot_wider(
+      names_from = state,
+      values_from = mean
+    ) %>%
+    select(-date) %>%
+    as.matrix()
+  
+  microdistancing_index
+  
+}
+
 # get the overall index of distancing (no waning) on the current dates and
 # optionally add extra 1s at the end
 social_distancing_national <- function(dates, n_extra = 0) {
@@ -1633,23 +1662,20 @@ distancing_effect_model <- function(dates) {
   distribution(freya_survey$estimate) <- normal(OC_t[survey_date_idx], freya_survey$sd)
   
   # model gamma_t: reduction in duration and transmission probability of
-  # non-household contacts over time
-  d_t <- social_distancing_national(dates)
+  # non-household contacts over time, per state
+  d_t_state <- microdistancing_state(dates, states)
   beta <- uniform(0, 1)
-  gamma_t <- 1 - beta * d_t
+  gamma_t_state <- 1 - beta * d_t_state
   
   # compute component of R_eff for local cases
   household_infections <- HC_0 * (1 - p ^ HD_t)
-  non_household_transmission <- infectious_days * (1 - p ^ OD_0) * gamma_t
-  non_household_infections <- sweep(OC_t_state,
-                                    1,
-                                    non_household_transmission,
-                                    FUN = "*")
+  non_household_infections <- OC_t_state * gamma_t_state *
+    infectious_days * (1 - p ^ OD_0)
   R_t <- household_infections + non_household_infections
   
   # return greta arrays
   list(R_t = R_t, 
-       gamma_t = gamma_t,
+       gamma_t_state = gamma_t_state,
        OC_t = OC_t,
        OC_t_state = OC_t_state,
        p = p,

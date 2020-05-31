@@ -149,8 +149,8 @@ pred_plot <- pred_data %>%
   uncount(duplicate, .id = "ACT_or_NT") %>%
   mutate(
     state = case_when(
-      location == "ACT/NT" & ACT_or_NT == 1 ~ "ACT",
-      location == "ACT/NT" & ACT_or_NT == 2 ~ "NT",
+      location == "ACT/NT" & ACT_or_NT == 1 ~ "Australian Capital Territory",
+      location == "ACT/NT" & ACT_or_NT == 2 ~ "Northern Territory",
       TRUE ~ location
     )
   ) %>%
@@ -178,8 +178,8 @@ point_df <- state_distance %>%
   uncount(duplicate, .id = "ACT_or_NT") %>%
   mutate(
     state = case_when(
-      location == "ACT/NT" & ACT_or_NT == 1 ~ "ACT",
-      location == "ACT/NT" & ACT_or_NT == 2 ~ "NT",
+      location == "ACT/NT" & ACT_or_NT == 1 ~ "Australian Capital Territory",
+      location == "ACT/NT" & ACT_or_NT == 2 ~ "Northern Territory",
       TRUE ~ location
     )
   ) %>%
