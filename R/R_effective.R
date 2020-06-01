@@ -243,42 +243,42 @@ for (type in 1:5) {
   n_projected <- n_dates + as.numeric(last_date - max(dates))
   rows <- pmin(n_dates + n_extra, seq_len(n_projected))
 
-  R_eff_loc_1_type_vec <- c(R_eff_loc_1[rows, ])
-  R_eff_imp_1_type_vec <- c(R_eff_imp_1[rows, ])
-  R_eff_imp_12_vec_type <- c(R_eff_imp_12[rows, ])
-  R_eff_loc_12_vec_type <- c(R_eff_loc_12[rows, ])
+  R_eff_loc_1_vec <- c(R_eff_loc_1[rows, ])
+  R_eff_imp_1_vec <- c(R_eff_imp_1[rows, ])
+  R_eff_imp_12_vec <- c(R_eff_imp_12[rows, ])
+  R_eff_loc_12_vec <- c(R_eff_loc_12[rows, ])
   
-  epsilon_L_vec_type <- c(epsilon_L[rows, ])
-  epsilon_O_vec_type <- c(epsilon_O[rows, ])
+  epsilon_L_vec <- c(epsilon_L[rows, ])
+  epsilon_O_vec <- c(epsilon_O[rows, ])
   
-  R_eff_loc_1_micro_type_vec <- c(R_eff_loc_1_micro[rows, ])
-  R_eff_loc_1_macro_type_vec <- c(R_eff_loc_1_macro[rows, ])
+  R_eff_loc_1_micro_vec <- c(R_eff_loc_1_micro[rows, ])
+  R_eff_loc_1_macro_vec <- c(R_eff_loc_1_macro[rows, ])
   
-  OC_t_state_vec <- c(de$OC_t_state[rows, ])
+  OC_t_state_vec <- c(de$OC_t_state)
   
   # simulate from posterior for quantitities of interest
   sims <- calculate(
-    R_eff_loc_1_type_vec,
-    R_eff_imp_1_type_vec,
-    R_eff_loc_12_vec_type,
-    R_eff_imp_12_vec_type,
-    epsilon_L_vec_type,
-    epsilon_O_vec_type,
-    R_eff_loc_1_micro_type_vec,
-    R_eff_loc_1_macro_type_vec,
+    R_eff_loc_1_vec,
+    R_eff_imp_1_vec,
+    R_eff_loc_12_vec,
+    R_eff_imp_12_vec,
+    epsilon_L_vec,
+    epsilon_O_vec,
+    R_eff_loc_1_micro_vec,
+    R_eff_loc_1_macro_vec,
     OC_t_state_vec,
     values = draws,
     nsim = nsim
   )
   
-  R_eff_loc_1_sim <- sims$R_eff_loc_1_type_vec
-  R_eff_imp_1_sim <- sims$R_eff_imp_1_type_vec
-  R_eff_loc_12_sim <- sims$R_eff_loc_12_vec_type
-  R_eff_imp_12_sim <- sims$R_eff_imp_12_vec_type
-  epsilon_L_sim <- sims$epsilon_L_vec_type
-  epsilon_O_sim <- sims$epsilon_O_vec_type
-  R_eff_loc_1_micro_sim <- sims$R_eff_loc_1_micro_type_vec
-  R_eff_loc_1_macro_sim <- sims$R_eff_loc_1_macro_type_vec
+  R_eff_loc_1_sim <- sims$R_eff_loc_1_vec
+  R_eff_imp_1_sim <- sims$R_eff_imp_1_vec
+  R_eff_loc_12_sim <- sims$R_eff_loc_12_vec
+  R_eff_imp_12_sim <- sims$R_eff_imp_12_vec
+  epsilon_L_sim <- sims$epsilon_L_vec
+  epsilon_O_sim <- sims$epsilon_O_vec
+  R_eff_loc_1_micro_sim <- sims$R_eff_loc_1_micro_vec
+  R_eff_loc_1_macro_sim <- sims$R_eff_loc_1_macro_vec
   OC_t_state_sim <- sims$OC_t_state_vec
 
   dates_type <- min(dates) - 1 + seq_along(rows)
@@ -319,49 +319,52 @@ for (type in 1:5) {
   # add a bit of space for the title
   multi_height <- multi_height * 1.2
 
-  # non-household contacts estimated from Freya's surveys
-  freya_survey <- freya_survey_results() %>%
-    mutate(type = "Nowcast") %>%
-    mutate(lower = estimate - sd * 1.96,
-           upper = estimate + sd * 1.96)
-  
-  # non-household contacts
-  plot_trend(OC_t_state_sim,
-             dates = dates_type,
-             multistate = TRUE,
-             base_colour = purple,
-             vline_at = intervention_dates()$date,
-             ylim = c(0, 15),
-             hline_at = NULL,
-             vline2_at = projection_date) + 
-    ggtitle(label = "Macro-distancing trend",
-            subtitle = "Rate of non-household contacts") +
-    ylab("Estimated number of non-household contacts per day") + 
+  if (type == 1) {
+    # non-household contacts estimated from Freya's surveys
+    freya_survey <- freya_survey_results() %>%
+      mutate(type = "Nowcast") %>%
+      mutate(lower = estimate - sd * 1.96,
+             upper = estimate + sd * 1.96)
     
-    # add survey results
-    geom_point(
-      aes(date, estimate),
-      data = freya_survey,
-      size = 0.5,
-      colour = grey(0.5)
-    ) +
+    # non-household contacts
+    plot_trend(OC_t_state_sim,
+               dates = dates_type,
+               multistate = TRUE,
+               base_colour = purple,
+               vline_at = intervention_dates()$date,
+               ylim = c(0, 15),
+               hline_at = NULL,
+               vline2_at = projection_date) + 
+      ggtitle(label = "Macro-distancing trend",
+              subtitle = "Rate of non-household contacts") +
+      ylab("Estimated number of non-household contacts per day") + 
+      
+      # add survey results
+      geom_point(
+        aes(date, estimate),
+        data = freya_survey,
+        size = 0.5,
+        colour = grey(0.5)
+      ) +
+      
+      geom_errorbar(
+        aes(
+          date,
+          estimate,
+          ymin = lower,
+          ymax = upper
+        ),
+        data = freya_survey,
+        width = 0,
+        colour = grey(0.5)
+      )
     
-    geom_errorbar(
-      aes(
-        date,
-        estimate,
-        ymin = lower,
-        ymax = upper
-      ),
-      data = freya_survey,
-      width = 0,
-      colour = grey(0.5)
-    )
-  
-  ggsave(file.path(dir, "figures/macrodistancing_effect.png"),
-         width = multi_width,
-         height = multi_height,
-         scale = 0.8)
+    ggsave(file.path(dir, "figures/macrodistancing_effect.png"),
+           width = multi_width,
+           height = multi_height,
+           scale = 0.8)
+    
+  }
   
   # Component 1 for national / state populations
   plot_trend(R_eff_loc_1_micro_sim,

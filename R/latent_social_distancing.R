@@ -174,9 +174,9 @@ distribution(mobility$trend) <- normal(mean = trends[idx],
 # fit model
 m <- model(loadings_ntnl, loadings_holiday)
 draws <- mcmc(m,
-              sampler = hmc(Lmin = 20, Lmax = 25),
-              chains = 20)
-draws <- extra_samples(draws, 1000)
+              sampler = hmc(Lmin = 25, Lmax = 30),
+              chains = 20,
+              n_samples = 4000)
 
 # check convergence
 r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
