@@ -73,7 +73,21 @@ facebook_mobility <- function() {
 google_mobility <- function() {
   # get link from: https://www.google.com/covid19/mobility/index.html
   url <- "https://www.gstatic.com/covid19/mobility/Global_Mobility_Report.csv"
-  data <- readr::read_csv(url, ) %>%
+  data <- readr::read_csv(
+    url, 
+    col_types = cols(
+      country_region_code = col_character(),
+      country_region = col_character(),
+      sub_region_1 = col_character(),
+      sub_region_2 = col_character(),
+      date = col_date(format = "%Y-%m-%d"),
+      retail_and_recreation_percent_change_from_baseline = col_double(),
+      grocery_and_pharmacy_percent_change_from_baseline = col_double(),
+      parks_percent_change_from_baseline = col_double(),
+      transit_stations_percent_change_from_baseline = col_double(),
+      workplaces_percent_change_from_baseline = col_double(),
+      residential_percent_change_from_baseline = col_double()
+    )) %>%
     filter(country_region == "Australia") %>%
     tidyr::pivot_longer(
       ends_with("_percent_change_from_baseline"),
@@ -96,8 +110,18 @@ google_mobility <- function() {
 # download and format Apple's mobility data - will need to update the url regularly
 apple_mobility <- function() {
   # get link from: https://www.apple.com/covid19/mobility
-  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2008HotfixDev40/v3/en-us/applemobilitytrends-2020-05-22.csv"
-  data <- readr::read_csv(url) %>%
+  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2009HotfixDev14/v3/en-us/applemobilitytrends-2020-05-30.csv"
+  data <- readr::read_csv(
+    url,
+    col_types = cols(
+      .default = col_double(),
+      geo_type = col_character(),
+      region = col_character(),
+      transportation_type = col_character(),
+      alternative_name = col_character(),
+      `sub-region` = col_character(),
+      country = col_character()
+    )) %>%
     tidyr::pivot_longer(
       cols = starts_with("2020-"),
       names_to = "date",
@@ -157,22 +181,32 @@ apple_mobility <- function() {
 citymapper_mobility <- function() {
   
   # get link from: https://citymapper.com/cmi/about
-  url <- "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20200524.csv"
-  data <- readr::read_csv(url, skip = 3) %>%
-    tidyr::pivot_longer(cols = -Date,
-                        names_to = "region",
-                        values_to = "trend") %>%
+  url <- "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20200531.csv"
+  data <- readr::read_csv(
+    url,
+    skip = 3,
+    col_types = cols(
+      .default = col_double(),
+      Date = col_date(format = "")
+    )
+  ) %>%
+    tidyr::pivot_longer(
+      cols = -Date,
+      names_to = "region",
+      values_to = "trend"
+    ) %>%
     filter(region %in% ideal_regions()) %>%
     filter(!is.na(trend)) %>%
     rename(date = Date) %>%
-    mutate(trend = 100 * (trend - 1),
-           state = case_when(
-             region == "Sydney" ~ "New South Wales",
-             region == "Melbourne" ~ "Victoria",
-             region == "Brisbane" ~ "Queensland",
-             region == "Perth" ~ "Western Australia",
-             TRUE ~ as.character(NA)
-           )
+    mutate(
+      trend = 100 * (trend - 1),
+      state = case_when(
+        region == "Sydney" ~ "New South Wales",
+        region == "Melbourne" ~ "Victoria",
+        region == "Brisbane" ~ "Queensland",
+        region == "Perth" ~ "Western Australia",
+        TRUE ~ as.character(NA)
+      )
     )
   
 }

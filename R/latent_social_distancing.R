@@ -717,33 +717,3 @@ google_change$date <- rep(dates, 8 * 6)
 
 saveRDS(google_change,
         file = "outputs/google_change_trends.RDS")
-
-# google_change %>%
-#   ggplot() +
-#   aes(date, change, group = state) +
-#   facet_wrap(~datastream, ncol = 2) +
-#   geom_line(aes(col = state))
-
-# # get posterior over combined distancing effect curve
-# distancing_overall <- distancing + distancing_effect * regression
-# distancing_overall_vals <- calculate(distancing_overall, values = draws, nsim = 10000)[[1]][, , 1]
-# plot(distancing_overall_vals[1, ] ~ dates, type = "n")
-# for (i in 1:10000) {
-#   lines(distancing_overall_vals[i, ] ~ dates, lwd = 0.05)
-# }
-# distancing_overall_est <- summarise_vec_posterior(
-#   distancing_overall,
-#   draws,
-#   quantiles = c(0.05, 0.995)
-# )
-# plot(distancing_overall_est[, 1] ~ dates, type = "n",
-#      ylab = "distancing effect", xlab = "")
-# lines(distancing_overall_est[, 2] ~ dates, lty = 2)
-# lines(distancing_overall_est[, 3] ~ dates, lty = 2)
-# lines(distancing_overall_est[, 1] ~ dates, lwd = 3)
-
-
-# - plot state-by-factor loading plots
-# - pull more model code out into functions
-# - programatically find Apple download link
-# - programatically find Google download link
