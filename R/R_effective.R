@@ -452,7 +452,7 @@ for (type in 1:5) {
              vline_at = intervention_dates()$date,
              vline2_at = projection_date) + 
     ggtitle(label = "Impact of micro-distancing",
-            subtitle = expression(Component~of~R["eff"]~due~to~"micro-distancing")) +
+            subtitle = expression(R["eff"]~"if"~only~"micro-distancing"~behaviour~had~changed)) +
     ylab(expression(R["eff"]~component))
   
   ggsave(file.path(dir, "figures/R_eff_1_local_micro.png"),
@@ -468,14 +468,13 @@ for (type in 1:5) {
              vline_at = intervention_dates()$date,
              vline2_at = projection_date) + 
     ggtitle(label = "Impact of macro-distancing",
-            subtitle = expression(Component~of~R["eff"]~due~to~"macro-distancing")) +
+            subtitle = expression(R["eff"]~"if"~only~"macro-distancing"~behaviour~had~changed)) +
     ylab(expression(R["eff"]~component))
   
   ggsave(file.path(dir, "figures/R_eff_1_local_macro.png"),
          width = multi_width,
          height = multi_height,
          scale = 0.8)
-  
   
   # Component 1 for national / state populations
   plot_trend(R_eff_loc_1_sim,
@@ -626,24 +625,34 @@ for (type in 1:5) {
          scale = 0.8)
   
   if (type == 1) {
+
+    # represent simulations as matrix and lop off extra dates
+    R_eff_loc_1_sim_mat <- R_eff_loc_1_sim
+    dim(R_eff_loc_1_sim_mat) <- c(nsim, length(rows), n_states)
+    R_eff_loc_1_sim_mat <- R_eff_loc_1_sim_mat[, seq_len(n_dates), ]
     
-    # posterior summary of R0
-    R0_draws <- R_eff_loc_1_sim[, 1, 1]
+    # find the minimum  (over the average over states) Reff (peak of distancing)
+    R_eff_mean <- apply(R_eff_loc_1_sim_mat, 2, mean)
+    min_reff <- which.min(R_eff_mean)
+    peak_date <- dates[min_reff]
+    
+    # posterior summary of R0 (same in all states, so first element)
+    R0_draws <- rowMeans(R_eff_loc_1_sim_mat[, 1, ])
     cat(sprintf("\nR0 %.2f (%.2f)\n",
                   mean(R0_draws),
                   sd(R0_draws)))
     
     # posterior summary of R_eff for the peak of distancing
-    peak_date <- as.Date("2020-04-11")
     peak_idx <- which(dates == peak_date)
-    R_eff_peak_draws <- R_eff_loc_1_sim[, peak_idx, 1]
+    R_eff_peak_draws <- rowMeans(R_eff_loc_1_sim_mat[, peak_idx, ])
     cat(sprintf("\nminimum Reff %.2f (%.2f) on %s\n",
                 mean(R_eff_peak_draws),
                 sd(R_eff_peak_draws),
                 format(peak_date, "%d %b")))
     
     # posterior summary of R_eff for the latest date
-    R_eff_now_draws <- R_eff_loc_1_sim[, ncol(R_eff_loc_1_sim), 1]
+    last_date_idx <- which(dates == max(dates))
+    R_eff_now_draws <- rowMeans(R_eff_loc_1_sim_mat[, last_date_idx, ])
     cat(sprintf("\nReff %.2f (%.2f) on %s\n",
                   mean(R_eff_now_draws),
                   sd(R_eff_now_draws),
