@@ -1836,3 +1836,11 @@ microdistancing_model <- function(data,
   
 }
 
+# colours for plotting
+blue <- "steelblue3"
+purple <- "#C3A0E8"
+green <- brewer.pal(8, "Set2")[1]
+blue_green <- colorRampPalette(c("blue", green))(10)[8]
+yellow_green <- colorRampPalette(c("yellow", green))(10)[8]
+orange <- brewer.pal(8, "Set2")[2]
+pink <- brewer.pal(8, "Set2")[4]

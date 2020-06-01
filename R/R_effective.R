@@ -249,9 +249,7 @@ plot_fit(local_cases[valid], cases_sim, valid)
 # split epsilons into signal (2) and noise (3) Reff components
 epsilon_L_2 <- project(epsilon_L, x_new = date_nums, kernel = signal_kernel_L)
 epsilon_L_3 <- project(epsilon_L, x_new = date_nums, kernel = noise_kernel_L)
-
 epsilon_O_2 <- project(epsilon_O, x_new = date_nums, kernel = signal_kernel_O)
-# epsilon_O_3 <- project(epsilon_O, x_new = date_nums, kernel = noise_kernel_O)
 
 # R_eff for local-local and import-local among state populations
 # (components 1 and 2)
@@ -384,13 +382,6 @@ for (type in 1:5) {
     R_eff_loc_123_sim[, projected_dates, ] <- R_eff_loc_123_sim[, projected_dates, ] + add_Reff
   }
   
-  blue <- "steelblue3"
-  green <- brewer.pal(8, "Set2")[1]
-  blue_green <- colorRampPalette(c("blue", green))(10)[8]
-  yellow_green <- colorRampPalette(c("yellow", green))(10)[8]
-  orange <- brewer.pal(8, "Set2")[2]
-  pink <- brewer.pal(8, "Set2")[4]
-  
   # david does 8.27 x 11.69 (landscape A4) for 3x2 panels
   # aspect ratio of 0.707:1 h:w
   # want A4 *portrait* width (8.27) with same aspect ratio
@@ -411,8 +402,8 @@ for (type in 1:5) {
   # Component 1 for national / state populations
   plot_trend(R_eff_loc_1_micro_sim,
              dates = dates_type,
-             multistate = FALSE,
-             base_colour = yellow_green,
+             multistate = TRUE,
+             base_colour = purple,
              vline_at = intervention_dates()$date,
              vline2_at = projection_date) + 
     ggtitle(label = "Impact of micro-distancing",
@@ -420,15 +411,15 @@ for (type in 1:5) {
     ylab(expression(R["eff"]~component))
   
   ggsave(file.path(dir, "figures/R_eff_1_local_micro.png"),
-         width = panel_width,
-         height = panel_height * 1.25,
-         scale = 1)
+         width = multi_width,
+         height = multi_height,
+         scale = 0.8)
   
   # Component 1 for national / state populations
   plot_trend(R_eff_loc_1_macro_sim,
              dates = dates_type,
              multistate = TRUE,
-             base_colour = blue_green,
+             base_colour = blue,
              vline_at = intervention_dates()$date,
              vline2_at = projection_date) + 
     ggtitle(label = "Impact of macro-distancing",
@@ -585,24 +576,6 @@ for (type in 1:5) {
     ylab("Deviation")
   
     ggsave(file.path(dir, "figures/R_eff_3_local.png"),
-         width = multi_width,
-         height = multi_height,
-         scale = 0.8)
-  
-  # error trends
-  plot_trend(epsilon_O_3_sim,
-             dates = dates_type,
-             multistate = TRUE,
-             base_colour = pink,
-             hline_at = 0,
-             vline_at = quarantine_dates,
-             vline2_at = projection_date,
-             ylim = NULL) + 
-    ggtitle(label = "Short term variation in import to local transmission rates",
-            subtitle = expression(Deviation~from~log(R["eff"])~of~"import-local"~transmission)) +
-    ylab("Deviation")
-  
-  ggsave(file.path(dir, "figures/R_eff_3_import.png"),
          width = multi_width,
          height = multi_height,
          scale = 0.8)

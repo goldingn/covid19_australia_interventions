@@ -218,7 +218,7 @@ point_df <- point_df %>%
     upper = cis[, 2] * 100
   )
 
-base_colour <- "purple"
+base_colour <- purple
 
 p <- ggplot(line_df) +
   
