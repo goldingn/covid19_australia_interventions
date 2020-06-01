@@ -1836,6 +1836,43 @@ microdistancing_model <- function(data,
   
 }
 
+# contruct multiple GPs for epsilons in the Reff model
+epsilon_gp <- function(
+  date_nums,
+  n_states,
+  inducing_date_nums = date_nums,
+  alpha = lognormal(3, 1),
+  lengthscale = lognormal(3, 1),
+  sigma = normal(0, 0.5, truncation = c(0, Inf)),
+  sigma_state = normal(0, 0.5, truncation = c(0, Inf), dim = n_states),
+  tol = 1e-6) {
+  
+  # GP kernel  
+  kernel <- rational_quadratic(
+    lengthscales = lengthscale,
+    variance = sigma ^ 2,
+    alpha = alpha
+  )
+  
+  # whitened representation of GP
+  n_inducing <- length(inducing_date_nums)
+  v_raw <- normal(0, 1, dim = c(n_inducing, n_states))
+  v <- sweep(v_raw, 2, sigma_state, FUN = "*")
+  
+  # GP  
+  epsilon <- multi_gp(
+    x = date_nums,
+    v = v,
+    kernel = kernel,
+    inducing = inducing_date_nums,
+    tol = tol
+  )
+  
+  epsilon
+  
+}
+
+
 # colours for plotting
 blue <- "steelblue3"
 purple <- "#C3A0E8"
