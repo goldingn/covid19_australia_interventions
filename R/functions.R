@@ -5,7 +5,8 @@ library(rjson)
 library(tidyr)
 library(greta)
 library(readxl)
-
+library(RColorBrewer)
+library(tensorflow)
 # read in and tidy up Facebook movement data
 facebook_mobility <- function() {
   
@@ -1904,6 +1905,105 @@ epsilon_gp <- function(
   
   epsilon
   
+}
+
+op <- greta::.internals$nodes$constructors$op
+
+# Given an date-by-state matrix of 'infectiousness' due to imports and previous
+# locally-acquired cases, and a corresponding matrix 'R_local' of Reff for
+# locally-acquired infections, compute the expected numbers of locally-acquired
+# cases into the future. Also requires 'disaggregation_probs' giving the density
+# of the serial interval over a sequence of days.
+project_local_cases <- function(
+  infectiousness,
+  R_local,
+  disaggregation_probs
+) {
+  
+  if (!identical(dim(infectiousness), dim(R_local))) {
+    stop ("infectiousness and R_local must have the same dimensions")
+  }
+  
+  op("project_local_cases",
+     infectiousness,
+     R_local,
+     disaggregation_probs,
+     operation_args = list(
+       T = nrow(infectiousness),
+       K = length(disaggregation_probs)
+     ),
+     tf_operation = "tf_project_local_cases",
+     dim = dim(infectiousness))
+  
+}
+
+# tensorflow function to project the expected number of locally-acquired cases
+# into the future
+tf_project_local_cases <- function(infectiousness, R_local, disaggregation_probabilities, T, K) {
+  
+  # continuing condition of TF while loop
+  cond <- function(I, R, p, t, T, K, batch_size, sequence) {
+    tf$less(t, T)
+  }
+  
+  # body of TF while loop
+  body <- function(I, R, p, t, T, K, batch_size, sequence) {
+    
+    t_idx <- t + sequence
+ 
+    start <- c(0L, t, 0L)
+    size <- tf$stack(list(batch_size, K, as.integer(n_states)))
+    R_sub <- tf$slice(R, begin = start, size = size)
+
+    # increase the expected infectiousness on subsequent days due to cases
+    # infected on this day
+    new_I <- R_sub * p * I[, t, , drop = FALSE]
+    
+    # add to cumulative infectiousness
+    perm_to <- c(1L, 2L, 0L)
+    perm_from <- c(2L, 0L, 1L)
+    I_t <- tf$transpose(I, perm_to)
+    new_I_t <- tf$transpose(new_I, perm_to)
+    I_t <- tf$tensor_scatter_nd_add(I_t,
+                                    indices = t_idx,
+                                    updates = new_I_t)
+    I <- tf$transpose(I_t, perm_from)
+    
+    list(I, R, p, t + 1L, T, K, batch_size, sequence)
+    
+  }
+  
+  # pad I by with K zeros
+  batch_size <- greta:::get_batch_size()
+  pad <- tf$zeros(
+    shape = tf$stack(list(batch_size, K + 1L, as.integer(n_states))),
+    dtype = greta:::tf_float()
+  )
+  I <- tf$concat(list(infectiousness, pad), axis = 1L)
+  R <- tf$concat(list(R_local, pad), axis = 1L)
+  
+  # initial variables for loop
+  values <- list(
+    I,
+    R,
+    disaggregation_probabilities,
+    0L,
+    T,
+    K,
+    batch_size,
+    as.matrix((1:K) - 1L)
+  )
+
+  # iterate to compute infectiousness
+  result <- tf$while_loop(cond, body, values)
+  # reemove excess values from I
+  I_long <- result[[1]]
+  I <- I_long[, seq_len(T) - 1L, ]
+  
+  # multiply by R to get expected numbers of new local cases and return
+  local_cases <- I * R_local
+  local_cases
+
 }
 
 
