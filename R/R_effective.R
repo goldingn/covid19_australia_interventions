@@ -158,14 +158,14 @@ size <- 1 / sqrt(sqrt_inv_size[valid[, 2]])
 prob <- 1 / (1 + expected_infections_vec / size)
 distribution(local_cases[valid]) <- negative_binomial(size, prob)
 
-# add correlated errors on the quarantine model too
-
 m <- model(expected_infections_vec)
 draws <- mcmc(
   m,
+  sampler = hmc(Lmin = 10, Lmax = 15),
   chains = 10,
   one_by_one = TRUE
 )
+draws <- extra_samples(draws, 1000)
 
 # check convergence
 r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
@@ -363,6 +363,30 @@ for (type in 1:5) {
            width = multi_width,
            height = multi_height,
            scale = 0.8)
+    
+    # print out the estimates at peak and waning
+    cols <- ncol(OC_t_state_sim) / n_states
+    dim(OC_t_state_sim) <- c(nsim, cols, n_states)
+    OC_t_state_means <- apply(OC_t_state_sim, 2:3, FUN = "mean")
+    overall_mean <- rowMeans(OC_t_state_means)
+    peak <- which.min(overall_mean)
+    peak_OC <- OC_t_state_means[peak, ]
+    recent_OC <- OC_t_state_means[nrow(OC_t_state_means), ]
+    
+    cat(sprintf("\nminimum Reff %.2f (%.2f in %s to %.2f in  %s) on %s\n",
+                mean(peak_OC),
+                min(peak_OC),
+                states[which.min(peak_OC)],
+                max(peak_OC),
+                states[which.max(peak_OC)],
+                format(dates[peak], "%d %b")))
+    
+    cat(sprintf("\nlatest Reff %.2f (%.2f in %s to %.2f in %s)",
+                mean(recent_OC),
+                min(recent_OC),
+                states[which.min(recent_OC)],
+                max(recent_OC),
+                states[which.max(recent_OC)]))
     
   }
   
@@ -673,3 +697,4 @@ ggplot(exp_imports_output) +
   ylab("Number") +
   xlab(element_blank()) +
   theme_minimal()
+

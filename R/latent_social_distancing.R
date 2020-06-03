@@ -174,9 +174,9 @@ distribution(mobility$trend) <- normal(mean = trends[idx],
 # fit model
 m <- model(loadings_ntnl, loadings_holiday)
 draws <- mcmc(m,
-              sampler = hmc(Lmin = 25, Lmax = 30),
+              sampler = hmc(Lmin = 35, Lmax = 40),
               chains = 20,
-              n_samples = 4000)
+              n_samples = 2000)
 
 # check convergence
 r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
@@ -717,3 +717,4 @@ google_change$date <- rep(dates, 8 * 6)
 
 saveRDS(google_change,
         file = "outputs/google_change_trends.RDS")
+
