@@ -7,6 +7,9 @@ library(greta)
 library(readxl)
 library(RColorBrewer)
 library(tensorflow)
+tfp <- reticulate::import("tensorflow_probability")
+
+
 # read in and tidy up Facebook movement data
 facebook_mobility <- function() {
   
@@ -606,23 +609,53 @@ gamma_cdf <- function(x, shape, rate) {
 
 # greta function for the lognormal CDF (equivalent to plnorm(x, meanlog, sdlog))
 # x must not be a greta array, though meanlog and sdlog can be. A greta array of
-# CDF values is returned, equal to 0 wherex was 0 or lower.
+# CDF values is returned, equal to 0 where x was 0 or lower.
+# lognormal_cdf <- function(x, meanlog, sdlog) {
+#   
+#   # filter out any invalid dates, to replace their CDF with 0
+#   valid <- x > 0
+#   x <- x[valid]
+#   
+#   p <- iprobit((log(x) - meanlog) / sdlog)
+#   
+#   # if any were missing, replace their cumulative density with 0
+#   if (any(!valid)) {
+#     result <- zeros(length(valid))
+#     result[valid] <- p
+#     p <- result
+#   }
+#   
+#   p
+#   
+# }
+
 lognormal_cdf <- function(x, meanlog, sdlog) {
   
-  # filter out any invalid dates, to replace their CDF with 0
-  valid <- x > 0
-  x <- x[valid]
+  op("lognormal_cdf",
+     x,
+     meanlog,
+     sdlog,
+     tf_operation = "tf_lognormal_cdf",
+     dim = dim(x))
   
-  p <- iprobit((log(x) - meanlog) / sdlog)
+}
+
+# tensorflow function for the CDF of a lognormal distribution
+tf_lognormal_cdf <- function(x, meanlog, sdlog) {
   
-  # if any were missing, replace their cumulative density with 0
-  if (any(!valid)) {
-    result <- zeros(length(valid))
-    result[valid] <- p
-    p <- result
-  }
+  d <- tfp$distributions$LogNormal(meanlog, sdlog)
   
-  p
+  # This does not support zero or negative values (returns NA instead of 0), so
+  # we need to avoid those. We also can't compute the CDF on negative values
+  # then replace the bad values, since that breaks the gradients
+  supported <- tf$greater(x, greta:::fl(0))
+  ones <- tf$ones_like(x)
+  zeros <- tf$zeros_like(x)
+  
+  x_clean <- tf$where(supported, x, ones)
+  cdf_clean <- d$cdf(x_clean)
+  mask <- tf$where(supported, ones, zeros)
+  cdf_clean * mask
   
 }
 
@@ -700,40 +733,45 @@ generation_interval_probability <- function(days, fixed = FALSE) {
   
 }
 
-# given a positive integer vector of days (since a case became symptomatic),
-# compute the probability that the serial interval values falls in that day
-serial_interval_probability <- function(days, fixed = FALSE) {
+nishiura_samples <- function () {
   
   # priors for the parameters of the lognormal distribution over the serial interval from Nishiura et
   # al., as stored in the EpiNow source code 
-  si_param_samples <- read_csv(
-    file = "https://raw.githubusercontent.com/epiforecasts/EpiNow/758b706599244a545d6b07f7be4c10ffe6c8cf50/data-raw/nishiura-lognormal-truncated.csv",
+  read_csv(
+    file = "https://raw.githubusercontent.com/goldingn/EpiNow/master/data-raw/nishiura-lognormal-truncated.csv",
     col_types = cols(param1 = col_double(),
                      param2 = col_double())
   )
   
+}
+
+
+# given a positive integer vector of days (since a case became symptomatic),
+# compute the probability that the serial interval values falls in that day
+serial_interval_probability <- function(days, meanlog = NULL, sdlog = NULL) {
+
+  si_param_samples <- nishiura_samples()
+  
+  # used fixed values for parameters if values are not passed i
+  if (is.null(meanlog)) {
+    meanlog <- mean(si_param_samples$param1)
+  }
+
+  if (is.null(sdlog)) {
+    sdlog <- mean(si_param_samples$param2)
+  }
+  
   # compute the CDF of the lognormal distribution, for this and the next day
   days_lower <- days
   days_upper <- days + 1
-  
-  if (fixed) {
-    # if fixed, we can do this in R
-    meanlog <- mean(si_param_samples$param1)
-    sdlog <- mean(si_param_samples$param2)
-    
-    p_lower <- plnorm(days_lower, meanlog, sdlog)
-    p_upper <- plnorm(days_upper, meanlog, sdlog)
-    
-  } else {
-    # otherwise create greta arrays for the parameters, with priors based on
-    # these samples
-    meanlog <- parameter(si_param_samples$param1)
-    sdlog <- parameter(si_param_samples$param2, c(0, Inf))
-    
-    p_lower <- lognormal_cdf(days_lower, meanlog, sdlog)
-    p_upper <- lognormal_cdf(days_upper, meanlog, sdlog)
+
+  # if these aren't greta arrays, use the R version
+  if (!inherits(meanlog, "greta_array") & !inherits(sdlog, "greta_array")) {
+    lognormal_cdf <- plnorm
   }
-  
+    
+  p_lower <- lognormal_cdf(days_lower, meanlog, sdlog)
+  p_upper <- lognormal_cdf(days_upper, meanlog, sdlog)
 
   # get the integral of the density over this day
   p_upper - p_lower
@@ -826,6 +864,20 @@ fake_linelist <- function() {
   
 }
 
+# build an upper-triangular circulant matrix of the number of days from one set
+# of times to another, set to -999 if the difference is not supported (negative
+# or exceeds max_days)
+time_difference_matrix <- function (n_days, max_days = n_days) {
+  
+  mat <- matrix(0, n_days, n_days)
+  
+  indices <- row(mat) - col(mat)
+  unsupported <- indices < 0 | indices > max_days
+  indices[unsupported] <- -999
+  indices
+
+}
+
 # given a positive integer 'n_days' of the number of days for which to compute
 # values and a discrete vector 'disaggregation_probs' of probabilities that data
 # for one day should actually be assigned that number of days into the future,
@@ -835,37 +887,23 @@ fake_linelist <- function() {
 # of probabilities with masked lower values, is more efficient in greta than
 # looping since it can easily be parallelised. Note this is the same operation
 # as cases_known_outcome_matrix() in goldingn/australia_covid_ascertainment
-disaggregation_matrix <- function (n_days, disaggregation_probs) {
-
-  # build an upper-triangular circulant matrix (contribution of each day's cases
-  # to each other's)
-  mat <- matrix(0, n_days, n_days)
+disaggregation_matrix <- function (n_days, max_days = 20, meanlog = NULL, sdlog = NULL) {
   
-  # if we're doing this with a greta array, mat must be coerced to on in advance
-  if (inherits(disaggregation_probs, "greta_array")) {
-    mat <- as_data(mat)
-  }
-  
-  indices <- row(mat) - col(mat) + 1
-  mask <- indices > 0 & indices <= length(disaggregation_probs)
-  mat[mask] <- disaggregation_probs[indices[mask]]
-  mat
+  diff <- time_difference_matrix(n_days, max_days)
+  si_disaggregation <- serial_interval_probability(diff, meanlog, sdlog)
   
 }
 
-# apply the serial interval a date-by-state matrix 'cases' of case counts to get
+# apply a fixed serial interval a date-by-state matrix 'cases' of case counts to get
 # the expected number of infectious people at each time. If 'fixed', use a
 # deterministic serial interval distribution base don prior means, othrwise
 # treeat the parameters of the distribution as unknown parameters, to account
 # for uncrtainty in the distribution.
-apply_serial_interval <- function(cases, fixed = FALSE) {
-  
-  # get vector of probabilities (either an R or a greta array, based on 'fixed')
-  probabilities <- serial_interval_probability(0:45, fixed = fixed)
+apply_serial_interval <- function(cases) {
   
   # get a square matrix of contributions of each date to each other, and
   # matrix-multiply to disaggregate
-  si_disaggregation <- disaggregation_matrix(nrow(cases), probabilities)
+  si_disaggregation <- disaggregation_matrix(nrow(cases))
   si_disaggregation %*% cases
   
 }
@@ -954,7 +992,8 @@ plot_trend <- function(simulations,
                        ylim = c(0, 3),
                        vline_at = NA,
                        vline2_at = NA,
-                       keep_only_rows = NULL) {
+                       keep_only_rows = NULL,
+                       min_date = as.Date("2020-03-01")) {
   
   library(ggplot2)
   
@@ -982,7 +1021,7 @@ plot_trend <- function(simulations,
   }
   
   df <- df %>%
-    filter(date >= as.Date("2020-03-01")) %>%
+    filter(date >= min_date) %>%
     mutate(type = "Nowcast")
   
   if (is.null(ylim)) {
@@ -1448,7 +1487,7 @@ freya_survey_results <- function() {
 # mean infectious period in days
 infectious_period <- function() {
   days <- 0:100
-  si_pmf <- serial_interval_probability(days, fixed = TRUE)
+  si_pmf <- serial_interval_probability(days)
   infectious_days <- weighted_mean(days, si_pmf)
   infectious_days
 }
@@ -1942,38 +1981,44 @@ project_local_cases <- function(
 tf_project_local_cases <- function(infectiousness, R_local, disaggregation_probabilities, T, K) {
   
   # continuing condition of TF while loop
-  cond <- function(I, R, p, t, T, K, batch_size, sequence) {
+  cond <- function(C, I, R, p, t, T, K, batch_size, sequence) {
     tf$less(t, T)
   }
   
   # body of TF while loop
-  body <- function(I, R, p, t, T, K, batch_size, sequence) {
+  body <- function(C, I, R, p, t, T, K, batch_size, sequence) {
     
-    t_idx <- t + sequence
- 
-    start <- c(0L, t, 0L)
-    size <- tf$stack(list(batch_size, K, as.integer(n_states)))
-    R_sub <- tf$slice(R, begin = start, size = size)
-
     # increase the expected infectiousness on subsequent days due to cases
     # infected on this day
-    new_I <- R_sub * p * I[, t, , drop = FALSE]
+    new_C <- R[, t, ] * I[, t, ]
+    new_C <- tf$expand_dims(new_C, 1L)
+
+    # distribute infectiousness of these cases across their infectious profile
+    new_I <- new_C * p
     
-    # add to cumulative infectiousness
+    # add to cases and cumulative infectiousness
     perm_to <- c(1L, 2L, 0L)
     perm_from <- c(2L, 0L, 1L)
+    
     I_t <- tf$transpose(I, perm_to)
     new_I_t <- tf$transpose(new_I, perm_to)
     I_t <- tf$tensor_scatter_nd_add(I_t,
-                                    indices = t_idx,
+                                    indices = t + sequence,
                                     updates = new_I_t)
     I <- tf$transpose(I_t, perm_from)
     
-    list(I, R, p, t + 1L, T, K, batch_size, sequence)
+    C_t <- tf$transpose(C, perm_to)
+    new_C_t <- tf$transpose(new_C, perm_to)
+    C_t <- tf$tensor_scatter_nd_add(C_t,
+                                    indices = tf$reshape(t, shape = c(1L, 1L)),
+                                    updates = new_C_t)
+    C <- tf$transpose(C_t, perm_from)
+    
+    list(C, I, R, p, t + 1L, T, K, batch_size, sequence)
     
   }
-  
-  # pad I by with K zeros
+
+  # pad I and R with K zeros so we don't need to mess with indexing inside the loop
   batch_size <- greta:::get_batch_size()
   pad <- tf$zeros(
     shape = tf$stack(list(batch_size, K + 1L, as.integer(n_states))),
@@ -1981,9 +2026,14 @@ tf_project_local_cases <- function(infectiousness, R_local, disaggregation_proba
   )
   I <- tf$concat(list(infectiousness, pad), axis = 1L)
   R <- tf$concat(list(R_local, pad), axis = 1L)
+  C <- tf$zeros(
+    shape = tf$stack(list(batch_size, T, n_states)),
+    dtype = greta:::tf_float()
+  )
   
   # initial variables for loop
   values <- list(
+    C,
     I,
     R,
     disaggregation_probabilities,
@@ -1996,13 +2046,9 @@ tf_project_local_cases <- function(infectiousness, R_local, disaggregation_proba
 
   # iterate to compute infectiousness
   result <- tf$while_loop(cond, body, values)
-  # reemove excess values from I
-  I_long <- result[[1]]
-  I <- I_long[, seq_len(T) - 1L, ]
   
-  # multiply by R to get expected numbers of new local cases and return
-  local_cases <- I * R_local
-  local_cases
+  # return expected numbers of new local cases
+  result[[1]]
 
 }
 

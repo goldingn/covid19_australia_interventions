@@ -131,34 +131,64 @@ n_inducing <- length(inducing_date_nums)
 epsilon_O <- epsilon_gp(date_nums, n_states, inducing_date_nums)
 epsilon_L <- epsilon_gp(date_nums, n_states, inducing_date_nums)
 
-# disaggregate imported and local cases according to the serial interval
-# probabilities to get the expected number of infectious people in each state
-# and time. Fixing the SI parameters at their prior means for now
-local_infectious <- apply_serial_interval(local_cases, fixed = TRUE) 
-imported_infectious <- apply_serial_interval(imported_cases, fixed = TRUE) 
-
-# combine everything as vectors
-log_loc_infectious <- log(local_infectious)
-log_imp_infectious <- log(imported_infectious)
-
-# work out which ones to exclude (because there were no infectious people)
-valid <- which(is.finite(log_loc_infectious + log_imp_infectious))
-
+# log Reff for both types
 log_R_eff_loc <- log_R_eff_loc_1 + epsilon_L
 log_R_eff_imp <- sweep(epsilon_O, 1, log_R_eff_imp_1, FUN = "+") 
 
-log_new_from_loc_vec <- log_loc_infectious[valid] + log_R_eff_loc[1:n_dates, ][valid]
-log_new_from_imp_vec <- log_imp_infectious[valid] + log_R_eff_imp[1:n_dates, ][valid]
+# get the generation (serial) interval parameters
+
+# try fixing the mean but learning the sd of the distribution
+# use lognormal_prior() based on the mean and uncertainty of draws from the nishiura parameters
+si_param_samples <- nishiura_samples()
+# posterior means of the mean and sd of the lognormal distribution over the serial interval
+si_mean_sims <- exp(si_param_samples$param1 + si_param_samples$param2 ^ 2 / 2)
+si_sd_sims <- sqrt((exp(si_param_samples$param2 ^ 2) - 1) * exp(2 * si_param_samples$param1 + si_param_samples$param2 ^ 2))
+# get a half-normal distribution over the sd with the same mean as the serial interval
+si_mean <- normal(mean(si_mean_sims), sd(si_mean_sims))
+si_sd <- normal(0, mean(si_sd_sims) * sqrt(pi) / sqrt(2), truncation = c(0, Inf))
+
+# convert these to lognormal parameters
+si_params <- lognormal_prior(si_mean, si_sd)
+meanlog <- si_params$mean
+sdlog <- si_params$sd
+
+# vector of serial intervals for simulation and circulant matrix of serial
+# intervals for modelling
+SI_vec <- serial_interval_probability(0:20, meanlog, sdlog)
+si_disaggregation <- disaggregation_matrix(
+  n_dates,
+  max_days = 20,
+  meanlog = meanlog,
+  sdlog = sdlog
+)
+
+# disaggregate imported and local cases according to the serial interval
+# probabilities to get the expected number of infectious people in each state
+# and time. Fixing the SI parameters at their prior means for now
+local_infectious <- si_disaggregation %*% local_cases
+imported_infectious <- si_disaggregation %*% imported_cases
+
+# work out which elements to exclude (because there were no infectious people)
+local_infectious_sim <- calculate(local_infectious, nsim = 1)[[1]][1, , ]
+import_infectious_sim <- calculate(imported_infectious, nsim = 1)[[1]][1, , ]
+local_valid <- is.finite(local_infectious_sim) & local_infectious_sim > 0
+import_valid <- is.finite(import_infectious_sim) & import_infectious_sim > 0
+valid <- which(local_valid & import_valid, arr.ind = TRUE)
+
+# combine everything as vectors, excluding invalid datapoints (remove invalid
+# elements here, otherwise it causes a gradient issue)
+log_new_from_loc_vec <- log(local_infectious[valid]) + log_R_eff_loc[1:n_dates, ][valid]
+log_new_from_imp_vec <- log(imported_infectious[valid]) + log_R_eff_imp[1:n_dates, ][valid]
 expected_infections_vec <- exp(log_new_from_loc_vec) + exp(log_new_from_imp_vec)
 
 # try negative binomial likelihood
-valid <- which(is.finite(log_loc_infectious + log_imp_infectious), arr.ind = TRUE)
 sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf), dim = n_states)
 size <- 1 / sqrt(sqrt_inv_size[valid[, 2]])
 prob <- 1 / (1 + expected_infections_vec / size)
 distribution(local_cases[valid]) <- negative_binomial(size, prob)
 
 m <- model(expected_infections_vec)
+
 draws <- mcmc(
   m,
   sampler = hmc(Lmin = 10, Lmax = 15),
@@ -697,4 +727,50 @@ ggplot(exp_imports_output) +
   ylab("Number") +
   xlab(element_blank()) +
   theme_minimal()
+
+
+# make counterfactual predictions of case counts if quarantine had never been
+# extended to all arrivals (imports get local first-stage quarantine Reff)
+
+# Compute local cases directly caused by imports under assumption about Reff for
+# imports, then disaggregate those locally-acquired (from imports) cases
+# according to their infectiousness profile to get force of local infection
+R_eff_imp_first <- exp(log_R0 + log_q[1])
+first_locals <- imported_infectious * R_eff_imp_first
+local_infectiousness <- si_disaggregation %*% first_locals
+
+# Given this basic force of infection, R for locally-acquired cases (mean trend,
+# no clusters), and the infectiousness profile, iterate the dynamics to compute
+# the numbers of local cases
+
+cases_basic_quarantine <- project_local_cases(
+  infectiousness = local_infectiousness,
+  R_local = R_eff_loc_1[seq_len(n_dates), ],
+  disaggregation_probs = SI_vec
+)
+
+# why is this so big? are cases being counted multiple times?
+# is the SI distribution somehow being shortened?
+# are infectiousness and cases being put in the wrong way round?
+
+cases_basic_quarantine_ntnl <- rowSums(cases_basic_quarantine)
+cumul_cases_basic_quarantine_ntnl <- cumsum(cases_basic_quarantine_ntnl)
+cumul_cases_basic_quarantine_sim <- calculate(cumul_cases_basic_quarantine_ntnl,
+                                              values = draws,
+                                              nsim = 1000)[[1]]
+
+plot_trend(cumul_cases_basic_quarantine_sim,
+           multistate = FALSE,
+           ylim = c(0, 7500),
+           hline_at = 7226,
+           dates = dates,
+           base_colour = "red",
+           vline_at = intervention_dates()$date,
+           min_date = min(dates)) +
+  ggtitle("Counterfactual: no blanket quarantine of overseas arrivals",
+          "Assumes both travel restrictions and social distancing took place") +
+  ylab("Cumulative infections")
+
+mn <- colMeans(cumul_cases_basic_quarantine_sim)
+head(mn, 50)
 

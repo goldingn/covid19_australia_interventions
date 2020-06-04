@@ -93,13 +93,13 @@ for (scenario in scenarios) {
   local[seq_len(n_dates), ] <- local_cases
   
   # contibution of imports to infection of locals on each day
-  local_infectious <- apply_serial_interval(local, fixed = TRUE)
-  import_infectious <- apply_serial_interval(imported, fixed = TRUE)
+  local_infectious <- apply_serial_interval(local)
+  import_infectious <- apply_serial_interval(imported)
   import_contribution <- import_infectious * reff_imported
   
   n_steps <- 20
   # iterate through these, convolving to get the expected numbers of case
-  probabilities <- serial_interval_probability(0:n_steps, fixed = TRUE)
+  probabilities <- serial_interval_probability(0:n_steps)
   si_disaggregation <- disaggregation_matrix(n_steps, probabilities)
   
   times <- n_dates:(n_dates_project - 1)
