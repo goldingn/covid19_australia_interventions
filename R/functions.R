@@ -2071,14 +2071,15 @@ tf_project_local_cases <- function(infectiousness, R_local, disaggregation_proba
 
   # pad I and R with K zeros so we don't need to mess with indexing inside the loop
   batch_size <- greta:::get_batch_size()
+  n_locations <- dim(infectiousness)[[3]]
   pad <- tf$zeros(
-    shape = tf$stack(list(batch_size, K + 1L, as.integer(n_states))),
+    shape = tf$stack(list(batch_size, K + 1L, n_locations)),
     dtype = greta:::tf_float()
   )
   I <- tf$concat(list(infectiousness, pad), axis = 1L)
   R <- tf$concat(list(R_local, pad), axis = 1L)
   C <- tf$zeros(
-    shape = tf$stack(list(batch_size, T, n_states)),
+    shape = tf$stack(list(batch_size, T, n_locations)),
     dtype = greta:::tf_float()
   )
   
