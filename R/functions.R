@@ -919,9 +919,7 @@ fake_linelist <- function() {
 time_difference_matrix <- function (n_days) {
   
   mat <- matrix(0, n_days, n_days)
-  indices <- row(mat) - col(mat)
-  indices[indices < 0] <- 0
-  indices
+  row(mat) - col(mat)
 
 }
 

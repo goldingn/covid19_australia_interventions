@@ -1,7 +1,7 @@
 # fit a Bayesian model-based estimate of R_effective over time, quantifying the
 # impacts of both quarantine and physical distancing measures.
 
-# see the manuscript for an exaplanation of the model that may or may not be out
+# see the manuscript for an explanation of the model that may or may not be out
 # of date.
 
 library(dplyr)
@@ -135,26 +135,14 @@ epsilon_L <- epsilon_gp(date_nums, n_states, inducing_date_nums)
 log_R_eff_loc <- log_R_eff_loc_1 + epsilon_L
 log_R_eff_imp <- sweep(epsilon_O, 1, log_R_eff_imp_1, FUN = "+")
 
-# get priors over the generation interval distribution parameters. There is some
-# consensus of the SI (and GI) mean being around 4 (Nishiura et al., Du et al. EID).
-# The variance of the GI is smaller than the SI, so R down would be biased up
-# with the SI sd. 
-
-gi_prior <- ganyani_gi()
-# gi_mean <- normal(gi_prior$mean$est, gi_prior$mean$sd, truncation = c(0, Inf))
-# gi_sd <- normal(gi_prior$sd$est, gi_prior$sd$sd, truncation = c(0, Inf))
-gi_mean <- gi_prior$mean$est
-gi_sd <- gi_prior$sd$est
-
-# convert these to lognormal parameters to estimate the distribution
-gi_params <- lognormal_prior(gi_mean, gi_sd)
-meanlog <- gi_params$mean
-sdlog <- gi_params$sd
+# use SI distribution from Nishiura et al.
+nishiura <- nishiura_samples()
+meanlog <- mean(nishiura$param1)
+sdlog <- mean(nishiura$param2)
 
 # circulant matrix of generation interval discrete probabilities
 # lower bound of 1 day so cases can't infect others on the day of infection
 day_diff <- time_difference_matrix(n_dates)
-day_diff[upper.tri(day_diff)] <- -1
 gi_mat <- gi_probability(day_diff, meanlog, sdlog, bounds = c(0, 20))
 
 # disaggregate imported and local cases according to the generation interval
@@ -190,7 +178,6 @@ draws <- mcmc(
   chains = 10,
   one_by_one = TRUE
 )
-# draws <- extra_samples(draws, 1000)
 
 # check convergence
 r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
@@ -198,7 +185,7 @@ n_eff <- coda::effectiveSize(draws)
 max(r_hats)
 min(n_eff)
 
-# check fit of obsrvation model against data 
+# check fit of observation model against data 
 nsim <- coda::niter(draws) * coda::nchain(draws)
 nsim <- min(10000, nsim)
 cases <- negative_binomial(size, prob)
@@ -282,7 +269,7 @@ plot_trend(local_cases_project_ntnl_sim,
            ylim = c(0, 3 * max(local_cases_ntnl)),
            hline_at = NULL,
            dates = dates[sub_idx],
-           base_colour = "red",
+           base_colour = green,
            vline_at = intervention_dates()$date,
            min_date = min(dates)) +
   ggtitle("Projected national locally-acquired cases") +
@@ -470,7 +457,7 @@ for (type in 1:5) {
     peak_OC <- OC_t_state_means[peak, ]
     recent_OC <- OC_t_state_means[nrow(OC_t_state_means), ]
     
-    cat(sprintf("\nminimum Reff %.2f (%.2f in %s to %.2f in  %s) on %s\n",
+    cat(sprintf("\nminimum non-household contacts %.2f (%.2f in %s to %.2f in  %s) on %s\n",
                 mean(peak_OC),
                 min(peak_OC),
                 states[which.min(peak_OC)],
@@ -478,7 +465,7 @@ for (type in 1:5) {
                 states[which.max(peak_OC)],
                 format(dates[peak], "%d %b")))
     
-    cat(sprintf("\nlatest Reff %.2f (%.2f in %s to %.2f in %s)",
+    cat(sprintf("\nlatest non-household contacts %.2f (%.2f in %s to %.2f in %s)",
                 mean(recent_OC),
                 min(recent_OC),
                 states[which.min(recent_OC)],
