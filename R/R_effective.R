@@ -135,26 +135,27 @@ epsilon_L <- epsilon_gp(date_nums, n_states, inducing_date_nums)
 log_R_eff_loc <- log_R_eff_loc_1 + epsilon_L
 log_R_eff_imp <- sweep(epsilon_O, 1, log_R_eff_imp_1, FUN = "+") 
 
-# get the generation (serial) interval parameters
-
-# try fixing the mean but learning the sd of the distribution
-# use lognormal_prior() based on the mean and uncertainty of draws from the nishiura parameters
+# get priors over the generation interval distribution parameters (from a serial interval estimate)
 si_param_samples <- nishiura_samples()
-# posterior means of the mean and sd of the lognormal distribution over the serial interval
 si_mean_sims <- exp(si_param_samples$param1 + si_param_samples$param2 ^ 2 / 2)
 si_sd_sims <- sqrt((exp(si_param_samples$param2 ^ 2) - 1) * exp(2 * si_param_samples$param1 + si_param_samples$param2 ^ 2))
-# get a half-normal distribution over the sd with the same mean as the serial interval
-si_mean <- normal(mean(si_mean_sims), sd(si_mean_sims))
-si_sd <- normal(0, mean(si_sd_sims) * sqrt(pi) / sqrt(2), truncation = c(0, Inf))
 
-# convert these to lognormal parameters
+# normal prior on the mean, and log-normal distribution on the sd, matching the
+# posteriors over the mean and sd in Nishiura. Use the mean and sd (rather than
+# meeanlog and sdlog parameters directly) for better mixing
+si_mean_params <- lognormal_prior(mean(si_mean_sims), sd(si_mean_sims))
+si_mean <- lognormal(si_mean_params$mean, si_mean_params$sd)
+
+si_sd_params <- lognormal_prior(mean(si_sd_sims), sd(si_sd_sims))
+si_sd <- lognormal(si_sd_params$mean, si_sd_params$sd)
+
+# convert these to lognormal parameters to estimate the distribution
 si_params <- lognormal_prior(si_mean, si_sd)
 meanlog <- si_params$mean
 sdlog <- si_params$sd
 
-# vector of serial intervals for simulation and circulant matrix of serial
-# intervals for modelling
-SI_vec <- serial_interval_probability(0:20, meanlog, sdlog)
+# vector and circulant matrix of serial interval discrete probabilities
+si_vec <- serial_interval_probability(0:20, meanlog, sdlog)
 si_disaggregation <- disaggregation_matrix(
   n_dates,
   max_days = 20,
@@ -746,7 +747,7 @@ local_infectiousness <- si_disaggregation %*% first_locals
 cases_basic_quarantine <- project_local_cases(
   infectiousness = local_infectiousness,
   R_local = R_eff_loc_1[seq_len(n_dates), ],
-  disaggregation_probs = SI_vec
+  disaggregation_probs = si_vec
 )
 
 # why is this so big? are cases being counted multiple times?
