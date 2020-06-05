@@ -1700,13 +1700,17 @@ distancing_effect_model <- function(dates) {
   infectious_days <- infectious_period()
   
   HC_0 <- normal(baseline_contact_params$mean_contacts[1],
-                 baseline_contact_params$se_contacts[1])
+                 baseline_contact_params$se_contacts[1],
+                 truncation = c(0, Inf))
   OC_0 <- normal(baseline_contact_params$mean_contacts[2],
-                 baseline_contact_params$se_contacts[2])
+                 baseline_contact_params$se_contacts[2],
+                 truncation = c(0, Inf))
   HD_0 <- normal(baseline_contact_params$mean_duration[1],
-                 baseline_contact_params$se_duration[1])
+                 baseline_contact_params$se_duration[1],
+                 truncation = c(0, Inf))
   OD_0 <- normal(baseline_contact_params$mean_duration[2],
-                 baseline_contact_params$se_duration[2])
+                 baseline_contact_params$se_duration[2],
+                 truncation = c(0, Inf))
   
   # get HD_t in each state
   h_t <- h_t_state(dates)
