@@ -689,9 +689,6 @@ parameter <- function(x, truncation = c(-Inf, Inf)) {
 # the probability that the generation interval values falls in that day
 generation_interval_probability <- function(days, fixed = FALSE) {
   
-  # priors for the parameters of the lognormal distribution over the serial interval from Nishiura et
-  # al., as stored in the EpiNow source code 
-  
   download.file(
     "https://github.com/epiforecasts/EpiNow/raw/master/data-raw/gi.rds",
     (f <- tempfile()),
@@ -745,14 +742,79 @@ nishiura_samples <- function () {
   
 }
 
+# Pull out generation interval distribution estimates from Ganyani et al. Use
+# baseline GI estimates for China from (Table 1, row 3). This corresponds to a
+# GI/SI mean of 3.95, which is around the 4 that seems to be a consensus for the
+# SI mean. We do not use the version allowing for a negative serial interval
+# (which is suggested by other including Du et al., and could possibly be an
+# artefact of incorrect alignment of infector/infectee pairs), though when this is
+# used as a prior the model is able to estimate parameters corresponding to
+# that scenario.
+ganyani_gi <- function() {
+  
+  ganyani <- tibble::tribble(
+    ~which, ~est, ~lower, ~upper,
+    "mean", 3.95, 3.01, 4.91,
+    "sd", 1.51, 0.74, 2.97
+  )
+  
+  ganyani <- ganyani %>%
+    mutate(
+      sd_above = (upper - est) / 1.96,
+      sd_below = (est - lower) / 1.96,
+      sd = (sd_above + sd_below) / 2
+    ) %>%
+    select(which, est, sd)
+  
+  ganyani %>%
+    group_by(which) %>%
+    nest() %>%
+    pull(data) %>%
+    `names<-`(ganyani$which)
+    
+}
+
+
+# Discretised generation interval with truncated lognormal distribution. Given a
+# number of days post-infection, compute the probability of the generation
+# interval having that length as the density of a truncated lognormal
+# distribution on time over the duration of that day. The parameters of the
+# lognormal distribution are meanlog and sdlog (which may be greta arrays or R
+# numerics), and the bounds are given by 'bounds', which must be R numerics.
+gi_probability <- function(days, meanlog, sdlog, bounds = c(1, 20)) {
+  
+  # days of infectiousness
+  n_days <- length(days)
+  # set invalid days to -1 (density 0)
+  out_of_bounds <- days < bounds[1] | days > bounds[2]
+  days[out_of_bounds] <- -1
+  
+  # greta version
+  if (inherits(meanlog, "greta_array") | inherits(sdlog, "greta_array")) {
+    plnorm <- lognormal_cdf
+  }
+
+  # get discretised probability, without accounting for truncation  
+  p_lower <- plnorm(days, meanlog, sdlog)
+  p_upper <- plnorm(days + 1, meanlog, sdlog)
+  p <- p_upper - p_lower
+  
+  # adjust density for truncation
+  upper_bound <- plnorm(bounds[2] + 1, meanlog, sdlog)
+  lower_bound <- plnorm(bounds[1], meanlog, sdlog)
+  p <- p / (upper_bound - lower_bound)
+  
+  p
+  
+}
 
 # given a positive integer vector of days (since a case became symptomatic),
 # compute the probability that the serial interval values falls in that day
-serial_interval_probability <- function(days, meanlog = NULL, sdlog = NULL) {
+serial_interval_probability <- function(infectious_days, meanlog = NULL, sdlog = NULL) {
 
   si_param_samples <- nishiura_samples()
   
-  # used fixed values for parameters if values are not passed i
+  # used fixed values for parameters if values are not passed in
   if (is.null(meanlog)) {
     meanlog <- mean(si_param_samples$param1)
   }
@@ -761,20 +823,7 @@ serial_interval_probability <- function(days, meanlog = NULL, sdlog = NULL) {
     sdlog <- mean(si_param_samples$param2)
   }
   
-  # compute the CDF of the lognormal distribution, for this and the next day
-  days_lower <- days
-  days_upper <- days + 1
-
-  # if these aren't greta arrays, use the R version
-  if (!inherits(meanlog, "greta_array") & !inherits(sdlog, "greta_array")) {
-    lognormal_cdf <- plnorm
-  }
-    
-  p_lower <- lognormal_cdf(days_lower, meanlog, sdlog)
-  p_upper <- lognormal_cdf(days_upper, meanlog, sdlog)
-
-  # get the integral of the density over this day
-  p_upper - p_lower
+  gi_probability(infectious_days, meanlog, sdlog)
   
 }
 
@@ -867,13 +916,11 @@ fake_linelist <- function() {
 # build an upper-triangular circulant matrix of the number of days from one set
 # of times to another, set to -999 if the difference is not supported (negative
 # or exceeds max_days)
-time_difference_matrix <- function (n_days, max_days = n_days) {
+time_difference_matrix <- function (n_days) {
   
   mat <- matrix(0, n_days, n_days)
-  
   indices <- row(mat) - col(mat)
-  unsupported <- indices < 0 | indices > max_days
-  indices[unsupported] <- -999
+  indices[indices < 0] <- 0
   indices
 
 }
@@ -887,10 +934,10 @@ time_difference_matrix <- function (n_days, max_days = n_days) {
 # of probabilities with masked lower values, is more efficient in greta than
 # looping since it can easily be parallelised. Note this is the same operation
 # as cases_known_outcome_matrix() in goldingn/australia_covid_ascertainment
-disaggregation_matrix <- function (n_days, max_days = 20, meanlog = NULL, sdlog = NULL) {
+disaggregation_matrix <- function (n_days, max_days = 20, ...) {
   
   diff <- time_difference_matrix(n_days, max_days)
-  si_disaggregation <- serial_interval_probability(diff, meanlog, sdlog)
+  si_disaggregation <- gi_probability(days, ...)
   
 }
 

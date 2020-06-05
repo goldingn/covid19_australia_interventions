@@ -133,47 +133,43 @@ epsilon_L <- epsilon_gp(date_nums, n_states, inducing_date_nums)
 
 # log Reff for both types
 log_R_eff_loc <- log_R_eff_loc_1 + epsilon_L
-log_R_eff_imp <- sweep(epsilon_O, 1, log_R_eff_imp_1, FUN = "+") 
+log_R_eff_imp <- sweep(epsilon_O, 1, log_R_eff_imp_1, FUN = "+")
 
 # get priors over the generation interval distribution parameters (from a serial interval estimate)
 si_param_samples <- nishiura_samples()
 si_mean_sims <- exp(si_param_samples$param1 + si_param_samples$param2 ^ 2 / 2)
 si_sd_sims <- sqrt((exp(si_param_samples$param2 ^ 2) - 1) * exp(2 * si_param_samples$param1 + si_param_samples$param2 ^ 2))
 
-# normal prior on the mean, and log-normal distribution on the sd, matching the
-# posteriors over the mean and sd in Nishiura. Use the mean and sd (rather than
-# meeanlog and sdlog parameters directly) for better mixing
-si_mean_params <- lognormal_prior(mean(si_mean_sims), sd(si_mean_sims))
-si_mean <- lognormal(si_mean_params$mean, si_mean_params$sd)
+# get priors over the generation interval distribution parameters. There is some
+# consensus of the SI (and GI) mean being around 4 (Nishiura et al., Du et al. EID).
+# The variance of the GI is smaller than the SI, so R down would be biased up
+# with the SI sd. 
 
-si_sd_params <- lognormal_prior(mean(si_sd_sims), sd(si_sd_sims))
-si_sd <- lognormal(si_sd_params$mean, si_sd_params$sd)
+gi_prior <- ganyani_gi()
+gi_mean <- normal(gi_prior$mean$est, gi_prior$mean$sd, truncation = c(0, Inf))
+gi_sd <- normal(gi_prior$sd$est, gi_prior$sd$sd, truncation = c(0, Inf))
 
 # convert these to lognormal parameters to estimate the distribution
-si_params <- lognormal_prior(si_mean, si_sd)
-meanlog <- si_params$mean
-sdlog <- si_params$sd
+gi_params <- lognormal_prior(gi_mean, gi_sd)
+meanlog <- gi_params$mean
+sdlog <- gi_params$sd
 
-# vector and circulant matrix of serial interval discrete probabilities
-si_vec <- serial_interval_probability(0:20, meanlog, sdlog)
-si_disaggregation <- disaggregation_matrix(
-  n_dates,
-  max_days = 20,
-  meanlog = meanlog,
-  sdlog = sdlog
-)
+# circulant matrix of generation interval discrete probabilities
+# lower bound of 1 day so cases can't infect others on the day of infection
+day_diff <- time_difference_matrix(n_dates)
+gi_mat <- gi_probability(day_diff, meanlog, sdlog, bounds = c(1, 20))
 
-# disaggregate imported and local cases according to the serial interval
+# disaggregate imported and local cases according to the generation interval
 # probabilities to get the expected number of infectious people in each state
-# and time. Fixing the SI parameters at their prior means for now
-local_infectious <- si_disaggregation %*% local_cases
-imported_infectious <- si_disaggregation %*% imported_cases
+# and time
+local_infectious <- gi_mat %*% local_cases
+imported_infectious <- gi_mat %*% imported_cases
 
 # work out which elements to exclude (because there were no infectious people)
 local_infectious_sim <- calculate(local_infectious, nsim = 1)[[1]][1, , ]
-import_infectious_sim <- calculate(imported_infectious, nsim = 1)[[1]][1, , ]
+imported_infectious_sim <- calculate(imported_infectious, nsim = 1)[[1]][1, , ]
 local_valid <- is.finite(local_infectious_sim) & local_infectious_sim > 0
-import_valid <- is.finite(import_infectious_sim) & import_infectious_sim > 0
+import_valid <- is.finite(imported_infectious_sim) & imported_infectious_sim > 0
 valid <- which(local_valid & import_valid, arr.ind = TRUE)
 
 # combine everything as vectors, excluding invalid datapoints (remove invalid
@@ -196,7 +192,7 @@ draws <- mcmc(
   chains = 10,
   one_by_one = TRUE
 )
-draws <- extra_samples(draws, 1000)
+# draws <- extra_samples(draws, 1000)
 
 # check convergence
 r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
@@ -204,7 +200,7 @@ n_eff <- coda::effectiveSize(draws)
 max(r_hats)
 min(n_eff)
 
-# check fit
+# check fit of obsrvation model against data 
 nsim <- coda::niter(draws) * coda::nchain(draws)
 nsim <- min(10000, nsim)
 cases <- negative_binomial(size, prob)
@@ -736,18 +732,18 @@ ggplot(exp_imports_output) +
 # Compute local cases directly caused by imports under assumption about Reff for
 # imports, then disaggregate those locally-acquired (from imports) cases
 # according to their infectiousness profile to get force of local infection
-R_eff_imp_first <- exp(log_R0 + log_q[1])
+R_eff_imp_first <- exp(log_R0 + log_q[3])
 first_locals <- imported_infectious * R_eff_imp_first
-local_infectiousness <- si_disaggregation %*% first_locals
+local_infectiousness <- gi_mat %*% first_locals
 
 # Given this basic force of infection, R for locally-acquired cases (mean trend,
 # no clusters), and the infectiousness profile, iterate the dynamics to compute
 # the numbers of local cases
-
+gi_vec <- gi_probability(0:20, meanlog, sdlog)
 cases_basic_quarantine <- project_local_cases(
   infectiousness = local_infectiousness,
   R_local = R_eff_loc_1[seq_len(n_dates), ],
-  disaggregation_probs = si_vec
+  disaggregation_probs = gi_vec
 )
 
 # why is this so big? are cases being counted multiple times?
