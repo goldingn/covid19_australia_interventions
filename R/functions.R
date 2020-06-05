@@ -2032,12 +2032,12 @@ project_local_cases <- function(
 tf_project_local_cases <- function(infectiousness, R_local, disaggregation_probabilities, T, K) {
   
   # continuing condition of TF while loop
-  cond <- function(C, I, R, p, t, T, K, batch_size, sequence) {
+  cond <- function(C, I, R, p, t, T, K, sequence) {
     tf$less(t, T)
   }
   
   # body of TF while loop
-  body <- function(C, I, R, p, t, T, K, batch_size, sequence) {
+  body <- function(C, I, R, p, t, T, K, sequence) {
     
     # increase the expected infectiousness on subsequent days due to cases
     # infected on this day
@@ -2065,7 +2065,7 @@ tf_project_local_cases <- function(infectiousness, R_local, disaggregation_proba
                                     updates = new_C_t)
     C <- tf$transpose(C_t, perm_from)
     
-    list(C, I, R, p, t + 1L, T, K, batch_size, sequence)
+    list(C, I, R, p, t + 1L, T, K, sequence)
     
   }
 
@@ -2092,7 +2092,6 @@ tf_project_local_cases <- function(infectiousness, R_local, disaggregation_proba
     0L,
     T,
     K,
-    batch_size,
     as.matrix((1:K) - 1L)
   )
 

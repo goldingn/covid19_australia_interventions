@@ -145,8 +145,10 @@ log_R_eff_imp <- sweep(zeros(n_dates + n_extra, n_states), 1, log_R_eff_imp_1, F
 # with the SI sd. 
 
 gi_prior <- ganyani_gi()
-gi_mean <- normal(gi_prior$mean$est, gi_prior$mean$sd, truncation = c(0, Inf))
-gi_sd <- normal(gi_prior$sd$est, gi_prior$sd$sd, truncation = c(0, Inf))
+# gi_mean <- normal(gi_prior$mean$est, gi_prior$mean$sd, truncation = c(0, Inf))
+# gi_sd <- normal(gi_prior$sd$est, gi_prior$sd$sd, truncation = c(0, Inf))
+gi_mean <- gi_prior$mean$est
+gi_sd <- gi_prior$sd$est
 
 # convert these to lognormal parameters to estimate the distribution
 gi_params <- lognormal_prior(gi_mean, gi_sd)
@@ -165,10 +167,10 @@ local_infectious <- gi_mat %*% local_cases
 imported_infectious <- gi_mat %*% imported_cases
 
 # work out which elements to exclude (because there were no infectious people)
-local_infectious_sim <- calculate(local_infectious, nsim = 1)[[1]][1, , ]
-imported_infectious_sim <- calculate(imported_infectious, nsim = 1)[[1]][1, , ]
-local_valid <- is.finite(local_infectious_sim) & local_infectious_sim > 0
-import_valid <- is.finite(imported_infectious_sim) & imported_infectious_sim > 0
+# local_infectious_sim <- calculate(local_infectious, nsim = 1)[[1]][1, , ]
+# imported_infectious_sim <- calculate(imported_infectious, nsim = 1)[[1]][1, , ]
+local_valid <- is.finite(local_infectious) & local_infectious > 0
+import_valid <- is.finite(imported_infectious) & imported_infectious > 0
 valid <- which(local_valid & import_valid, arr.ind = TRUE)
 
 # combine everything as vectors, excluding invalid datapoints (remove invalid
@@ -214,6 +216,7 @@ bayesplot::ppc_ecdf_overlay(
 
 # check by state and time
 plot_fit(local_cases[valid], cases_sim, valid)
+
 
 
 # check fit of projected cases against national epi curve
@@ -272,7 +275,7 @@ local_cases_project_ntnl_sim <- calculate(local_cases_project_ntnl,
 local_cases_ntnl <- rowSums(local_cases[sub_idx, ])
 plot_trend(local_cases_project_ntnl_sim,
            multistate = FALSE,
-           ylim = c(0, 2 * max(local_cases_ntnl)),
+           ylim = c(0, 3 * max(local_cases_ntnl)),
            hline_at = NULL,
            dates = dates[sub_idx],
            base_colour = "red",
