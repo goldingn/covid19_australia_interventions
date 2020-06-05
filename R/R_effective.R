@@ -135,10 +135,6 @@ epsilon_L <- epsilon_gp(date_nums, n_states, inducing_date_nums)
 log_R_eff_loc <- log_R_eff_loc_1 + epsilon_L
 log_R_eff_imp <- sweep(epsilon_O, 1, log_R_eff_imp_1, FUN = "+")
 
-# log Reff for both types
-log_R_eff_loc <- log_R_eff_loc_1
-log_R_eff_imp <- sweep(zeros(n_dates + n_extra, n_states), 1, log_R_eff_imp_1, FUN = "+")
-
 # get priors over the generation interval distribution parameters. There is some
 # consensus of the SI (and GI) mean being around 4 (Nishiura et al., Du et al. EID).
 # The variance of the GI is smaller than the SI, so R down would be biased up
@@ -217,19 +213,25 @@ bayesplot::ppc_ecdf_overlay(
 # check by state and time
 plot_fit(local_cases[valid], cases_sim, valid)
 
+# R_eff for local-local and import-local among active cases per state
+# (components 1 and 2)
+R_eff_loc_12 <- exp(log_R_eff_loc)
+R_eff_imp_12 <- exp(log_R_eff_imp)
 
 
 # check fit of projected cases against national epi curve
 
-# national-level Reff (weight state-level local ones)
-state_weights <- state_populations()$population / sum(state_populations()$population)
-R_eff_loc_ntnl <- R_eff_loc_1 %*% as.matrix(state_weights)
-R_eff_imp_ntnl <- exp(log_R_eff_imp_1)
-
+# national-level Reff - no clusters and weighted by state populations
+state_weights <- sweep(local_infectious, 1, rowSums(local_infectious), FUN = "/")
+state_weights[is.na(state_weights)] <- 1 / n_states
+# state_weights <- as.matrix(state_populations()$population)
+# state_weights <- state_weights / sum(state_weights)
+R_eff_imp_ntnl <- rowSums(R_eff_imp_12[seq_len(n_dates), ] * state_weights)
+R_eff_loc_ntnl <- rowSums(R_eff_loc_12[seq_len(n_dates), ] * state_weights)
 
 # subset to from the first of March, when transmission became established (the
 # model is not designed to work with the stochastic extinctions we saw at the beginning of the outbreak)
-start <- which(dates == as.Date("2020-03-01"))
+start <- which(dates == as.Date("2020-02-28"))
 sub_idx <- start:n_dates
 
 # simulate local-local transmission dynamics, at national level; forced using
@@ -286,14 +288,6 @@ plot_trend(local_cases_project_ntnl_sim,
   geom_line(data = data.frame(mean = local_cases_ntnl,
                               date = dates[sub_idx],
                               type = "Nowcast"))
-
-
-# R_eff for local-local and import-local among active cases per state
-# (components 1 and 2)
-R_eff_loc_12 <- exp(log_R_eff_loc)
-R_eff_imp_12 <- exp(log_R_eff_imp)
-
-
 
 # Reff local component one under only micro- and only macro-distancing
 de <- distancing_effect

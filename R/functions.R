@@ -1534,8 +1534,10 @@ freya_survey_results <- function() {
 # mean infectious period in days
 infectious_period <- function() {
   days <- 0:100
-  si_pmf <- serial_interval_probability(days)
-  infectious_days <- weighted_mean(days, si_pmf)
+  ganyani <- ganyani_gi()
+  lognormal <- lognormal_prior(ganyani$mean$est, ganyani$mean$sd)
+  gi_pmf <- gi_probability(days, lognormal$mean, lognormal$sd)
+  infectious_days <- sum(days * gi_pmf)
   infectious_days
 }
 
