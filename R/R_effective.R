@@ -154,7 +154,8 @@ sdlog <- gi_params$sd
 # circulant matrix of generation interval discrete probabilities
 # lower bound of 1 day so cases can't infect others on the day of infection
 day_diff <- time_difference_matrix(n_dates)
-gi_mat <- gi_probability(day_diff, meanlog, sdlog, bounds = c(1, 20))
+day_diff[upper.tri(day_diff)] <- -1
+gi_mat <- gi_probability(day_diff, meanlog, sdlog, bounds = c(0, 20))
 
 # disaggregate imported and local cases according to the generation interval
 # probabilities to get the expected number of infectious people in each state
@@ -222,12 +223,13 @@ R_eff_imp_12 <- exp(log_R_eff_imp)
 # check fit of projected cases against national epi curve
 
 # national-level Reff - no clusters and weighted by state populations
-state_weights <- sweep(local_infectious, 1, rowSums(local_infectious), FUN = "/")
-state_weights[is.na(state_weights)] <- 1 / n_states
-# state_weights <- as.matrix(state_populations()$population)
-# state_weights <- state_weights / sum(state_weights)
-R_eff_imp_ntnl <- rowSums(R_eff_imp_12[seq_len(n_dates), ] * state_weights)
-R_eff_loc_ntnl <- rowSums(R_eff_loc_12[seq_len(n_dates), ] * state_weights)
+local_weights <- sweep(local_infectious, 1, rowSums(local_infectious), FUN = "/")
+local_weights[is.na(local_weights)] <- 1 / n_states
+import_weights <- sweep(imported_infectious, 1, rowSums(imported_infectious), FUN = "/")
+import_weights[is.na(import_weights)] <- 1 / n_states
+
+R_eff_loc_ntnl <- rowSums(R_eff_loc_12[seq_len(n_dates), ] * local_weights)
+R_eff_imp_ntnl <- rowSums(R_eff_imp_12[seq_len(n_dates), ] * import_weights)
 
 # subset to from the first of March, when transmission became established (the
 # model is not designed to work with the stochastic extinctions we saw at the beginning of the outbreak)
@@ -261,7 +263,7 @@ local_infectiousness <- previous_local_infectiousness + import_local_infectiousn
 # Given this basic force of infection, R for locally-acquired cases (mean trend,
 # no clusters), and the infectiousness profile, iterate the dynamics to compute
 # the numbers of local cases
-gi_vec <- gi_probability(0:20, meanlog, sdlog, bounds = c(1, 20))
+gi_vec <- gi_probability(0:20, meanlog, sdlog, bounds = c(0, 20))
 secondary_locals <- project_local_cases(
   infectiousness = local_infectiousness[sub_idx],
   R_local = R_eff_loc_ntnl[sub_idx],

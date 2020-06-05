@@ -781,7 +781,7 @@ ganyani_gi <- function() {
 # distribution on time over the duration of that day. The parameters of the
 # lognormal distribution are meanlog and sdlog (which may be greta arrays or R
 # numerics), and the bounds are given by 'bounds', which must be R numerics.
-gi_probability <- function(days, meanlog, sdlog, bounds = c(1, 20)) {
+gi_probability <- function(days, meanlog, sdlog, bounds = c(0, 20)) {
   
   # days of infectiousness
   n_days <- length(days)
