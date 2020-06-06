@@ -1854,87 +1854,43 @@ plot_fit <- function(observed_cases, cases_sim, valid) {
   
 }
 
-# parsing the excel file of microdistancing measures from BETA
+# parsing the file of microdistancing measures from BETA
 barometer_results <- function() {
-  file <- "data/microdistancing/BETA Barometer data - Adherence by States 20200525.xlsx"
   
-  # lookup table
-  lookup <- file %>%
-    read_xlsx(
-      sheet = 1,
-      n_max = 6,
-      skip = 2,
-      col_names = c("sheet", "title", "question")
-    ) %>%
-    mutate(sheet = gsub("Table ", "", sheet),
-           sheet = as.numeric(sheet)) %>%
-    select(sheet, title)
-  
-  response_tibbles <- list()
-  
-  # loop through the sheets reading in data
-  for (sheet in lookup$sheet) {
-    
-    # read the sheet in, skipping some lines and columns
-    raw <- file %>%
-      read_xlsx(
-        col_names = FALSE,
-        sheet = sheet + 1,
-        range = cell_limits(c(3, 2), c(NA, NA))
-      ) %>%
-      # remove a redundant row and transpose to sort out columns
-      dplyr::slice(-2) %>%
-      t()
-    
-    # sort out column names
-    raw[1, 1:2] <- c("location", "date")
-    colnames(raw) <- raw[1, ]
-    
-    # finish formatting
-    response_tibbles[[sheet]] <- raw %>%
-      as_tibble() %>%
-      dplyr::slice(-1) %>%
-      # format locations
-      mutate(
-        location = ifelse(location == "Week", "Australia", location),
-        location = gsub("^State \\(", "", location),
-        location = gsub("\\)$", "", location)
-      ) %>%
-      fill(location) %>%
-      # format dates
-      mutate(
-        date = gsub("Apr ", "April ", date),
-        date = as.Date(date, format = "%e %B '%y")
-      ) %>%
-      # format number of respondents
-      rename(respondents = `Column n`) %>%
-      mutate(respondents = as.numeric(respondents)) %>%
-      pivot_longer(
-        cols = c(-location, -date, -respondents),
-        names_to = "response",
-        values_to = "percentage"
-      ) %>%
-      mutate(
-        question = lookup$title[sheet],
-        percentage = as.numeric(percentage),
-        percentage = replace_na(percentage, 0)
-      ) %>%
-      mutate(count = as.integer(percentage * respondents)) %>%
-      filter(location != "Australia") %>%
-      select(
-        location,
-        date,
-        question,
-        response,
-        percentage,
-        count,
-        respondents
+  file <- "data/microdistancing/Barometer wave 1 to 10.csv"
+  file %>%
+    read_csv(
+      col_types = cols(
+        date = col_date(format = ""),
+        state = col_character(),
+        question = col_character(),
+        response = col_character(),
+        count = col_double(),
+        respondents = col_double()
       )
-    
-  }
-  
-  # combine them all and return
-  do.call(bind_rows, response_tibbles)
+    ) %>%
+    filter(
+      !state %in% c("Australia", "Other")
+    ) %>%
+    mutate(
+      question = recode(
+        question,
+        "hand hygine" = "Hand washing",
+        "cough" = "Cough etiquette",
+        "non-household contact" = "Physical contact"
+      ), 
+      state = recode(
+        state,
+        "New South Wales" = "NSW",
+        "Northern Territory" = "NT",
+        "Queensland" = "QLD",
+        "South Australia" = "SA",
+        "Tasmania" = "TAS",
+        "Victoria" = "VIC",
+        "Western Australia" = "WA"
+      )
+    ) %>%
+    arrange(state, date, question, response)
   
 }
 
@@ -1954,8 +1910,8 @@ microdistancing_model <- function(data,
   waning_shape <- waning_shape * nullify
   
   # multiply by coefficients to get trends for each state
-  waning <- waning_shape * waning_effects[data$location_id]  
-  distancing <- data$distancing * distancing_effects[data$location_id]
+  waning <- waning_shape * waning_effects[data$state_id]  
+  distancing <- data$distancing * distancing_effects[data$state_id]
   
   # combine the two
   distancing + waning

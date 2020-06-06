@@ -2,11 +2,8 @@
 # from the BETA barometer
 source("R/functions.R")
 
-barometer <- barometer_results()
-interventions <- intervention_dates()
-
 # recode and collapse responses into percentage adherence
-state <- barometer %>%
+barometer <- barometer_results() %>%
   # recode 1.5m compliance question as yes/no (whether they mostly did it)
   mutate(
     response = case_when(
@@ -38,14 +35,14 @@ state <- barometer %>%
       TRUE ~ response) 
   ) %>%
   # combine responses into yes/no
-  group_by(location, date, question, response) %>%
+  group_by(state, date, question, response) %>%
   summarise(count = sum(count),
             respondents = mean(respondents)) %>%
   mutate(proportion = count / respondents) %>%
   # now we can just keep the proportion responding 'yes'
   filter(response == "yes") %>%
   select(-response) %>%
-  arrange(location, question, date)
+  arrange(state, question, date)
 
 # load latent factors
 # assume adoption of microdistancing follows the same trend as macrodistancing,
@@ -61,25 +58,24 @@ pred_data <- distancing %>%
   left_join(
     expand_grid(
       date = .$date,
-      location = unique(state$location)
+      state = unique(barometer$state)
     )
   ) %>%
   mutate(
-    location_id = match(location, unique(location)),
-    time = as.numeric(date - max(interventions$date)),
+    state_id = match(state, unique(state)),
+    time = as.numeric(date - max(intervention_dates()$date)),
     time = time / max(time)
   )
 
 # subset to 1.5m question and add data for modelling
-state_distance <- state %>%
+barometer_distance <- barometer %>%
   filter(question == "1.5m compliance") %>%
   left_join(pred_data)
 
-# Need Bayesian fit as lme4 fit is singular, and doesn't have quite the right
-# structure so go Bayesian
+# Need Bayesian fit as lme4 fit is singular, and doesn't have right structure
 library(greta)
 
-n_locations <- max(state_distance$location_id)
+n_locations <- max(barometer_distance$state_id)
 
 # timing of peak microdistancing between the date of the last intervention and
 # today's date
@@ -100,14 +96,14 @@ logit_distancing_effects <- logit_distancing_effects_mean + logit_distancing_eff
 distancing_effects <- ilogit(logit_distancing_effects)
 
 prob <- microdistancing_model(
-  data = state_distance,
+  data = barometer_distance,
   peak = peak,
   distancing_effects = distancing_effects,
   waning_effects = waning_effects
 )
 
-distribution(state_distance$count) <- binomial(
-  state_distance$respondents,
+distribution(barometer_distance$count) <- binomial(
+  barometer_distance$respondents,
   prob
 )
 
@@ -135,26 +131,10 @@ colnames(quants) <- c("ci_90_lo", "ci_50_lo", "ci_50_hi", "ci_90_hi")
 
 # prepare outputs for plotting
 pred_plot <- pred_data %>%
-  select(date, location) %>%
+  select(date, state) %>%
   # add predictions
   mutate(mean = colMeans(prob_pred_sim)) %>%
-  bind_cols(as_tibble(quants)) %>%
-  # duplicate ACT/NT
-  mutate(
-    duplicate = case_when(
-      location == "ACT/NT" ~ 2,
-      TRUE ~ 1
-    )
-  ) %>%
-  uncount(duplicate, .id = "ACT_or_NT") %>%
-  mutate(
-    state = case_when(
-      location == "ACT/NT" & ACT_or_NT == 1 ~ "Australian Capital Territory",
-      location == "ACT/NT" & ACT_or_NT == 2 ~ "Northern Territory",
-      TRUE ~ location
-    )
-  ) %>%
-  select(-location, -ACT_or_NT)
+  bind_cols(as_tibble(quants))
   
 library(ggplot2)
 line_df <- pred_plot %>%
@@ -165,25 +145,12 @@ line_df <- pred_plot %>%
   filter(date >= as.Date("2020-03-01")) %>%
   mutate(type = "Nowcast")
 
-point_df <- state_distance %>%
+point_df <- barometer_distance %>%
   # duplicate ACT/NT
   ungroup() %>%
   mutate(
-    percentage = proportion * 100,
-    duplicate = case_when(
-      location == "ACT/NT" ~ 2,
-      TRUE ~ 1
-    )
+    percentage = proportion * 100
   ) %>%
-  uncount(duplicate, .id = "ACT_or_NT") %>%
-  mutate(
-    state = case_when(
-      location == "ACT/NT" & ACT_or_NT == 1 ~ "Australian Capital Territory",
-      location == "ACT/NT" & ACT_or_NT == 2 ~ "Northern Territory",
-      TRUE ~ location
-    )
-  ) %>%
-  select(-location, -ACT_or_NT) %>%
   mutate(type = "Nowcast")
 
 # Compute confidence intervals for the proportions for plotting. Need to fudge
@@ -304,7 +271,7 @@ ggsave("outputs/figures/microdistancing_effect.png",
 saveRDS(pred_plot, file = "outputs/microdistancing_trends.RDS")
 
 # estimates at peak and at latest date
-pred_plot %>%
+pred_summary <- pred_plot %>%
   group_by(state) %>%
   summarise(peak = which.max(mean),
             peak_estimate = mean[peak] * 100,
@@ -317,7 +284,7 @@ pred_plot %>%
             latest_high = ci_90_hi[latest] * 100,
             latest_date = date[latest]) %>%
   select(-peak, -latest)
-  
 
-
+saveRDS(pred_summary,
+        file = "outputs/microdistancing_trend_summary.RDS")
 
