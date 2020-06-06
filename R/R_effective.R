@@ -206,77 +206,20 @@ plot_fit(local_cases[valid], cases_sim, valid)
 R_eff_loc_12 <- exp(log_R_eff_loc)
 R_eff_imp_12 <- exp(log_R_eff_imp)
 
+# vector of generation interval probabilities
+gi_vec <- gi_probability(0:20, meanlog, sdlog, bounds = c(0, 20))
 
 # check fit of projected cases against national epi curve
-
-# national-level Reff - no clusters and weighted by state populations
-local_weights <- sweep(local_infectious, 1, rowSums(local_infectious), FUN = "/")
-local_weights[is.na(local_weights)] <- 1 / n_states
-import_weights <- sweep(imported_infectious, 1, rowSums(imported_infectious), FUN = "/")
-import_weights[is.na(import_weights)] <- 1 / n_states
-
-R_eff_loc_ntnl <- rowSums(R_eff_loc_12[seq_len(n_dates), ] * local_weights)
-R_eff_imp_ntnl <- rowSums(R_eff_imp_12[seq_len(n_dates), ] * import_weights)
-
-# subset to from the first of March, when transmission became established (the
-# model is not designed to work with the stochastic extinctions we saw at the beginning of the outbreak)
-start <- which(dates == as.Date("2020-02-28"))
-sub_idx <- start:n_dates
-
-# simulate local-local transmission dynamics, at national level; forced using
-# (observed) case importation and local cases prior to the start of the
-# simulation
-
-# locally-acquired infections present prior to the start of the simulation
-previous_local_cases <- rowSums(local_cases)
-previous_local_cases[sub_idx] <- 0
-previous_local_infectiousness <- gi_mat %*% as.matrix(previous_local_cases)
-
-# compute infectious forcing from local cases emerging during this period that
-# were directly infected by imported cases (can't just include the import
-# infectiousness, since they are subject to a different Reff). Get expected
-# number of new local cases from imports, then disaggregate according to their
-# infectiousness profile to get force of local infection
-
-# expected number of new locally-acquired cases during the simulation period due
-# to infection from imports
-import_local_cases <- rowSums(imported_infectious) * R_eff_imp_ntnl[seq_len(n_dates)]
-import_local_infectiousness <- gi_mat %*% import_local_cases
-
-# combine these to get forcing from existing and import-associated local cases,
-# and disaggregate to get infectiousness of these
-local_infectiousness <- previous_local_infectiousness + import_local_infectiousness
-
-# Given this basic force of infection, R for locally-acquired cases (mean trend,
-# no clusters), and the infectiousness profile, iterate the dynamics to compute
-# the numbers of local cases
-gi_vec <- gi_probability(0:20, meanlog, sdlog, bounds = c(0, 20))
-secondary_locals <- project_local_cases(
-  infectiousness = local_infectiousness[sub_idx],
-  R_local = R_eff_loc_ntnl[sub_idx],
-  disaggregation_probs = gi_vec
-)
-
-# compute locally-acquired cases
-local_cases_project_ntnl <- import_local_cases[sub_idx] + secondary_locals
-local_cases_project_ntnl_sim <- calculate(local_cases_project_ntnl,
-                                          values = draws,
-                                          nsim = 1000)[[1]]
-
-local_cases_ntnl <- rowSums(local_cases[sub_idx, ])
-plot_trend(local_cases_project_ntnl_sim,
-           multistate = FALSE,
-           ylim = c(0, 3 * max(local_cases_ntnl)),
-           hline_at = NULL,
-           dates = dates[sub_idx],
-           base_colour = green,
-           vline_at = intervention_dates()$date,
-           min_date = min(dates)) +
-  ggtitle("Projected national locally-acquired cases") +
-  ylab("daily infections") +
-  geom_line(data = data.frame(mean = local_cases_ntnl,
-                              date = dates[sub_idx],
-                              type = "Nowcast"))
+check_projection(draws,
+                 R_eff_local = R_eff_loc_12,
+                 R_eff_imported = R_eff_imp_12,
+                 gi_mat = gi_mat,
+                 gi_vec = gi_vec,
+                 local_infectious = local_infectious,
+                 imported_infectious = imported_infectious,
+                 local_cases = local_cases,
+                 dates = dates,
+                 start_date = as.Date("2020-02-28"))
 
 # Reff local component one under only micro- and only macro-distancing
 de <- distancing_effect
