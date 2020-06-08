@@ -10,11 +10,7 @@ R_eff_local_1 <- distancing_effect$R_t
 m <- model(R_eff_local_1)
 draws <- mcmc(m)
 
-# check convergence
-r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
-n_eff <- coda::effectiveSize(draws)
-max(r_hats)
-min(n_eff)
+convergence(draws)
 
 nsim <- coda::niter(draws) * coda::nchain(draws)
 

@@ -178,11 +178,7 @@ draws <- mcmc(m,
               chains = 20,
               n_samples = 2000)
 
-# check convergence
-r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
-n_effs <- coda::effectiveSize(draws)
-max(r_hats)
-min(n_effs)
+convergence(draws)
 
 # ~~~~~~~~~
 # plot fits

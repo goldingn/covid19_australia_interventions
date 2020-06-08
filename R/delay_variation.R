@@ -101,10 +101,7 @@ distribution(delay_data$delay) <- negative_binomial(size = size, prob = prob[idx
 m <- model(mu)
 draws <- mcmc(m, chains = 20, one_by_one = TRUE)
 
-r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
-n_eff <- coda::effectiveSize(draws)
-max(r_hats)
-min(n_eff)
+convergence(draws)
 
 # summarise posterior over mean delay
 draws_mat <- as.matrix(draws)

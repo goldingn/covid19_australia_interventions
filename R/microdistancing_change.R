@@ -111,12 +111,7 @@ m <- model(waning_effects, distancing_effects, peak)
 
 set.seed(2020-05-30)
 draws <- mcmc(m, chains = 4)
-
-# check convergence
-r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
-n_eff <- coda::effectiveSize(draws)
-max(r_hats)
-min(n_eff)
+convergence(draws)
 
 prob_pred <- microdistancing_model(
   data = pred_data,
