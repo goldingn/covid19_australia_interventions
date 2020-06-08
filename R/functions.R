@@ -9,7 +9,6 @@ library(RColorBrewer)
 library(tensorflow)
 tfp <- reticulate::import("tensorflow_probability")
 
-
 # read in and tidy up Facebook movement data
 facebook_mobility <- function() {
   
@@ -1586,7 +1585,7 @@ logit_p_prior <- function(params) {
 # get change in visits to locations - used as covariates for numbers of
 # non-household contacts, and residential as proportional to household contact
 # duration 
-location_change <- function() {
+location_change <- function(dates) {
   
   google_change_trends <- readRDS("outputs/google_change_trends.RDS") 
   
@@ -1601,18 +1600,10 @@ location_change <- function() {
     )) %>%
     filter(location != "other") %>%
     select(-state_datastream, -datastream) %>% 
-    pivot_wider(names_from = location, values_from = change)
-  
-  location_change_trends
-  
-}
-
-# change in time at residential locations in each state
-h_t_state <- function(dates) {
-  
-  location_change() %>%
-    group_by(date, state, home) %>%
-    select(date, state, home) %>%
+    pivot_wider(names_from = location, values_from = change) %>%
+    # add all dates and states, and pad missing values (prior to first mobility
+    # data) with 1s
+    group_by_all() %>%
     right_join(
       expand_grid(
         state = unique(.$state),
@@ -1620,9 +1611,17 @@ h_t_state <- function(dates) {
       )
     ) %>%
     ungroup() %>%
-    mutate(
-      home = replace_na(home, 1)
-    ) %>%
+    mutate_at(vars(-state, -date), replace_na, 1)
+
+  location_change_trends
+  
+}
+
+# change in time at residential locations in each state
+h_t_state <- function(dates) {
+  
+  location_change(dates) %>%
+    select(state, date, home) %>%
     pivot_wider(names_from = state, values_from = home) %>%
     select(-date) %>%
     as.matrix()
@@ -1679,6 +1678,32 @@ microdistancing_state <- function (dates, states) {
   
 }
 
+# get the index of macrodistancing in each state as a date-by-state matrix
+macrodistancing_state <- function (dates, states) {
+  
+  macrodistancing_file <- "outputs/macrodistancing_trends.RDS"
+  macrodistancing_index <- macrodistancing_file %>%
+    readRDS() %>%
+    # expand to all required dates and states
+    select(state, date, mean) %>%
+    right_join(
+      expand_grid(
+        state = states,
+        date = dates
+      )
+    ) %>%
+    # turn into a date-by-state matrix
+    pivot_wider(
+      names_from = state,
+      values_from = mean
+    ) %>%
+    select(-date) %>%
+    as.matrix()
+  
+  macrodistancing_index
+  
+}
+
 # get the overall index of distancing (no waning) on the current dates and
 # optionally add extra 1s at the end
 social_distancing_national <- function(dates, n_extra = 0) {
@@ -1699,41 +1724,6 @@ social_distancing_national <- function(dates, n_extra = 0) {
 # greta sub-model for the component R_eff due to macro- and micro-distancing
 distancing_effect_model <- function(dates) {
   
-  # modelled change (after/before ratio) in time at types of locations, from
-  # Google, aligned with dates
-  location_change_trends <- location_change() %>%
-    right_join(
-      expand_grid(
-        state = unique(.$state),
-        date = dates
-      )
-    ) %>%
-    mutate_at(
-      vars(public, home, retail, transit, work),
-      ~replace_na(., 1)
-    )
-
-  # reshape to state/date x location matrix
-  location_matrix <- location_change_trends %>%
-    select(-state, -date) %>%
-    as.matrix()
-  
-  # prior weights on the relationship between numbers of non-houshold contacts and
-  # time spent in those locations, from baseline proportions of contacts in those
-  # locations
-  location_weights <- location_contacts()
-  location_idx <- match(colnames(location_matrix), location_weights$location)
-  relative_weights_prior <- location_weights[location_idx, ]$proportion_contacts
-  
-  # state population weights, to relate to national survey
-  states <- unique(location_change_trends$state)
-  state_weights <- state_populations()$population / sum(state_populations()$population)
-  
-  # Freya's survey results and index to dates
-  dates <- unique(location_change_trends$date)
-  freya_survey <- freya_survey_results()
-  survey_date_idx <- match(freya_survey$date, dates)
-  
   # informative priors on variables for contacts at t = 0 (Hx = household, Ox =
   # non-household, Tx = total, xC = contacts. xD = duration)
   baseline_contact_params <- baseline_contact_parameters()
@@ -1749,9 +1739,6 @@ distancing_effect_model <- function(dates) {
   HC_0 <- normal(baseline_contact_params$mean_contacts[1],
                  baseline_contact_params$se_contacts[1],
                  truncation = c(0, Inf))
-  OC_0 <- normal(baseline_contact_params$mean_contacts[2],
-                 baseline_contact_params$se_contacts[2],
-                 truncation = c(0, Inf))
   HD_0 <- normal(baseline_contact_params$mean_duration[1],
                  baseline_contact_params$se_duration[1],
                  truncation = c(0, Inf))
@@ -1762,30 +1749,38 @@ distancing_effect_model <- function(dates) {
   # get HD_t in each state
   h_t <- h_t_state(dates)
   HD_t <- HD_0 * h_t
-  
-  # relative contribution of time in each location type to the number of
-  # non-household contacts
-  relative_weights <- dirichlet(t(relative_weights_prior * 50))
-  
-  # scaling to account for greater/lower reductions than implied by the mobility
-  scaling <- lognormal(0, 1)
-  
-  location_changes <- as_data(location_matrix)
-  relative_contacts <- location_changes %*% t(relative_weights)
-  relative_contacts_scaled <- relative_contacts ^ scaling
 
-  # this is constrained  so that OC_t = OC_0 before distancing
-  OC_t_state_long <- OC_0 * relative_contacts_scaled
+  # model for non-household contacts in each state over time
+  # modelled change (after/before ratio) in time at types of locations from Google
+  location_change_trends <- location_change(dates) %>%
+    mutate_at(
+      vars(public, home, retail, transit, work),
+      ~replace_na(., 1)
+    ) %>%
+    mutate(state = abbreviate_states(state))
   
-  # reshape to time-by-state matrix
-  wide_dim <- c(n_distinct(location_change_trends$date),
-                n_distinct(location_change_trends$state))
-  OC_t_state <- greta_array(OC_t_state_long, dim = wide_dim)
+  # state-level numbers of non-household contacts by state and date from Freya's
+  # survey and the BETA barometer. Remove implausible responses, from the
+  # reporting clump at 999 and above (short conversation with 999 or more people
+  # in a day is implausible, and probably an entry/reporting/understanding error)
+  contacts <- contact_survey_data() %>%
+    filter(contacts < 999)
   
-  # compute likelihood of national survey result
-  OC_t <- OC_t_state %*% as.matrix(state_weights)
-  distribution(freya_survey$estimate) <- normal(OC_t[survey_date_idx], freya_survey$sd)
+  params <- macrodistancing_params(location_change_trends)
+  OC_0 <- params$OC_0
+  relative_weights <- params$relative_weights
+  scaling <- params$scaling
   
+  OC_t_state <- macrodistancing_model(
+    location_change_trends,
+    baseline = OC_0,
+    relative_weights = relative_weights,
+    scaling = scaling
+  )
+  
+  # define the likelihood
+  macrodistancing_likelihood(OC_t_state, contacts, location_change_trends)
+    
   # model gamma_t: reduction in duration and transmission probability of
   # non-household contacts over time, per state
   d_t_state <- microdistancing_state(dates, states)
@@ -1801,7 +1796,6 @@ distancing_effect_model <- function(dates) {
   # return greta arrays
   list(R_t = R_t, 
        gamma_t_state = gamma_t_state,
-       OC_t = OC_t,
        OC_t_state = OC_t_state,
        p = p,
        relative_weights = relative_weights,
@@ -1915,6 +1909,34 @@ microdistancing_model <- function(data,
   
   # combine the two
   distancing + waning
+  
+}
+
+# model for the trend in macrodistancing a weighted sum of time at location
+# types, and an overall scaling coefficient, multiplied by a scalar baseline
+# contact rate
+macrodistancing_model <- function(data,
+                                  baseline,
+                                  relative_weights,
+                                  scaling) {
+  
+  # format data into a date/state by location greta array
+  location_changes <- data %>%
+    select(-state, -date) %>%
+    as.matrix() %>%
+    as_data()
+  
+  # weight locations and multiply by scaling factor to get change in
+  # non-household contacts
+  relative_contacts <- location_changes %*% t(relative_weights)
+  relative_contacts_scaled <- relative_contacts ^ scaling
+  
+  # convert change to absolute estimate of nonhousehold contacts
+  state_long <- baseline * relative_contacts_scaled
+  
+  # reshape to date-by-state matrix
+  wide_dim <- c(n_distinct(data$date), n_distinct(data$state))
+  greta_array(state_long, dim = wide_dim)
   
 }
 
@@ -2138,6 +2160,142 @@ check_projection <- function(draws, R_eff_local, R_eff_imported,
     geom_line(data = data.frame(mean = local_cases_ntnl,
                                 date = dates[sub_idx],
                                 type = "Nowcast"))
+  
+}
+
+# load a csv of numbers of non-household contacts by state (where the first
+# column gives numberts of contacts and the rest of each row gives counts of
+# respondents with that number of contacts), tidy up the names, add a date and
+# convert to long format (one row per response)
+load_contacts_by_state <- function(csv, date) {
+  
+  contacts <- read_csv(
+    csv,
+    col_types = list(
+      .default = col_double()
+    )
+  ) %>%
+    rename_all(
+      recode,
+      contact_num = "contacts",
+      "Australian Capital Territory" = "ACT",
+      "New South Wales" = "NSW",
+      "Northern Territory" = "NT",
+      "Queensland" = "QLD",
+      "South Australia" = "SA",
+      "Tasmania" = "TAS",
+      "Victoria" = "VIC",
+      "Western Australia" = "WA"
+    ) %>%
+    pivot_longer(cols = -contacts,
+                 names_to = "state",
+                 values_to = "respondents") %>%
+    mutate(date = date) %>%
+    filter(state != "Other") %>%
+    uncount(respondents) 
+ 
+  contacts
+     
+}
+
+# load in data from the contact surveys
+contact_survey_data <- function() {
+  
+  bind_rows(
+    
+    # Freya's survey waves
+    load_contacts_by_state(
+      "data/contacts/freya_survey/contact_counts_NG_wave1.csv",
+      as.Date("2020-04-04")
+    ),
+    
+    load_contacts_by_state(
+      "data/contacts/freya_survey/contact_counts_NG_wave2.csv",
+      as.Date("2020-05-02")
+    ),
+    
+    # barometer waves
+    load_contacts_by_state(
+      "data/contacts/barometer/contacts_by_state.csv",
+      as.Date("2020-05-27")
+    )
+    
+    
+  )
+  
+}
+
+
+
+macrodistancing_params <- function(location_change_trends) {
+  # baseline number of non-household contacts, from Prem and Rolls
+  baseline_contact_params <- baseline_contact_parameters()
+  
+  OC_0 <- normal(baseline_contact_params$mean_contacts[2],
+                 baseline_contact_params$se_contacts[2],
+                 truncation = c(0, Inf))
+  
+  # prior weights on the relationship between numbers of non-houshold contacts and
+  # time spent in those locations, from baseline proportions of contacts in those
+  # locations
+  location_weights <- location_contacts()
+  location_names <- colnames(location_change_trends)[-(1:2)]
+  location_idx <- match(location_names,
+                        location_weights$location)
+  relative_weights_prior <- location_weights[location_idx, ]$proportion_contacts
+  
+  # relative contribution of time in each location type to the number of
+  # non-household contacts
+  relative_weights <- dirichlet(t(relative_weights_prior * 1))
+  
+  # scaling to account for greater/lower reductions than implied by the mobility
+  scaling <- lognormal(0, 1)
+  
+  list(OC_0 = OC_0,
+       relative_weights = relative_weights,
+       scaling = scaling)
+  
+}
+
+
+# define the likelihood for the macrodistancing model
+macrodistancing_likelihood <- function(OC_t_state, contacts, location_change_trends) {
+  
+  # pull out the expected number of non-household contacts by state and date
+  dates <- unique(location_change_trends$date)
+  states <- unique(location_change_trends$state)
+  date_idx <- match(contacts$date, dates)
+  state_idx <- match(contacts$state, states)
+  idx <- cbind(date_idx, state_idx)
+  
+  # likelihood for state-level contact rate data (truncate contacts at 500 for numerical stability)
+  mean_contacts <- OC_t_state[idx]
+  sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf))
+  size <- 1 / sqrt(sqrt_inv_size)
+  prob <- 1 / (1 + mean_contacts / size)
+  distribution(contacts$contacts) <- negative_binomial(size, prob)
+  
+  result <- list(size = size,
+                 prob = prob)
+  
+  invisible(result)
+  
+}
+
+# check convergence
+convergence <- function(draws) {
+  
+  r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
+  n_eff <- coda::effectiveSize(draws)
+  
+  cat(sprintf("maximum R-hat: %.2f\nminimum n effective: %.2f",
+              max(r_hats),
+              min(n_eff)))
+  
+  result <- list(r_hats = r_hats,
+                 n_eff = n_eff)
+  
+  invisible(result)
   
 }
 
