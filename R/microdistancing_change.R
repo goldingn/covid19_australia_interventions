@@ -282,4 +282,3 @@ pred_summary <- pred_plot %>%
 
 saveRDS(pred_summary,
         file = "outputs/microdistancing_trend_summary.RDS")
-

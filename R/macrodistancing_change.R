@@ -59,9 +59,7 @@ pred_sim <- calculate(c(OC_t_state), values = draws, nsim = nsim)[[1]][, , 1]
 quants <- t(apply(pred_sim, 2, quantile, c(0.05, 0.25, 0.75, 0.95)))
 colnames(quants) <- c("ci_90_lo", "ci_50_lo", "ci_50_hi", "ci_90_hi")
 
-# non-household contacts estimated from surveys
-# negative binomial estimate?
-
+# get point estimates for plotting
 baseline_contact_params <- baseline_contact_parameters()
 baseline_point <- tibble::tribble(
   ~date, ~estimate, ~sd,

@@ -406,7 +406,7 @@ for (type in 1:5) {
          scale = 1)
   
   # Reff for active cases
-  plot_trend(R_eff_loc_12_sim,
+  p <- plot_trend(R_eff_loc_12_sim,
              dates = dates_type,
              multistate = TRUE,
              base_colour = green,
@@ -415,6 +415,18 @@ for (type in 1:5) {
     ggtitle(label = "Local to local transmission potential",
             subtitle = "Average across active cases") +
     ylab(expression(R["eff"]~from~"locally-acquired"~cases))
+  
+  if (type == 1) {
+    p <- p + annotate("rect",
+                      xmin = latest_date,
+                      xmax = last_mobility_date,
+                      ymin = -Inf,
+                      ymax = Inf,
+                      fill = grey(0.5), alpha = 0.1)
+    
+  }
+  
+  p
   
   ggsave(file.path(dir, "figures/R_eff_12_local.png"),
          width = multi_width,
@@ -436,8 +448,8 @@ for (type in 1:5) {
          height = multi_height,
          scale = 0.8)
   
-  # component 3 (noisy error trends)
-  plot_trend(epsilon_L_sim,
+  # component 2 (noisy error trends)
+  p <- plot_trend(epsilon_L_sim,
              dates = dates_type,
              multistate = TRUE,
              base_colour = pink,
@@ -448,6 +460,18 @@ for (type in 1:5) {
     ggtitle(label = "Short-term variation in local to local transmission rates",
             subtitle = expression(Deviation~from~log(R["eff"])~of~"local-local"~transmission)) +
     ylab("Deviation")
+  
+  if (type == 1) {
+    p <- p + annotate("rect",
+                      xmin = latest_date,
+                      xmax = last_mobility_date,
+                      ymin = -Inf,
+                      ymax = Inf,
+                      fill = grey(0.5), alpha = 0.1)
+    
+  }
+  
+  p
   
   ggsave(file.path(dir, "figures/R_eff_2_local.png"),
          width = multi_width,

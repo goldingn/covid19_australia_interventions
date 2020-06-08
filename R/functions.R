@@ -113,7 +113,7 @@ google_mobility <- function() {
 # download and format Apple's mobility data - will need to update the url regularly
 apple_mobility <- function() {
   # get link from: https://www.apple.com/covid19/mobility
-  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2009HotfixDev15/v3/en-us/applemobilitytrends-2020-05-31.csv"
+  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2009HotfixDev23/v3/en-us/applemobilitytrends-2020-06-06.csv"
   data <- readr::read_csv(
     url,
     col_types = cols(
@@ -184,7 +184,7 @@ apple_mobility <- function() {
 citymapper_mobility <- function() {
   
   # get link from: https://citymapper.com/cmi/about
-  url <- "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20200601.csv"
+  url <- "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20200607.csv"
   data <- readr::read_csv(
     url,
     skip = 3,
@@ -1585,7 +1585,7 @@ logit_p_prior <- function(params) {
 # get change in visits to locations - used as covariates for numbers of
 # non-household contacts, and residential as proportional to household contact
 # duration 
-location_change <- function(dates) {
+location_change <- function(dates = NULL) {
   
   google_change_trends <- readRDS("outputs/google_change_trends.RDS") 
   
@@ -1600,18 +1600,22 @@ location_change <- function(dates) {
     )) %>%
     filter(location != "other") %>%
     select(-state_datastream, -datastream) %>% 
-    pivot_wider(names_from = location, values_from = change) %>%
-    # add all dates and states, and pad missing values (prior to first mobility
-    # data) with 1s
-    group_by_all() %>%
-    right_join(
-      expand_grid(
-        state = unique(.$state),
-        date = dates
-      )
-    ) %>%
-    ungroup() %>%
-    mutate_at(vars(-state, -date), replace_na, 1)
+    pivot_wider(names_from = location, values_from = change)
+  
+  # optionally add all dates and states, and pad missing values (prior to first
+  # mobility data) with 1s
+  if (!is.null(dates)) {
+    location_change_trends <- location_change_trends %>%
+      group_by_all() %>%
+      right_join(
+        expand_grid(
+          state = unique(.$state),
+          date = dates
+        )
+      ) %>%
+      ungroup() %>%
+      mutate_at(vars(-state, -date), replace_na, 1)
+  }
 
   location_change_trends
   
