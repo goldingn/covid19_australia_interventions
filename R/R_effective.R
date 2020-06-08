@@ -238,11 +238,12 @@ hourly_infections_macro <- household_infections_macro + non_household_infections
 R_eff_loc_1_macro <- hourly_infections_macro
 R_eff_loc_1_macro <- R_eff_loc_1_macro[extend_idx, ]
 
-# make 4 different versions of the plots and outputs:
-# 1. up to latest date of infection
-# 2. up to June 8
-# 3. up to June 8, with increase in mean Reff to 1.1 after May 11
-# 3. up to June 8, with increase in lower bound of Reff to 1.1 after May 11
+# make 5 different versions of the plots and outputs:
+# 1. to the latest date of mobility data
+# 2. 6 weeks into the future
+# 3. 6 weeks into the future, with increase in mean Reff to 1.1
+# 4. 6 weeks into the future, with increase in mean Reff to 1.2
+# 5. 6 weeks into the future, with increase in mean Reff to 1.5
 
 output_directories <- c("",
                         "projection",
@@ -250,9 +251,14 @@ output_directories <- c("",
                         "counterfactual_2",
                         "counterfactual_3")
 
+output_directories <- file.path(output_directories, "staging")
+
 for (type in 1:5) {
   
   dir <- file.path("outputs", output_directories[type])
+  dir.create(file.path(dir, "figures"),
+             recursive = TRUE,
+             showWarnings = FALSE)
   
   # subset or extend projections based on type of projection
   if (type == 1) {

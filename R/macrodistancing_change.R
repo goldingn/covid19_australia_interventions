@@ -71,35 +71,37 @@ baseline_point <- tibble::tribble(
   mutate(lower = estimate - sd * 1.96,
          upper = estimate + sd * 1.96)
 
-poisson <- stats::poisson
-glm <- MASS::glm.nb(contacts ~ state * factor(date),
-           data = contacts)
-
+# slim down dataframe to get indeopendent estimates for surveys
 survey_points <- contacts %>%
   group_by(state, date) %>%
   summarise(n = n())  %>%
   ungroup()
 
-pred <- predict(glm,
-                newdata = survey_points,
-                se.fit = TRUE)
+library(INLA)
+contacts_inla <- contacts %>%
+  mutate(date = as.character(date),
+         date_state = paste(date, state))
 
-log_sims <- replicate(
-  10000,
-  rnorm(length(pred$fit),
-        pred$fit,
-        pred$se.fit)
-)
+glm <- inla(contacts ~ f(date_state, model = "iid"),
+            family = "nbinomial",
+            data = contacts_inla,
+            control.predictor = list(link = 1))
 
-lambda_sims <- exp(log_sims)
-estimate <- rowMeans(lambda_sims)
-cis <- t(apply(lambda_sims, 1, quantile, c(0.025, 0.975)))
+# pull out fitted values for each date/state combination
+idx <- contacts_inla %>%
+  mutate(id = row_number()) %>%
+  distinct(date, state, .keep_all = TRUE) %>%
+  mutate(date = as.Date(date)) %>%
+  right_join(survey_points) %>%
+  pull(id)
 
+sry <- glm$summary.fitted.values[idx, ]
 survey_points <- survey_points %>%
-  mutate(estimate = estimate,
-         lower = cis[, 1],
-         upper = cis[, 2]) %>%
+  mutate(estimate = sry$mean,
+         lower = sry$`0.025quant`,
+         upper = sry$`0.975quant`) %>%
   mutate(type = "Nowcast")
+
 
 type <- 1
 states <- unique(location_change_trends$state)
@@ -206,3 +208,4 @@ saveRDS(pred_summary,
 # save the raw contact survey data
 contact_survey_data() %>%
  saveRDS("outputs/contact_survey_data.RDS")
+

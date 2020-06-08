@@ -1787,7 +1787,50 @@ distancing_effect_model <- function(dates) {
     
   # model gamma_t: reduction in duration and transmission probability of
   # non-household contacts over time, per state
-  d_t_state <- microdistancing_state(dates, states)
+  
+  data <- microdistancing_data(dates)
+  barometer_distance <- data$barometer_data
+  pred_data <- data$prediction_data
+  
+  params <- microdistancing_params()
+  peak <- params$peak
+  distancing_effects <- params$distancing_effects
+  waning_effects <- params$waning_effects
+
+  # define likelihood  
+  prob <- microdistancing_model(
+    data = barometer_distance,
+    peak = peak,
+    distancing_effects = distancing_effects,
+    waning_effects = waning_effects
+  )
+  distribution(barometer_distance$count) <- binomial(
+    barometer_distance$respondents,
+    prob
+  )
+
+  # predict to new data  
+  prob_pred <- microdistancing_model(
+    data = pred_data,
+    peak = peak,
+    distancing_effects = distancing_effects,
+    waning_effects = waning_effects
+  )
+  
+  rows <- 
+  pred_data_wide <- pred_data %>%
+    pivot_wider(names_from = state, values_from = distancing)
+  
+  
+  
+  # reshape to date-by-state matrix
+  wide_dim <- c(n_distinct(pred_data$date), n_distinct(pred_data$state))
+  microdistancing_prob <- greta_array(prob_pred, dim = wide_dim)
+  
+  # divide by the maximum value, so that beta can scale it properly
+  d_t_state <- microdistancing_prob / max(microdistancing_prob)
+  
+  # d_t_state <- microdistancing_state(dates, states)
   beta <- uniform(0, 1)
   gamma_t_state <- 1 - beta * d_t_state
   
@@ -2153,7 +2196,7 @@ check_projection <- function(draws, R_eff_local, R_eff_imported,
   local_cases_ntnl <- rowSums(local_cases[sub_idx, ])
   plot_trend(local_cases_project_ntnl_sim,
              multistate = FALSE,
-             ylim = c(0, 3 * max(local_cases_ntnl)),
+             ylim = c(0, 2 * max(local_cases_ntnl)),
              hline_at = NULL,
              dates = dates[sub_idx],
              base_colour = green,
@@ -2300,6 +2343,113 @@ convergence <- function(draws) {
                  n_eff = n_eff)
   
   invisible(result)
+  
+}
+
+microdistancing_params <- function(n_locations = 8) {
+  
+  # timing of peak microdistancing between the date of the last intervention and
+  # today's date
+  peak <- normal(0, 1, truncation = c(0, 1))
+  
+  # hierarchical structure on state-level waning
+  logit_waning_effects_mean <- normal(0, 10)
+  logit_waning_effects_sd <- normal(0, 0.5, truncation = c(0, Inf))
+  logit_waning_effects_raw <- normal(0, 1, dim = n_locations)
+  logit_waning_effects <- logit_waning_effects_mean + logit_waning_effects_raw * logit_waning_effects_sd
+  waning_effects <- -ilogit(logit_waning_effects)
+  
+  # hierarchical structure on state-level peak effect (proportion adhering) 
+  logit_distancing_effects_mean <- normal(0, 10)
+  logit_distancing_effects_sd <- normal(0, 0.5, truncation = c(0, Inf))
+  logit_distancing_effects_raw <- normal(0, 1, dim = n_locations)
+  logit_distancing_effects <- logit_distancing_effects_mean + logit_distancing_effects_raw * logit_distancing_effects_sd
+  distancing_effects <- ilogit(logit_distancing_effects)
+  
+  list(peak = peak,
+       distancing_effects = distancing_effects,
+       waning_effects = waning_effects)
+}
+
+# get data for fitting and predicting from microdistancing model
+microdistancing_data <- function(dates) {
+  
+  # recode and collapse responses into percentage adherence
+  barometer <- barometer_results() %>%
+    # recode 1.5m compliance question as yes/no (whether they mostly did it)
+    mutate(
+      response = case_when(
+        question == "1.5m compliance" &
+          response %in% c("Always") ~ "yes",
+        question == "1.5m compliance" &
+          response %in% c("Often", "Sometimes", "Rarely", "No") ~ "no",
+        TRUE ~ response) 
+    ) %>%
+    # recode hand washing to yes/no (whether they did it immediately afterwards)
+    mutate(
+      response = case_when(
+        question == "Hand washing" & response != "No" ~ "yes",
+        question == "Hand washing" & response == "No" ~ "no",
+        TRUE ~ response) 
+    ) %>%
+    # recode cough etiquette to yes/no (whether they covered their mouth with anything)
+    mutate(
+      response = case_when(
+        question == "Cough etiquette" & response != "Nothing" ~ "yes",
+        question == "Cough etiquette" & response == "Nothing" ~ "no",
+        TRUE ~ response) 
+    ) %>%
+    # recode physical contact to the opposite, to reflect avoidance
+    mutate(
+      response = case_when(
+        question == "Physical contact" & response == "No" ~ "yes",
+        question == "Physical contact" & response == "Yes" ~ "no",
+        TRUE ~ response) 
+    ) %>%
+    # combine responses into yes/no
+    group_by(state, date, question, response) %>%
+    summarise(count = sum(count),
+              respondents = mean(respondents)) %>%
+    mutate(proportion = count / respondents) %>%
+    # now we can just keep the proportion responding 'yes'
+    filter(response == "yes") %>%
+    select(-response) %>%
+    arrange(state, question, date)
+  
+  # load latent factors
+  # assume adoption of microdistancing follows the same trend as macrodistancing,
+  # and that waning starts at the same time, butdon't assume it wanes at the same
+  # rate
+  
+  distancing <- readRDS("outputs/social_distancing_latent.RDS")
+  
+  # get data to predict to
+  pred_data <- distancing %>%
+    rename(distancing = mean) %>%
+    select(date, distancing) %>%
+    right_join(
+      expand_grid(
+        date = dates,
+        state = unique(barometer$state)
+      )
+    ) %>%
+    replace_na(list(distancing = 0)) %>%
+    mutate(
+      state_id = match(state, unique(state)),
+      time = as.numeric(date - max(intervention_dates()$date)),
+      time = time / max(time)
+    ) %>%
+    arrange(state, date)
+  
+  # subset to 1.5m question and add data for modelling
+  barometer_distance <- barometer %>%
+    filter(question == "1.5m compliance") %>%
+    left_join(pred_data)
+  
+  result <- list(barometer_data = barometer_distance,
+                 prediction_data = pred_data)
+  
+  result
   
 }
 

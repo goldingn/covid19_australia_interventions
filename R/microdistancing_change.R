@@ -2,98 +2,20 @@
 # from the BETA barometer
 source("R/functions.R")
 
-# recode and collapse responses into percentage adherence
-barometer <- barometer_results() %>%
-  # recode 1.5m compliance question as yes/no (whether they mostly did it)
-  mutate(
-    response = case_when(
-      question == "1.5m compliance" &
-        response %in% c("Always") ~ "yes",
-      question == "1.5m compliance" &
-        response %in% c("Often", "Sometimes", "Rarely", "No") ~ "no",
-      TRUE ~ response) 
-  ) %>%
-  # recode hand washing to yes/no (whether they did it immediately afterwards)
-  mutate(
-    response = case_when(
-      question == "Hand washing" & response != "No" ~ "yes",
-      question == "Hand washing" & response == "No" ~ "no",
-      TRUE ~ response) 
-  ) %>%
-  # recode cough etiquette to yes/no (whether they covered their mouth with anything)
-  mutate(
-    response = case_when(
-      question == "Cough etiquette" & response != "Nothing" ~ "yes",
-      question == "Cough etiquette" & response == "Nothing" ~ "no",
-      TRUE ~ response) 
-  ) %>%
-  # recode physical contact to the opposite, to reflect avoidance
-  mutate(
-    response = case_when(
-      question == "Physical contact" & response == "No" ~ "yes",
-      question == "Physical contact" & response == "Yes" ~ "no",
-      TRUE ~ response) 
-  ) %>%
-  # combine responses into yes/no
-  group_by(state, date, question, response) %>%
-  summarise(count = sum(count),
-            respondents = mean(respondents)) %>%
-  mutate(proportion = count / respondents) %>%
-  # now we can just keep the proportion responding 'yes'
-  filter(response == "yes") %>%
-  select(-response) %>%
-  arrange(state, question, date)
-
-# load latent factors
-# assume adoption of microdistancing follows the same trend as macrodistancing,
-# and that waning starts at the same time, butdon't assume it wanes at the same
-# rate
-
-distancing <- readRDS("outputs/social_distancing_latent.RDS")
-
-# get data to predict to
-pred_data <- distancing %>%
-  rename(distancing = mean) %>%
-  select(date, distancing) %>%
-  left_join(
-    expand_grid(
-      date = .$date,
-      state = unique(barometer$state)
-    )
-  ) %>%
-  mutate(
-    state_id = match(state, unique(state)),
-    time = as.numeric(date - max(intervention_dates()$date)),
-    time = time / max(time)
-  )
-
-# subset to 1.5m question and add data for modelling
-barometer_distance <- barometer %>%
-  filter(question == "1.5m compliance") %>%
-  left_join(pred_data)
+data <- microdistancing_data()
+barometer_distance <- data$barometer_data
+pred_data <- data$prediction_data
 
 # Need Bayesian fit as lme4 fit is singular, and doesn't have right structure
 library(greta)
 
 n_locations <- max(barometer_distance$state_id)
 
-# timing of peak microdistancing between the date of the last intervention and
-# today's date
-peak <- normal(0, 1, truncation = c(0, 1))
+params <- microdistancing_params(n_locations)
 
-# hierarchical structure on state-level waning
-logit_waning_effects_mean <- normal(0, 10)
-logit_waning_effects_sd <- normal(0, 0.5, truncation = c(0, Inf))
-logit_waning_effects_raw <- normal(0, 1, dim = n_locations)
-logit_waning_effects <- logit_waning_effects_mean + logit_waning_effects_raw * logit_waning_effects_sd
-waning_effects <- -ilogit(logit_waning_effects)
-
-# hierarchical structure on state-level peak effect (proportion adhering) 
-logit_distancing_effects_mean <- normal(0, 10)
-logit_distancing_effects_sd <- normal(0, 0.5, truncation = c(0, Inf))
-logit_distancing_effects_raw <- normal(0, 1, dim = n_locations)
-logit_distancing_effects <- logit_distancing_effects_mean + logit_distancing_effects_raw * logit_distancing_effects_sd
-distancing_effects <- ilogit(logit_distancing_effects)
+peak <- params$peak
+distancing_effects <- params$distancing_effects
+waning_effects <- params$waning_effects
 
 prob <- microdistancing_model(
   data = barometer_distance,
@@ -141,7 +63,6 @@ line_df <- pred_plot %>%
   mutate(type = "Nowcast")
 
 point_df <- barometer_distance %>%
-  # duplicate ACT/NT
   ungroup() %>%
   mutate(
     percentage = proportion * 100
