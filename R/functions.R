@@ -113,7 +113,7 @@ google_mobility <- function() {
 # download and format Apple's mobility data - will need to update the url regularly
 apple_mobility <- function() {
   # get link from: https://www.apple.com/covid19/mobility
-  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2009HotfixDev23/v3/en-us/applemobilitytrends-2020-06-06.csv"
+  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2009HotfixDev25/v3/en-us/applemobilitytrends-2020-06-07.csv"
   data <- readr::read_csv(
     url,
     col_types = cols(
@@ -184,7 +184,7 @@ apple_mobility <- function() {
 citymapper_mobility <- function() {
   
   # get link from: https://citymapper.com/cmi/about
-  url <- "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20200607.csv"
+  url <- "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20200609.csv"
   data <- readr::read_csv(
     url,
     skip = 3,

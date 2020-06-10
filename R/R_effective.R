@@ -110,6 +110,7 @@ distancing_effect <- distancing_effect_model(mobility_dates)
 # pull out R_t component due to distancing for locally-acquired cases, and
 # extend to correct length
 extend_idx <- pmin(seq_along(date_nums), nrow(distancing_effect$R_t))
+
 R_eff_loc_1 <- distancing_effect$R_t[extend_idx, ]
 log_R_eff_loc_1 <- log(R_eff_loc_1)
 
