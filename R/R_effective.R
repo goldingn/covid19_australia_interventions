@@ -175,7 +175,7 @@ m <- model(expected_infections_vec)
 
 draws <- mcmc(
   m,
-  sampler = hmc(Lmin = 10, Lmax = 15),
+  sampler = hmc(Lmin = 20, Lmax = 25),
   chains = 10,
   one_by_one = TRUE
 )
@@ -252,7 +252,7 @@ output_directories <- c("",
                         "counterfactual_2",
                         "counterfactual_3")
 
-output_directories <- file.path(output_directories, "staging")
+# output_directories <- file.path(output_directories, "staging")
 
 for (type in 1:5) {
   

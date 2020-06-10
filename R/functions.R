@@ -1273,6 +1273,7 @@ get_tests <- function() {
            daily_tests = pmax(0, daily_tests))
   
   df
+  
 }
 
 # weighted mean and standard error of the weighted mean, computed with a
@@ -2346,6 +2347,14 @@ convergence <- function(draws) {
   
 }
 
+# define a zero-mean hierarchical normal prior over a vector of length n
+hierarchical_normal <- function(n, mean_sd = 10, sd_sd = 0.5) {
+  mean <- normal(0, mean_sd)
+  sd <- normal(0, sd_sd, truncation = c(0, Inf))
+  raw <- normal(0, 1, dim = n)
+  mean + raw * sd
+}
+
 microdistancing_params <- function(n_locations = 8) {
   
   # timing of peak microdistancing between the date of the last intervention and
@@ -2353,17 +2362,11 @@ microdistancing_params <- function(n_locations = 8) {
   peak <- normal(0, 1, truncation = c(0, 1))
   
   # hierarchical structure on state-level waning
-  logit_waning_effects_mean <- normal(0, 10)
-  logit_waning_effects_sd <- normal(0, 0.5, truncation = c(0, Inf))
-  logit_waning_effects_raw <- normal(0, 1, dim = n_locations)
-  logit_waning_effects <- logit_waning_effects_mean + logit_waning_effects_raw * logit_waning_effects_sd
+  logit_waning_effects <- hierarchical_normal(n_locations)
   waning_effects <- -ilogit(logit_waning_effects)
   
   # hierarchical structure on state-level peak effect (proportion adhering) 
-  logit_distancing_effects_mean <- normal(0, 10)
-  logit_distancing_effects_sd <- normal(0, 0.5, truncation = c(0, Inf))
-  logit_distancing_effects_raw <- normal(0, 1, dim = n_locations)
-  logit_distancing_effects <- logit_distancing_effects_mean + logit_distancing_effects_raw * logit_distancing_effects_sd
+  logit_distancing_effects <- hierarchical_normal(n_locations)
   distancing_effects <- ilogit(logit_distancing_effects)
   
   list(peak = peak,
@@ -2457,6 +2460,7 @@ microdistancing_data <- function(dates) {
 blue <- "steelblue3"
 purple <- "#C3A0E8"
 green <- brewer.pal(8, "Set2")[1]
+yellow <- brewer.pal(8, "Set2")[6]
 blue_green <- colorRampPalette(c("blue", green))(10)[8]
 yellow_green <- colorRampPalette(c("yellow", green))(10)[8]
 orange <- brewer.pal(8, "Set2")[2]
