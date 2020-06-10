@@ -127,3 +127,33 @@ p <- plot_trend(ttd_samples,
 p
 
 
+# get probabilities of different numbers of days from symptom onset to detection
+ttd_draws <- calculate(ttd_dist[, 1], values = draws, nsim = nsim)[[1]][, , 1]
+counts <- apply(ttd_draws, 2, table)
+prep <- function(x) {
+  x <- as.data.frame(x)
+  names(x) <- c("days", "count")
+  tibble(x)
+}
+counts <- lapply(counts, prep)
+for (i in seq_along(counts)) {
+  counts[[i]]$date <- dates[i]
+}
+
+probabilities <- do.call(bind_rows, counts) %>%
+  mutate(
+    days = case_when(
+      as.numeric(days) >= 20 ~ 20,
+      TRUE ~ as.numeric(days))
+  ) %>%
+  full_join(
+    expand_grid(
+      days = 0:20,
+      date = dates,
+      count = 0
+    )
+  ) %>%
+  group_by(date, days) %>%
+  summarise(count = sum(count)) %>%
+  group_by(date) %>%
+  mutate(probability = count / sum(count))
