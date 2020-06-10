@@ -39,62 +39,34 @@ n_states <- length(states)
 zeros <- matrix(0, n_dates, n_states)
 days <- row(zeros)
 
-# model test positivity in VIC to get shape of a log-logit to match the time to detection curve
-cases <- linelist %>%
-  select(date = date_confirmation,
-         state = region) %>%
-  group_by(date, state) %>%
-  summarise(count = n())
-
-rolling_average <- function(x, n = 5) {
-  stats::filter(x, rep(1 / n, n), sides = 2)
-}
-
-# estimate the number of tests per state per day, and add positive tests
-tests <- get_tests() %>%
-  left_join(cases) %>%
-  replace_na(list(count = 0)) %>%
-  mutate(daily_tests = rolling_average(daily_tests, 14)) %>%
-  na.omit()
-
-# tests %>%
-#   mutate(positivity = count / daily_tests) %>%
-#   ggplot() +
-#   aes(date, 1 / positivity) +
-#   facet_wrap(~state, ncol = 2, scales = "free_y") +
-#   geom_line()
-
 # the test positivity rate in VIC (which had lots of cases and still has cases)
 # appeared to peak around the start of April, and dropped to a plateau around
 # the end of May. Define a logit that broadly matches this.
 
-# shape of the shared sigmoid curve
-location <- 70 + normal(0, 10)  # hierarchical_normal(n_states)
-slope <- normal(0, 1, truncation = c(-Inf, 0)) # hierarchical_normal(n_states)
+# Want a clamped linear function to reflect change
+# flat prior to 1st of March
+# trend over next three months, then flat
+# flat after 1st May
+# set ends of a logit to start/end around then
+# given prior on one end, set prior on the other
+ends <- match(as.Date(c("2020-03-01", "2020-05-01")), dates)
+start <- ends[1] + normal(0, 1)
+diff <- diff(ends) + normal(0, 1)
+
+# from this, get location of centre
+location <- start + diff / 2
+# and the slope (slope 1 means a plateau at +5/-5)
+slope <- -10 / diff
 
 # relationship between the sigmoid curve and log mean time to detection
-intercept_ttd <- exp(normal(0, 10)) # exp(hierarchical_normal(n_states))
-slope_ttd <- exp(normal(0, 10)) # exp(hierarchical_normal(n_states))
-
-# relationship between the sigmoid curve and logit probbaility of test
-# positivity
-intercept_test <- normal(0, 10)
-slope_test <- normal(0, 10)
+intercept_ttd <- normal(0, 10) # exp(hierarchical_normal(n_states))
+slope_ttd <- normal(0, 10) # exp(hierarchical_normal(n_states))
 
 # shared sigmoid curve
 sigmoid <- ilogit(slope * (days - location))
 
-# logit probability of a positive test
-p_positive <- ilogit(intercept_test + slope_test * sigmoid)
-
 # expected mean time to detection
 mean_ttd <- exp(intercept_ttd + slope_ttd * sigmoid)
-
-# test positivity likelihood
-test_row_idx <- match(tests$date, dates)
-test_col_idx <- match(tests$state, states)
-test_idx <- cbind(test_row_idx, test_col_idx)
-distribution(tests$count) <- binomial(tests$daily_tests, p_positive[test_idx])
 
 # time to detection likelihood
 sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf))
@@ -107,7 +79,6 @@ distribution(nonneg$days_to_detection) <- negative_binomial(size,
                                                             prob[ttd_idx])
 
 m <- model(location, slope,
-           intercept_test, slope_test,
            intercept_ttd, slope_ttd)
 
 draws <- mcmc(m)
@@ -118,10 +89,8 @@ nsim <- min(10000, nsim)
 
 # posterior predictive checks
 ttd_dist <- negative_binomial(size, prob)
-test_dist <- binomial(tests$daily_tests, p_positive[test_idx])
-sims <- calculate(ttd_dist[ttd_idx], test_dist, values = draws, nsim = nsim)
+sims <- calculate(ttd_dist[ttd_idx], values = draws, nsim = nsim)
 ttd_sim <- sims[[1]][, , 1]
-test_sim <- sims[[2]][, , 1]
 
 # overall PPC check
 bayesplot::ppc_ecdf_overlay(
@@ -129,13 +98,6 @@ bayesplot::ppc_ecdf_overlay(
   ttd_sim,
   discrete = TRUE
 )
-
-bayesplot::ppc_ecdf_overlay(
-  tests$count,
-  test_sim,
-  discrete = TRUE
-)
-
 
 # plot model fit by date and state
 ttd_samples <- calculate(c(ttd_dist), values = draws, nsim = nsim)[[1]]
@@ -164,30 +126,4 @@ p <- plot_trend(ttd_samples,
 
 p
 
-
-# plot model fit by date and state
-
-positive_samples <- calculate(c(p_positive), values = draws, nsim = nsim)[[1]]
-
-tests_plot <- tests %>%
-  mutate(mean = count / daily_tests,
-         type = "Nowcast") %>%
-  filter(date > as.Date("2020-03-01"))
-  
-
-p <- plot_trend(positive_samples,
-                dates,
-                base_colour = yellow,
-                multistate = TRUE,
-                hline_at = NULL,
-                ylim = c(0, 0.02),
-                min_date = as.Date("2020-02-01")) +
-  
-  geom_point(
-    data = tests_plot,
-    size = 0.25,
-    alpha = 0.1
-  )
-
-p
 
