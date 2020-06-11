@@ -634,15 +634,12 @@ distancing_change_data %>%
   summarise(
     mean = mean(value),
     min = max(value),
-    max = min(value)
-  )
+    max = min(value),
+    min_state = paste(state[value == min], collapse = ", "),
+    max_state = paste(state[value == max], collapse = ", ")
+  ) %>%
+  saveRDS("outputs/mobility_change_summary.RDS")
 
-distancing_change_data %>%
-  mutate(value = pmin(0, value * 100)) %>%
-  mutate(value = pmax(-100, value)) %>%
-  filter(datastream %in% target_datastreams) %>%
-  arrange(datastream, state) %>%
-  as.data.frame()
 
 peak_draws <- calculate(peak, values = draws, nsim = 20000)[[1]][, 1, 1]
 peak_mean <- first_date + mean(peak_draws)

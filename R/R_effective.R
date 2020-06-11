@@ -47,6 +47,16 @@ dates <- seq(min(linelist$date), latest_date, by = 1)
 google_change_data <- readRDS("outputs/google_change_trends.RDS")
 last_mobility_date <- max(google_change_data$date)
 mobility_dates <- seq(min(dates), last_mobility_date, by = 1)
+change_date <- last_mobility_date + 1
+
+# save these for Freya and Rob to check
+tibble(
+  latest_infection_date = max(dates),
+  latest_reff_date = last_mobility_date,
+  forecast_reff_change_date = change_date
+) %>%
+  write_csv("outputs/output_dates.csv")
+  
 
 n_states <- length(states)
 n_dates <- length(dates)
@@ -321,7 +331,6 @@ for (type in 1:5) {
                                   "4" = 1.2,
                                   "5" = 1.5)
     
-    change_date <- last_mobility_date + 1
     dates_long <- rep(dates_type, n_states)
     projected_dates_long <- dates_long >= change_date
     projected_dates <- dates_type >= change_date
