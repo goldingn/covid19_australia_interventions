@@ -658,6 +658,29 @@ tf_lognormal_cdf <- function(x, meanlog, sdlog) {
   
 }
 
+# probability mass function of a negative binomial distribution
+negative_binomial_pmf <- function(x, size, prob) {
+  
+  op("negative_binomnial_pmf",
+     x,
+     size,
+     prob,
+     tf_operation = "tf_negative_binomial_pmf",
+     dim = dim(x))
+  
+}
+
+tf_negative_binomial_pmf <- function(x, size, prob) {
+  
+  
+  d <- tfp$distributions$NegativeBinomial(
+    total_count = size,
+    probs = greta:::fl(1) - prob)
+  
+  d$prob(x)
+  
+}
+
 exponential_cdf <- function (x, rate) {
   
   # filter out any invalid dates, to replace their CDF with 0

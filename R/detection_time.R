@@ -224,7 +224,7 @@ p <- ggplot(df) +
   
   xlab(element_blank()) +
   
-  # coord_cartesian(ylim = ylim) +
+  coord_cartesian(ylim = c(-5, 30)) +
   scale_y_continuous(position = "right") +
   scale_x_date(date_breaks = "1 months", date_labels = "%b %d") +
   scale_alpha(range = c(0, 0.5)) +
@@ -280,5 +280,3 @@ ggsave("outputs/figures/surveillance_effect.png",
        width = panel_width,
        height = panel_height * 1.25,
        scale = 1)
-
-
