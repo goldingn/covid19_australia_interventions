@@ -772,13 +772,23 @@ nishiura_samples <- function () {
 # artefact of incorrect alignment of infector/infectee pairs), though when this is
 # used as a prior the model is able to estimate parameters corresponding to
 # that scenario.
-ganyani_gi <- function() {
-  
-  ganyani <- tibble::tribble(
+ganyani_gi <- function(which = c("Tianjin", "Singapore")) {
+
+  tianjin <- tibble::tribble(
     ~which, ~est, ~lower, ~upper,
     "mean", 3.95, 3.01, 4.91,
     "sd", 1.51, 0.74, 2.97
   )
+
+  singapore <- tibble::tribble(
+    ~which, ~est, ~lower, ~upper,
+    "mean", 5.20, 3.78, 6.78,
+    "sd", 1.72, 0.91, 3.93
+  )
+  
+  ganyani <- switch(match.arg(which),
+                    Tianjin = tianjin,
+                    Singapore = singapore)
   
   ganyani <- ganyani %>%
     mutate(
@@ -2476,6 +2486,56 @@ microdistancing_data <- function(dates) {
                  prediction_data = pred_data)
   
   result
+  
+}
+
+# given vectors of dates and numbers of days post infection, eturn the fraction of cases not being detected by that point
+ttd_survival <- function(days, dates) {
+  
+  # load fitted CDFs over time
+  cdf <- readRDS("outputs/time_to_detection_cdf.RDS")
+  ttd_dates <- cdf$date
+  cdf_mat <- cdf %>%
+    select(-date) %>%
+    as.matrix()
+  
+  # line up dates
+  dates <- pmin(dates, max(ttd_dates))
+  dates <- pmax(dates, min(ttd_dates))
+  dates_idx <- match(dates, ttd_dates)
+  
+  # line up days (direct index against ttd elements since we're counting from
+  # infection, not symptom onset)
+  days_idx <- days - 1
+  days_idx <- pmax(days_idx, 1)
+  days_idx <- pmin(days_idx, ncol(cdf_mat))
+  
+  # pull out elements of CDF
+  idx <- cbind(dates_idx, days_idx)
+  cdf_vec <- cdf_mat[idx]
+  
+  # return probability of not being detected by this point
+  1 - cdf_vec
+  
+}
+
+# reduction in R due to faster detection of cases
+surveillance_effect <- function(dates, meanlog, sdlog, gi_bounds = c(0, 20)) {
+  
+  n_dates <- length(dates)
+  gi_range <- diff(gi_bounds) + 1
+  day_vec <- seq_len(gi_range) - 1 + gi_bounds[1]
+  day_mat <- col(matrix(0, n_dates, gi_range)) - 1
+  
+  # times to detection for each date  
+  ttd_days <- day_mat
+  ttd_days[] <- ttd_survival(c(day_mat), rep(dates, gi_range))
+  
+  # generation interval probability on each day post-infection
+  gi_days <- gi_probability(day_vec, meanlog, sdlog, bounds = gi_bounds)
+  
+  # weighted sum to get reduction due to impeded transmission
+  c(ttd_days %*% gi_days)
   
 }
 

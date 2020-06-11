@@ -56,7 +56,7 @@ tibble(
   forecast_reff_change_date = change_date
 ) %>%
   write_csv("outputs/output_dates.csv")
-  
+
 
 n_states <- length(states)
 n_dates <- length(dates)
@@ -90,6 +90,36 @@ local_cases <- date_by_state %>%
   as.matrix()
 
 library(greta.gp)
+
+# generation interval distribution; use SI distribution from Nishiura et al.
+nishiura <- nishiura_samples()
+meanlog <- mean(nishiura$param1)
+sdlog <- mean(nishiura$param2)
+
+# circulant matrix of generation interval discrete probabilities
+# lower bound of 1 day so cases can't infect others on the day of infection
+day_diff <- time_difference_matrix(n_dates)
+gi_mat_naive <- gi_probability(day_diff, meanlog, sdlog, bounds = c(0, 20))
+
+# compute fraction surviving without detection in circulant matrix format,
+# multiply by GI matrix and rescale to get new GI distribution on each day
+ttd_mat <- day_diff
+ttd_mat[] <- ttd_survival(days = c(day_diff),
+                          dates = rep(dates, each = n_dates))
+rel_gi_mat <- gi_mat_naive * ttd_mat
+scaling <- surveillance_effect(
+  dates = dates,
+  meanlog = meanlog,
+  sdlog = sdlog,
+  gi_bounds = c(0, 20)
+)
+gi_mat <- sweep(rel_gi_mat, 2, scaling, FUN = "/")
+
+# disaggregate imported and local cases according to the generation interval
+# probabilities to get the expected number of infectious people in each state
+# and time
+local_infectious <- gi_mat %*% local_cases
+imported_infectious <- gi_mat %*% imported_cases
 
 # the reduction from R0 down to R_eff for imported cases due to different
 # quarantine measures each measure applied during a different period. Q_t is
@@ -142,32 +172,36 @@ n_inducing <- length(inducing_date_nums)
 epsilon_O <- epsilon_gp(date_nums, n_states, inducing_date_nums)
 epsilon_L <- epsilon_gp(date_nums, n_states, inducing_date_nums)
 
-# log Reff for both types
-log_R_eff_loc <- log_R_eff_loc_1 + epsilon_L
-log_R_eff_imp <- sweep(epsilon_O, 1, log_R_eff_imp_1, FUN = "+")
-
-# use SI distribution from Nishiura et al.
-nishiura <- nishiura_samples()
-meanlog <- mean(nishiura$param1)
-sdlog <- mean(nishiura$param2)
-
-# circulant matrix of generation interval discrete probabilities
-# lower bound of 1 day so cases can't infect others on the day of infection
-day_diff <- time_difference_matrix(n_dates)
-gi_mat <- gi_probability(day_diff, meanlog, sdlog, bounds = c(0, 20))
-
-# disaggregate imported and local cases according to the generation interval
-# probabilities to get the expected number of infectious people in each state
-# and time
-local_infectious <- gi_mat %*% local_cases
-imported_infectious <- gi_mat %*% imported_cases
-
 # work out which elements to exclude (because there were no infectious people)
 # local_infectious_sim <- calculate(local_infectious, nsim = 1)[[1]][1, , ]
 # imported_infectious_sim <- calculate(imported_infectious, nsim = 1)[[1]][1, , ]
 local_valid <- is.finite(local_infectious) & local_infectious > 0
 import_valid <- is.finite(imported_infectious) & imported_infectious > 0
 valid <- which(local_valid & import_valid, arr.ind = TRUE)
+
+# reduction in R due to surveillance detecting and isolating infectious people
+dates_long <- min(dates) + seq_along(date_nums) - 1
+surveillance_reff_local_reduction <- surveillance_effect(
+  dates = dates_long,
+  meanlog = meanlog,
+  sdlog = sdlog,
+  gi_bounds = c(0, 20))
+
+
+# log Reff for locals and imports
+log_R_eff_loc <- sweep(
+  log_R_eff_loc_1 + epsilon_L,
+  1,
+  log(surveillance_reff_local_reduction),
+  FUN = "+"
+)
+
+log_R_eff_imp <- sweep(
+  epsilon_O,
+  1,
+  log_R_eff_imp_1,
+  FUN = "+"
+)
 
 # combine everything as vectors, excluding invalid datapoints (remove invalid
 # elements here, otherwise it causes a gradient issue)
@@ -201,7 +235,7 @@ cases_sim <- calculate(cases, values = draws, nsim = nsim)[[1]][, , 1]
 # overall PPC check
 bayesplot::ppc_ecdf_overlay(
   local_cases[valid],
-  cases_sim,
+  cases_sim[1:1000, ],
   discrete = TRUE
 )
 
@@ -249,6 +283,9 @@ hourly_infections_macro <- household_infections_macro + non_household_infections
 R_eff_loc_1_macro <- hourly_infections_macro
 R_eff_loc_1_macro <- R_eff_loc_1_macro[extend_idx, ]
 
+# Reff for locals compnent under only surveillance improvements
+R_eff_loc_1_surv <- exp(log_R0 + log(surveillance_reff_local_reduction))
+
 # make 5 different versions of the plots and outputs:
 # 1. to the latest date of mobility data
 # 2. 6 weeks into the future
@@ -282,7 +319,7 @@ for (type in 1:5) {
   }
   n_projected <- n_dates + as.numeric(last_date - max(dates))
   rows <- pmin(n_dates + n_extra, seq_len(n_projected))
-
+  
   R_eff_loc_1_vec <- c(R_eff_loc_1[rows, ])
   R_eff_imp_1_vec <- c(R_eff_imp_1[rows, ])
   R_eff_imp_12_vec <- c(R_eff_imp_12[rows, ])
@@ -293,6 +330,7 @@ for (type in 1:5) {
   
   R_eff_loc_1_micro_vec <- c(R_eff_loc_1_micro[rows, ])
   R_eff_loc_1_macro_vec <- c(R_eff_loc_1_macro[rows, ])
+  R_eff_loc_1_surv_vec <- c(R_eff_loc_1_surv[rows])
   
   OC_t_state_vec <- c(de$OC_t_state)
   
@@ -306,6 +344,7 @@ for (type in 1:5) {
     epsilon_O_vec,
     R_eff_loc_1_micro_vec,
     R_eff_loc_1_macro_vec,
+    R_eff_loc_1_surv_vec,
     OC_t_state_vec,
     values = draws,
     nsim = nsim
@@ -319,8 +358,9 @@ for (type in 1:5) {
   epsilon_O_sim <- sims$epsilon_O_vec
   R_eff_loc_1_micro_sim <- sims$R_eff_loc_1_micro_vec
   R_eff_loc_1_macro_sim <- sims$R_eff_loc_1_macro_vec
+  R_eff_loc_1_surv_sim <- sims$R_eff_loc_1_surv_vec
   OC_t_state_sim <- sims$OC_t_state_vec
-
+  
   dates_type <- min(dates) - 1 + seq_along(rows)
   
   # for counterfactuals, relevel the R0s after calculating them
@@ -357,8 +397,10 @@ for (type in 1:5) {
   
   # add a bit of space for the title
   multi_height <- multi_height * 1.2
-
+  
   # Component 1 for national / state populations
+  
+  # microdistancing only
   plot_trend(R_eff_loc_1_micro_sim,
              dates = dates_type,
              multistate = TRUE,
@@ -374,7 +416,7 @@ for (type in 1:5) {
          height = multi_height,
          scale = 0.8)
   
-  # Component 1 for national / state populations
+  # macrodistancing only
   plot_trend(R_eff_loc_1_macro_sim,
              dates = dates_type,
              multistate = TRUE,
@@ -386,6 +428,22 @@ for (type in 1:5) {
     ylab(expression(R["eff"]~component))
   
   ggsave(file.path(dir, "figures/R_eff_1_local_macro.png"),
+         width = multi_width,
+         height = multi_height,
+         scale = 0.8)
+  
+  # improved surveilance only
+  plot_trend(R_eff_loc_1_surv_sim,
+             dates = dates_type,
+             multistate = FALSE,
+             base_colour = yellow,
+             vline_at = intervention_dates()$date,
+             vline2_at = projection_date) + 
+    ggtitle(label = "Impact of improved surveillance",
+            subtitle = expression(R["eff"]~"if"~only~surveillance~effectiveness~had~changed)) +
+    ylab(expression(R["eff"]~component))
+  
+  ggsave(file.path(dir, "figures/R_eff_1_local_surv.png"),
          width = multi_width,
          height = multi_height,
          scale = 0.8)
@@ -423,11 +481,11 @@ for (type in 1:5) {
   
   # Reff for active cases
   p <- plot_trend(R_eff_loc_12_sim,
-             dates = dates_type,
-             multistate = TRUE,
-             base_colour = green,
-             vline_at = intervention_dates()$date,
-             vline2_at = projection_date) +
+                  dates = dates_type,
+                  multistate = TRUE,
+                  base_colour = green,
+                  vline_at = intervention_dates()$date,
+                  vline2_at = projection_date) +
     ggtitle(label = "Local to local transmission potential",
             subtitle = "Average across active cases") +
     ylab(expression(R["eff"]~from~"locally-acquired"~cases))
@@ -466,13 +524,13 @@ for (type in 1:5) {
   
   # component 2 (noisy error trends)
   p <- plot_trend(epsilon_L_sim,
-             dates = dates_type,
-             multistate = TRUE,
-             base_colour = pink,
-             hline_at = 0,
-             vline_at = intervention_dates()$date,
-             vline2_at = projection_date,
-             ylim = NULL) + 
+                  dates = dates_type,
+                  multistate = TRUE,
+                  base_colour = pink,
+                  hline_at = 0,
+                  vline_at = intervention_dates()$date,
+                  vline2_at = projection_date,
+                  ylim = NULL) + 
     ggtitle(label = "Short-term variation in local to local transmission rates",
             subtitle = expression(Deviation~from~log(R["eff"])~of~"local-local"~transmission)) +
     ylab("Deviation")
@@ -512,7 +570,7 @@ for (type in 1:5) {
          scale = 0.8)
   
   if (type == 1) {
-
+    
     # represent simulations as matrix and lop off extra dates
     R_eff_loc_1_sim_mat <- R_eff_loc_1_sim
     dim(R_eff_loc_1_sim_mat) <- c(nsim, length(rows), n_states)
@@ -526,8 +584,8 @@ for (type in 1:5) {
     # posterior summary of R0 (same in all states, so first element)
     R0_draws <- rowMeans(R_eff_loc_1_sim_mat[, 1, ])
     cat(sprintf("\nR0 %.2f (%.2f)\n",
-                  mean(R0_draws),
-                  sd(R0_draws)))
+                mean(R0_draws),
+                sd(R0_draws)))
     
     # posterior summary of R_eff for the peak of distancing
     peak_idx <- which(dates == peak_date)
@@ -541,9 +599,9 @@ for (type in 1:5) {
     last_date_idx <- which(dates == max(dates))
     R_eff_now_draws <- rowMeans(R_eff_loc_1_sim_mat[, last_date_idx, ])
     cat(sprintf("\nReff %.2f (%.2f) on %s\n",
-                  mean(R_eff_now_draws),
-                  sd(R_eff_now_draws),
-                  format(max(dates), "%d %b")))
+                mean(R_eff_now_draws),
+                sd(R_eff_now_draws),
+                format(max(dates), "%d %b")))
     
     # covariance of these estimates
     covar <- cov(cbind(R0_draws, R_eff_peak_draws))
@@ -555,7 +613,7 @@ for (type in 1:5) {
   # output 2000 posterior samples of R_eff for active local cases
   R_eff_12_samples <- t(R_eff_loc_12_sim[1:2000, , 1])
   colnames(R_eff_12_samples) <- paste0("sim", 1:2000)
-
+  
   df_base <- tibble(
     date = rep(dates_type, n_states),
     state = rep(states, each = length(dates_type)),
