@@ -88,7 +88,8 @@ ttd <- detection$days_to_detection[nonneg]
 distribution(ttd) <- negative_binomial(size, prob[idx[nonneg]])
 
 m <- model(location, slope,
-           intercept_ttd, slope_ttd)
+           intercept_ttd, slope_ttd,
+           intercept_neg, slope_neg)
 
 draws <- mcmc(m, chains = 10)
 convergence(draws)
@@ -105,13 +106,13 @@ ttd_sim <- sims[[2]][, , 1]
 
 # overall PPC check on each part of the likelihood
 bayesplot::ppc_ecdf_overlay(
-  detection$days_to_detection[nonneg],
-  ttd_sim,
+  detection$negative,
+  neg_sim,
   discrete = TRUE
 )
 bayesplot::ppc_ecdf_overlay(
-  detection$negative,
-  neg_sim,
+  detection$days_to_detection[nonneg],
+  ttd_sim,
   discrete = TRUE
 )
 
@@ -124,31 +125,32 @@ neg_probability <- tibble(
   date = dates
 )
 
-# probability of each positive time
-# switch to analytic solution with posterior samples of NB parameters
-ttd_samples <- calculate(ttd_dist[, 1], values = draws, nsim = nsim)[[1]][, , 1]
+# probability of each positive time for each date
+max_ttd <- 45
+n_ttd <- max_ttd + 1
+max_ttd_est <- max_ttd * 2
+n_ttd_est <- max_ttd_est + 1
+
+ttd_days <- col(matrix(0, n_dates, n_ttd_est)) - 1
+prob_mat <- prob[, rep(1, n_ttd_est)]
+pmf <- negative_binomial_pmf(ttd_days, size, prob_mat)
+
+# truncate at maximum number of days renormalise, and compute posterior mean
+pmf <- cbind(pmf[, seq_len(max_ttd)], rowSums(pmf[, n_ttd:n_ttd_est]))
+pmf_sums <- rowSums(pmf)
+pmf_rescaled <- sweep(pmf, 1, pmf_sums, FUN = "/")
+pmf_sims <- calculate(pmf_rescaled, values = draws, nsim = nsim)[[1]]
+pmf_mean <- apply(pmf_sims, 2:3, mean)
+
+# check the pmfs normalise
+all(rowSums(pmf_mean) == 1)
+
+# turn into a tibble to comine with negative days
 pos_probability <- tibble(
-  days = c(ttd_samples),
-  date = rep(dates, each = nsim)
-) %>%
-  group_by(date) %>%
-  count(days) %>%
-  mutate(
-    days = case_when(
-      days >= 20 ~ 20,
-      TRUE ~ days)
-  ) %>%
-  full_join(
-    expand_grid(
-      days = 0:20,
-      date = dates,
-      n = 0
-    )
-  ) %>%
-  group_by(date, days) %>%
-  summarise(n = sum(n)) %>%
-  group_by(date) %>%
-  mutate(probability = n / sum(n))
+  days = rep(seq_len(n_ttd) - 1, each = n_dates),
+  date = rep(dates, n_ttd),
+  probability = c(pmf_mean)
+) 
 
 # combine these, expand negative out into -1 and -2, and pad with 0s for -3:5
 probability <- pos_probability %>%
@@ -167,7 +169,7 @@ probability <- pos_probability %>%
       days >= 0 ~ probability * (1 - p_neg)
     )
   ) %>%
-  select(-`n`, -p_neg) %>%
+  select(-p_neg) %>%
   ungroup() %>%
   arrange(date, days)
 
@@ -224,7 +226,8 @@ p <- ggplot(df) +
   
   xlab(element_blank()) +
   
-  coord_cartesian(ylim = c(-5, 30)) +
+  coord_cartesian(ylim = c(-5, 30),
+                  xlim = c(as.Date("2020-03-01"), max(dates))) +
   scale_y_continuous(position = "right") +
   scale_x_date(date_breaks = "1 months", date_labels = "%b %d") +
   scale_alpha(range = c(0, 0.5)) +
@@ -256,8 +259,8 @@ p <- ggplot(df) +
         axis.title.y.right = element_text(vjust = 0.5, angle = 90),
         panel.spacing = unit(1.2, "lines")) +
   ggtitle(label = "Surveillance trend",
-          subtitle = "Time to detection of locally-acquired cases") +
-  ylab("Days from symptom onset to testing")
+          subtitle = "Time from symptom onset to detection for locally-acquired cases") +
+  ylab("Days")
 
 # add points for true delays
 df_obs <- detection %>%
@@ -267,6 +270,7 @@ df_obs <- detection %>%
 p <- p + geom_point(
   aes(date_infection, days_to_detection),
   data = df_obs,
+  pch = 16,
   size = 0.5,
   alpha = 0.2
 )
@@ -280,3 +284,8 @@ ggsave("outputs/figures/surveillance_effect.png",
        width = panel_width,
        height = panel_height * 1.25,
        scale = 1)
+
+# save the cdf matrix and dates for use in Reff model
+data.frame(date = dates) %>%
+  cbind(cdf_mat) %>%
+  saveRDS("outputs/time_to_detection_cdf.RDS")
