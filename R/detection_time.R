@@ -196,7 +196,7 @@ get_mean <- function (cdf) {
   sum(days * prob)
 }
 
-get_quantile_mat <- function(cdf, prob) {
+get_quantile_mat <- function(prob, cdf) {
   apply(cdf, 1, get_quantile, prob)
 }
 
@@ -204,17 +204,42 @@ get_mean_mat <- function(cdf) {
   apply(cdf, 1, get_mean)
 }
 
+
+deciles_lower <- seq(0.05, 0.45, by = 0.05)
+deciles_upper <- 1 - deciles_lower
+deciles <- c(deciles_lower, deciles_upper)
+cis <- vapply(deciles,
+              get_quantile_mat,
+              cdf_mat,
+              FUN.VALUE = numeric(nrow(cdf_mat)))
+
+decile_names <- paste0("ci_", (1 - 2 * deciles_lower) * 100)
+decile_names <- c(paste0(decile_names, "_lo"),
+                  paste0(decile_names, "_hi"))
+colnames(cis) <- decile_names
+
 # get a tibble of statistics to plot
 df <- tibble(
   date = dates,
   mean = get_mean_mat(cdf_mat),
-  median = get_quantile_mat(cdf_mat, 0.5),
-  ci_50_lo = get_quantile_mat(cdf_mat, 0.25),
-  ci_50_hi = get_quantile_mat(cdf_mat, 0.75),
-  ci_90_lo = get_quantile_mat(cdf_mat, 0.05),
-  ci_90_hi = get_quantile_mat(cdf_mat, 0.95),
+  median = get_quantile_mat(0.5, cdf_mat),
   type = "Nowcast"
-)
+) %>%
+  bind_cols(
+    as.data.frame(cis)
+  )
+
+ci_ribbon <- function(ci) {
+  
+  lo <- paste0("ci_", ci, "_lo")
+  hi <- paste0("ci_", ci, "_hi")
+  
+  geom_ribbon(
+    aes_string(ymin = lo,
+               ymax = hi),
+    alpha = 1/9
+  )
+}
 
 
 library(ggplot2)
@@ -235,12 +260,16 @@ p <- ggplot(df) +
   
   geom_vline(xintercept = intervention_dates()$date, colour = "grey80") +
   
-  geom_ribbon(aes(ymin = ci_90_lo,
-                  ymax = ci_90_hi),
-              alpha = 0.2) +
-  geom_ribbon(aes(ymin = ci_50_lo,
-                  ymax = ci_50_hi),
-              alpha = 0.5) +
+  ci_ribbon("90") +
+  ci_ribbon("80") +
+  ci_ribbon("70") +
+  ci_ribbon("60") +
+  ci_ribbon("50") +
+  ci_ribbon("40") +
+  ci_ribbon("30") +
+  ci_ribbon("20") +
+  ci_ribbon("10") +
+  
   geom_line(aes(y = ci_90_lo),
             colour = base_colour,
             alpha = 0.8) + 
@@ -248,7 +277,11 @@ p <- ggplot(df) +
             colour = base_colour,
             alpha = 0.8) + 
   
-  
+  geom_line(aes(y = median),
+            colour = grey(0.4),
+            alpha = 0.5,
+            size = 1.5) +
+
   geom_hline(yintercept = 0, linetype = "dotted") +
   
   cowplot::theme_cowplot() +
