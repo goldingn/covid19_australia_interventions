@@ -1892,18 +1892,24 @@ plot_fit <- function(observed_cases, cases_sim, valid) {
 # parsing the file of microdistancing measures from BETA
 barometer_results <- function() {
   
-  file <- "data/microdistancing/Barometer wave 1 to 10.csv"
-  file %>%
-    read_csv(
-      col_types = cols(
-        date = col_date(format = ""),
-        state = col_character(),
-        question = col_character(),
-        response = col_character(),
-        count = col_double(),
-        respondents = col_double()
-      )
-    ) %>%
+  files <- list.files("data/microdistancing/",
+                      pattern = ".csv$",
+                      full.names = TRUE)
+  
+  tibbles <- lapply(
+    files,
+    read_csv,
+    col_types = cols(
+      date = col_date(format = ""),
+      state = col_character(),
+      question = col_character(),
+      response = col_character(),
+      count = col_double(),
+      respondents = col_double()
+    )
+  )
+
+  do.call(bind_rows, tibbles) %>%
     filter(
       !state %in% c("Australia", "Other")
     ) %>%
@@ -2219,6 +2225,7 @@ load_contacts_by_state <- function(csv, date) {
     rename_all(
       recode,
       contact_num = "contacts",
+      num_contacts = "contacts",
       "Australian Capital Territory" = "ACT",
       "New South Wales" = "NSW",
       "Northern Territory" = "NT",
@@ -2259,14 +2266,17 @@ contact_survey_data <- function() {
     load_contacts_by_state(
       "data/contacts/barometer/contacts_by_state.csv",
       as.Date("2020-05-27")
+    ),
+    
+    load_contacts_by_state(
+      "data/contacts/barometer/contact_numbers_wave_11.csv",
+      as.Date("2020-06-03")
     )
     
     
   )
   
 }
-
-
 
 macrodistancing_params <- function(location_change_trends, gi_cdf) {
   # baseline number of non-household contacts, from Prem and Rolls
@@ -2368,7 +2378,7 @@ microdistancing_params <- function(n_locations = 8) {
 }
 
 # get data for fitting and predicting from microdistancing model
-microdistancing_data <- function(dates) {
+microdistancing_data <- function(dates = NULL) {
   
   # recode and collapse responses into percentage adherence
   barometer <- barometer_results() %>%
@@ -2418,6 +2428,11 @@ microdistancing_data <- function(dates) {
   # rate
   
   distancing <- readRDS("outputs/social_distancing_latent.RDS")
+  
+  # use these dates if no others are specified
+  if (is.null(dates)) {
+    dates <- distancing$date
+  }
   
   # get data to predict to
   pred_data <- distancing %>%

@@ -19,7 +19,9 @@ location_change_trends <- location_change() %>%
 contacts <- contact_survey_data() %>%
   filter(contacts < 999)
 
-params <- macrodistancing_params(location_change_trends)
+gi_cdf <- nishiura_cdf()
+
+params <- macrodistancing_params(location_change_trends, gi_cdf)
 OC_0 <- params$OC_0
 relative_weights <- params$relative_weights
 scaling <- params$scaling
@@ -59,8 +61,10 @@ pred_sim <- calculate(c(OC_t_state), values = draws, nsim = nsim)[[1]][, , 1]
 quants <- t(apply(pred_sim, 2, quantile, c(0.05, 0.25, 0.75, 0.95)))
 colnames(quants) <- c("ci_90_lo", "ci_50_lo", "ci_50_hi", "ci_90_hi")
 
+
 # get point estimates for plotting
-baseline_contact_params <- baseline_contact_parameters()
+gi_cdf <- nishiura_cdf()
+baseline_contact_params <- baseline_contact_parameters(gi_cdf)
 baseline_point <- tibble::tribble(
   ~date, ~estimate, ~sd,
   as.Date("2020-03-01"),
