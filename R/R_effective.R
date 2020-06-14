@@ -113,6 +113,18 @@ gi_mat <- sweep(rel_gi_mat, 2, scaling, FUN = "/")
 local_infectious <- gi_mat %*% local_cases
 imported_infectious <- gi_mat %*% imported_cases
 
+# account for underreporting of recent infections (recent infections have had
+# less time to be detected), by multiplying the number of active cases on each
+# date by the probability of detection and reporting by the time of the most
+# recent linelist. There is an average of one day from specimen collection to
+# confirmation, and the linelist covers the previous day, so the date by which
+# they need to have been detected two days prior to the linelist date.
+latest_detection_date <- linelist_date - 2
+delays <- as.numeric(latest_detection_date - dates)
+detection_prob <- 1 - ttd_survival(delays, dates)
+local_infectious <- sweep(local_infectious, 1, detection_prob, FUN = "*")
+imported_infectious <- sweep(imported_infectious, 1, detection_prob, FUN = "*")
+
 # the reduction from R0 down to R_eff for imported cases due to different
 # quarantine measures each measure applied during a different period. Q_t is
 # R_eff_t / R0 for each time t, modelled as a monotone decreasing step function
