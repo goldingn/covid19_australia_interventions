@@ -7,6 +7,7 @@ library(greta)
 library(readxl)
 library(RColorBrewer)
 library(tensorflow)
+
 tfp <- reticulate::import("tensorflow_probability")
 
 # read in and tidy up Facebook movement data
@@ -2489,7 +2490,7 @@ microdistancing_data <- function(dates) {
   
 }
 
-# given vectors of dates and numbers of days post infection, eturn the fraction of cases not being detected by that point
+# given vectors of dates and numbers of days post infection, return the fraction of cases not being detected by that point
 ttd_survival <- function(days, dates) {
   
   # load fitted CDFs over time
@@ -2536,6 +2537,133 @@ surveillance_effect <- function(dates, meanlog, sdlog, gi_bounds = c(0, 20)) {
   
   # weighted sum to get reduction due to impeded transmission
   c(ttd_days %*% gi_days)
+  
+}
+
+# get the mean date of symptom onset give a date of detection (using the
+# time-varying time to detection distribution)
+impute_one_onset <- function(detection_date, max_days = 40) {
+  
+  # get possible dates of infection
+  delays <- seq_len(max_days) 
+  possible_infection_dates <- detection_date - delays
+  possible_infection_dates
+  
+  # probability of being detected this many days later (probability of detection
+  # by this day, minus probability of detection by the previous day)
+  surv_from <- ttd_survival(delays, possible_infection_dates)
+  surv_to <- ttd_survival(delays + 1, possible_infection_dates)
+  prob <- surv_from - surv_to
+  
+  # normalise to get probabilities of different delays, and compute expected time since infection
+  prob <- prob / sum(prob)
+  expected_TSI <- sum(delays * prob)
+  
+  # subtract 5 to get expcted timee since symptom onset, round, and convert to the date
+  onset_date <- detection_date - round(expected_TSI - 5)
+  onset_date
+  
+}
+
+impute_onsets <- function(detection_dates, max_days = 40) {
+  
+  onset_dates <- lapply(detection_dates, impute_one_onset, max_days = max_days)
+  do.call(c, onset_dates)
+  
+}
+
+# read in the latest linelist and format for analysis
+latest_linelist <- function (dir = "~/not_synced/nndss") {
+  
+  # find the latest file
+  files <- list.files(dir, pattern = ".xlsx$", full.names = TRUE)
+  date_time_text <- gsub("^COVID-19 UoM ", "", basename(files)) 
+  date_time_text <- gsub(".xlsx$", "", date_time_text)
+  date_times <- as.POSIXct(date_time_text, format = "%d%b%Y %H%M")
+  latest <- which.max(date_times)
+  
+  dat <- readxl::read_xlsx(
+    files[latest],
+    col_types = c(
+      STATE = "text",
+      CONFIRMATION_STATUS = "numeric",
+      TRUE_ONSET_DATE = "date",
+      SPECIMEN_DATE = "date",
+      NOTIFICATION_DATE = "date",
+      NOTIFICATION_RECEIVE_DATE = "date",
+      Diagnosis_Date = "date",
+      AGE_AT_ONSET = "numeric",
+      SEX = "numeric",
+      DIED = "numeric",
+      PLACE_OF_ACQUISITION = "text",
+      HOSPITALISED = "numeric",
+      CV_ICU = "numeric",
+      CV_VENTILATED = "numeric",
+      OUTBREAK_REF = "text",
+      CASE_FOUND_BY = "numeric",
+      CV_SYMPTOMS = "text",
+      CV_OTHER_SYMPTOMS = "text",
+      CV_COMORBIDITIES = "text",
+      CV_OTHER_COMORBIDITIES = "text",
+      CV_GESTATION = "numeric",
+      CV_CLOSE_CONTACT = "numeric"
+    ))
+  
+  # Remove cases without a state
+  dat <- dat %>%
+    filter(!is.na(STATE))
+  
+  # David's parsing of the place of acquisition codes
+  dat$TRUE_ONSET_DATE[!grepl("2020", dat$TRUE_ONSET_DATE)] <- gsub('^\\d\\d\\d\\d', '2020', dat$TRUE_ONSET_DATE[!grepl("2020", dat$TRUE_ONSET_DATE)])
+  dat$NOTIFICATION_RECEIVE_DATE[!grepl("2020", dat$NOTIFICATION_RECEIVE_DATE)] <- gsub('^\\d\\d\\d\\d', '2020', dat$NOTIFICATION_RECEIVE_DATE[!grepl("2020", dat$NOTIFICATION_RECEIVE_DATE)])
+  dat$import_status <- "imported"
+  dat$import_status[grepl(pattern="^1101",dat$PLACE_OF_ACQUISITION)] <- "local"
+  dat$import_status[grepl(pattern="^00038888",dat$PLACE_OF_ACQUISITION)] <- "local"
+  dat$import_status[is.na(dat$PLACE_OF_ACQUISITION)] <- "local"
+  
+  # Generate linelist data
+  linelist <- dat %>%
+    # notification receive date seems buggy, and is sometimes before the notification date and speecimen collection
+    mutate(
+      date_confirmation = pmax(NOTIFICATION_RECEIVE_DATE,
+                               NOTIFICATION_DATE)
+    ) %>%
+    select(
+      date_onset = TRUE_ONSET_DATE,
+      date_detection = SPECIMEN_DATE,
+      date_confirmation,
+      region = STATE,
+      import_status
+    ) %>%
+    mutate(
+      report_delay = as.numeric(date_confirmation - date_onset),
+      date_linelist = as.Date(date_times[latest]),
+      region = as.factor(region)
+    ) %>%
+    
+    # Remove those with onset date after confirmation date
+    # only keep individuals with date of confirmation after onset date if less than 2 days (inclusive) because
+    # we assume some individuals tested via contact tracing will test positive before symptom onset and therefore plausible
+    # (noting that reporting delay distribution only calculated from positive differences)
+    # also remove any individuals with NA for both notification and symptom onset dates
+    filter(
+      date_confirmation >= (date_onset - 2) | is.na(date_confirmation) | is.na(date_onset)
+    ) %>%
+    filter(
+      !(is.na(date_confirmation) & is.na(date_onset))
+    ) %>%
+    mutate_at(
+      vars(starts_with("date_")),
+      ~as.Date(.)
+    )
+  
+  # save a formatted copy, and return
+  saveRDS(
+    linelist, 
+    file.path(dir, "linelist_formatted.RDS")
+  )
+  
+  linelist
   
 }
 

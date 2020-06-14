@@ -11,22 +11,13 @@ library(RColorBrewer)
 source("R/functions.R")
 
 set.seed(2020-04-29)
-linelist <- readRDS("~/not_synced/nnds/linelist_formatted.RDS")
+linelist <- latest_linelist()
 
-# impute with the mean delay on the date of onset for those missing it
-delay_samples <- read_csv(
-  file = "data/cases/sampled_report_delay.csv",
-  col_types = cols(x = col_integer())
-)
-mean_delay <- round(mean(delay_samples$x))
-
-linelist <- linelist %>%
-  mutate(
-    date_onset = case_when(
-      is.na(date_onset) ~ date_confirmation - mean_delay,
-      TRUE ~date_onset
-    )
-  )
+# impute the onset dates (only 0.6% of cases) using expected value from time to
+# detection distribution. Do this outside dplyr to avoid duplicating slow computations
+missing_onset <- is.na(linelist$date_onset)
+imputed_onsets <- impute_onsets(linelist$date_detection[missing_onset])
+linelist$date_onset[missing_onset] <- imputed_onsets
 
 # build date-by-state matrices of the counts of new local and imported cases and
 # imports by assumed date of infection (with an incubation period of 5 days)
@@ -48,15 +39,16 @@ google_change_data <- readRDS("outputs/google_change_trends.RDS")
 last_mobility_date <- max(google_change_data$date)
 mobility_dates <- seq(min(dates), last_mobility_date, by = 1)
 change_date <- last_mobility_date + 1
+linelist_date <- linelist$date_linelist[1]
 
 # save these for Freya and Rob to check
 tibble(
+  linelist_date = linelist_date,
   latest_infection_date = max(dates),
   latest_reff_date = last_mobility_date,
   forecast_reff_change_date = change_date
 ) %>%
   write_csv("outputs/output_dates.csv")
-
 
 n_states <- length(states)
 n_dates <- length(dates)

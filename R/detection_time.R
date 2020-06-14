@@ -19,7 +19,9 @@ detection <- linelist %>%
   mutate(
     date_infection = date_onset - 5,
     days_to_detection = date_detection - date_onset,
-    days_to_detection = as.numeric(days_to_detection)
+    days_to_detection = as.numeric(days_to_detection),
+    confirmation_delay = date_confirmation - date_detection,
+    confirmation_delay = as.numeric(confirmation_delay)
   ) %>%
   filter(days_to_detection >= -12) %>%
   # also consider the number tested 1 or 2+ days prior to symptom onset
@@ -322,3 +324,11 @@ ggsave("outputs/figures/surveillance_effect.png",
 data.frame(date = dates) %>%
   cbind(cdf_mat) %>%
   saveRDS("outputs/time_to_detection_cdf.RDS")
+
+# The majority (51%) of cases are confirmed exactly one day after specimen
+# collection, 85% are confirmed within two days.
+detection %>%
+  summarise(mean(confirmation_delay == 1),
+            mean(confirmation_delay <= 2))
+
+  
