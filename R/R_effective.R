@@ -221,7 +221,7 @@ m <- model(expected_infections_vec)
 
 draws <- mcmc(
   m,
-  sampler = hmc(Lmin = 20, Lmax = 25),
+  sampler = hmc(Lmin = 25, Lmax = 30),
   chains = 10,
   one_by_one = TRUE
 )
@@ -267,23 +267,26 @@ check_projection(draws,
 # Reff local component one under only micro- and only macro-distancing
 de <- distancing_effect
 
+# include the effect of surveillance at baseline (no improvements yet, but not nothing)
+baseline_surveillance_effect <- surveillance_reff_local_reduction[1]
+
 infectious_days <- infectious_period(gi_cdf)
 
+# microdistancing
 household_infections_micro <- de$HC_0 * (1 - de$p ^ de$HD_0)
 non_household_infections_micro <- de$OC_0 * infectious_days *
   (1 - de$p ^ de$OD_0) * de$gamma_t_state
 hourly_infections_micro <- household_infections_micro +
   non_household_infections_micro
-R_eff_loc_1_micro <- hourly_infections_micro
-R_eff_loc_1_micro <- R_eff_loc_1_micro[extend_idx, ]
+R_eff_loc_1_micro <- hourly_infections_micro[extend_idx, ] * baseline_surveillance_effect
 
+# macrodistancing
 h_t <- h_t_state(mobility_dates)
 HD_t <- de$HD_0 * h_t
 household_infections_macro <- de$HC_0 * (1 - de$p ^ HD_t)
 non_household_infections_macro <- de$OC_t_state * infectious_days * (1 - de$p ^ de$OD_0)
 hourly_infections_macro <- household_infections_macro + non_household_infections_macro
-R_eff_loc_1_macro <- hourly_infections_macro
-R_eff_loc_1_macro <- R_eff_loc_1_macro[extend_idx, ]
+R_eff_loc_1_macro <- hourly_infections_macro[extend_idx, ] * baseline_surveillance_effect
 
 # Reff for locals compnent under only surveillance improvements
 R_eff_loc_1_surv <- exp(log_R0 + log(surveillance_reff_local_reduction))
@@ -757,6 +760,9 @@ ggplot(exp_imports_output) +
 # make counterfactual predictions of case counts if quarantine had never been
 # extended to all arrivals (imports get local first-stage quarantine Reff)
 
+# do this at national level, and start at a time when there were more cases, as
+# in the check
+
 # Compute local cases directly caused by imports under assumption about Reff for
 # imports, then disaggregate those locally-acquired (from imports) cases
 # according to their infectiousness profile to get force of local infection
@@ -772,10 +778,6 @@ cases_basic_quarantine <- project_local_cases(
   R_local = R_eff_loc_1[seq_len(n_dates), ],
   disaggregation_probs = gi_vec
 )
-
-# why is this so big? are cases being counted multiple times?
-# is the SI distribution somehow being shortened?
-# are infectiousness and cases being put in the wrong way round?
 
 cases_basic_quarantine_ntnl <- rowSums(cases_basic_quarantine)
 cumul_cases_basic_quarantine_ntnl <- cumsum(cases_basic_quarantine_ntnl)
