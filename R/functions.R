@@ -708,51 +708,6 @@ parameter <- function(x, truncation = c(-Inf, Inf)) {
   normal(mean(x), sd(x), truncation = truncation)
 }
 
-# given a positive integer vector of days (since an infection began), compute
-# the probability that the generation interval values falls in that day
-generation_interval_probability <- function(days, fixed = FALSE) {
-  
-  download.file(
-    "https://github.com/epiforecasts/EpiNow/raw/master/data-raw/gi.rds",
-    (f <- tempfile()),
-    quiet = TRUE
-  )
-  gi_param_samples <- readRDS(f)
-  
-  # compute the CDF of the lognormal distribution, for this and the next day
-  days_lower <- days
-  days_upper <- days + 1
-  
-  if (fixed) {
-    
-    # if fixed, we can do this in R
-    mean <- mean(gi_param_samples$mean)
-    sd <- mean(gi_param_samples$sd)
-    scale <- sd ^ 2 / mean
-    shape <- mean / scale
-    
-    p_lower <- pgamma(days_lower, shape = shape, scale = scale)
-    p_upper <- pgamma(days_upper, shape = shape, scale = scale)
-    
-  } else {
-    # otherwise create greta arrays for the parameters, with priors based on
-    # these samples
-    scale_draws <- gi_param_samples$sd ^ 2 / gi_param_samples$mean
-    shape_draws <- gi_param_samples$mean / scale_draws
-    rate_draws <- 1 / scale_draws
-    
-    rate <- parameter(rate_draws, c(0, Inf))
-    shape <- parameter(shape_draws, c(0, Inf))
-    
-    p_lower <- gamma_cdf(days_lower, shape, rate)
-    p_upper <- gamma_cdf(days_upper, shape, rate)
-  }
-  
-  # get the integral of the density over this day
-  p_upper - p_lower
-  
-}
-
 nishiura_samples <- function () {
   
   # priors for the parameters of the lognormal distribution over the serial interval from Nishiura et
@@ -807,14 +762,58 @@ ganyani_gi <- function(which = c("Tianjin", "Singapore")) {
     
 }
 
+# The two (baseline) generation intervals of Ganyani et al.
+ganyani_cdf <- function(which) {
+  
+  gi_params <- ganyani_gi(which)
+  
+  beta <- gi_params$mean$est / (gi_params$sd$est ^ 2)
+  alpha <- gi_params$mean$est * beta
+  
+  gi_cdf <- function(days) {
+    pgamma(days, alpha, beta)
+  }
+  
+  gi_cdf
+  
+}
 
-# Discretised generation interval with truncated lognormal distribution. Given a
-# number of days post-infection, compute the probability of the generation
-# interval having that length as the density of a truncated lognormal
-# distribution on time over the duration of that day. The parameters of the
-# lognormal distribution are meanlog and sdlog (which may be greta arrays or R
-# numerics), and the bounds are given by 'bounds', which must be R numerics.
-gi_probability <- function(days, meanlog, sdlog, bounds = c(0, 20)) {
+# the serial interval of Nishiura et al.
+nishiura_cdf <- function() {
+  
+  # generation interval distribution; use SI distribution from Nishiura et al.
+  nishiura <- nishiura_samples()
+  meanlog <- mean(nishiura$param1)
+  sdlog <- mean(nishiura$param2)
+  
+  gi_cdf <- function(days) {
+    plnorm(days, meanlog, sdlog)
+  }
+  
+  gi_cdf
+  
+}
+
+# the serial interval distribution of Bi et al. (used in Impeerial Report 13 /
+# Flaxman et al.)
+bi_cdf <- function() {
+  
+  gi_cdf <- function(days) {
+    pgamma(days, 2.29, 0.36)
+  }
+  
+  gi_cdf
+  
+}
+
+# Discretised generation interval with truncated continuous distribution. Given
+# a number of days post-infection, compute the probability of the generation
+# interval having that length as the density of a truncated distribution (given
+# by an R function for its cumulative density function 'cdf') on time
+# over the duration of that day.
+gi_probability <- function(cdf,
+                           days = seq(bounds[1], bounds[2]),
+                           bounds = c(0, 20)) {
   
   # days of infectiousness
   n_days <- length(days)
@@ -822,41 +821,15 @@ gi_probability <- function(days, meanlog, sdlog, bounds = c(0, 20)) {
   out_of_bounds <- days < bounds[1] | days > bounds[2]
   days[out_of_bounds] <- -1
   
-  # greta version
-  if (inherits(meanlog, "greta_array") | inherits(sdlog, "greta_array")) {
-    plnorm <- lognormal_cdf
-  }
-
   # get discretised probability, without accounting for truncation  
-  p_lower <- plnorm(days, meanlog, sdlog)
-  p_upper <- plnorm(days + 1, meanlog, sdlog)
-  p <- p_upper - p_lower
+  p <- cdf(days + 1) - cdf(days)
   
   # adjust density for truncation
-  upper_bound <- plnorm(bounds[2] + 1, meanlog, sdlog)
-  lower_bound <- plnorm(bounds[1], meanlog, sdlog)
+  upper_bound <- cdf(bounds[2] + 1)
+  lower_bound <- cdf(bounds[1])
   p <- p / (upper_bound - lower_bound)
   
   p
-  
-}
-
-# given a positive integer vector of days (since a case became symptomatic),
-# compute the probability that the serial interval values falls in that day
-serial_interval_probability <- function(infectious_days, meanlog = NULL, sdlog = NULL) {
-
-  si_param_samples <- nishiura_samples()
-  
-  # used fixed values for parameters if values are not passed in
-  if (is.null(meanlog)) {
-    meanlog <- mean(si_param_samples$param1)
-  }
-
-  if (is.null(sdlog)) {
-    sdlog <- mean(si_param_samples$param2)
-  }
-  
-  gi_probability(infectious_days, meanlog, sdlog)
   
 }
 
@@ -965,10 +938,10 @@ time_difference_matrix <- function (n_days) {
 # of probabilities with masked lower values, is more efficient in greta than
 # looping since it can easily be parallelised. Note this is the same operation
 # as cases_known_outcome_matrix() in goldingn/australia_covid_ascertainment
-disaggregation_matrix <- function (n_days, max_days = 20, ...) {
+disaggregation_matrix <- function (cdf, n_days, max_days = 20, ...) {
   
   diff <- time_difference_matrix(n_days, max_days)
-  si_disaggregation <- gi_probability(days, ...)
+  si_disaggregation <- gi_probability(cdf, days, ...)
   
 }
 
@@ -977,23 +950,11 @@ disaggregation_matrix <- function (n_days, max_days = 20, ...) {
 # deterministic serial interval distribution base don prior means, othrwise
 # treeat the parameters of the distribution as unknown parameters, to account
 # for uncrtainty in the distribution.
-apply_serial_interval <- function(cases) {
+apply_serial_interval <- function(cdf, cases) {
   
   # get a square matrix of contributions of each date to each other, and
   # matrix-multiply to disaggregate
-  si_disaggregation <- disaggregation_matrix(nrow(cases))
-  si_disaggregation %*% cases
-  
-}
-
-apply_generation_interval <- function(cases, fixed = FALSE) {
-  
-  # get vector of probabilities (either an R or a greta array, based on 'fixed')
-  probabilities <- generation_interval_probability(0:45, fixed = fixed)
-  
-  # get a square matrix of contributions of each date to each other, and
-  # matrix-multiply to disaggregate
-  si_disaggregation <- disaggregation_matrix(nrow(cases), probabilities)
+  si_disaggregation <- disaggregation_matrix(cdf, nrow(cases))
   si_disaggregation %*% cases
   
 }
@@ -1482,10 +1443,10 @@ rolls_contact_data <- function() {
 }
 
 
-baseline_contact_parameters <- function() {
+baseline_contact_parameters <- function(gi_cdf) {
   
   # mean duration of infection in days
-  infectious_days <- infectious_period()
+  infectious_days <- infectious_period(gi_cdf)
   
   # get the average number and duration contacts by household/non-household
   baseline_contact_params <- rolls_contact_data() %>%
@@ -1564,20 +1525,18 @@ freya_survey_results <- function() {
 }
 
 # mean infectious period in days
-infectious_period <- function() {
+infectious_period <- function(cdf) {
   days <- 0:100
-  ganyani <- ganyani_gi()
-  lognormal <- lognormal_prior(ganyani$mean$est, ganyani$mean$sd)
-  gi_pmf <- gi_probability(days, lognormal$mean, lognormal$sd)
+  gi_pmf <- gi_probability(cdf, days)
   infectious_days <- sum(days * gi_pmf)
   infectious_days
 }
 
 # find a prior over logit(p) that corresponds to the prior over R0, at the mean
 # values of the baseline contact data, by moment matching
-logit_p_prior <- function(params) {
+logit_p_prior <- function(params, gi_cdf) {
   
-  infectious_days <- infectious_period()
+  infectious_days <- infectious_period(gi_cdf)
   
   transform <- function(free) {
     list(meanlogit = free[1],
@@ -1761,19 +1720,19 @@ social_distancing_national <- function(dates, n_extra = 0) {
 }
 
 # greta sub-model for the component R_eff due to macro- and micro-distancing
-distancing_effect_model <- function(dates) {
+distancing_effect_model <- function(dates, gi_cdf) {
   
   # informative priors on variables for contacts at t = 0 (Hx = household, Ox =
   # non-household, Tx = total, xC = contacts. xD = duration)
-  baseline_contact_params <- baseline_contact_parameters()
+  baseline_contact_params <- baseline_contact_parameters(gi_cdf)
   
   # prior on the probability of *not* transmitting, per hour of contact
   # (define to match moments of R0 prior)
-  logit_p_params <- logit_p_prior(baseline_contact_params)
+  logit_p_params <- logit_p_prior(baseline_contact_params, gi_cdf)
   logit_p <- normal(logit_p_params$meanlogit, logit_p_params$sdlogit)
   p <- ilogit(logit_p)
   
-  infectious_days <- infectious_period()
+  infectious_days <- infectious_period(gi_cdf)
   
   HC_0 <- normal(baseline_contact_params$mean_contacts[1],
                  baseline_contact_params$se_contacts[1],
@@ -1805,7 +1764,7 @@ distancing_effect_model <- function(dates) {
   contacts <- contact_survey_data() %>%
     filter(contacts < 999)
   
-  params <- macrodistancing_params(location_change_trends)
+  params <- macrodistancing_params(location_change_trends, gi_cdf)
   OC_0 <- params$OC_0
   relative_weights <- params$relative_weights
   scaling <- params$scaling
@@ -2309,9 +2268,9 @@ contact_survey_data <- function() {
 
 
 
-macrodistancing_params <- function(location_change_trends) {
+macrodistancing_params <- function(location_change_trends, gi_cdf) {
   # baseline number of non-household contacts, from Prem and Rolls
-  baseline_contact_params <- baseline_contact_parameters()
+  baseline_contact_params <- baseline_contact_parameters(gi_cdf)
   
   OC_0 <- normal(baseline_contact_params$mean_contacts[2],
                  baseline_contact_params$se_contacts[2],
@@ -2521,7 +2480,7 @@ ttd_survival <- function(days, dates) {
 }
 
 # reduction in R due to faster detection of cases
-surveillance_effect <- function(dates, meanlog, sdlog, gi_bounds = c(0, 20)) {
+surveillance_effect <- function(dates, cdf, gi_bounds = c(0, 20)) {
   
   n_dates <- length(dates)
   gi_range <- diff(gi_bounds) + 1
@@ -2533,7 +2492,7 @@ surveillance_effect <- function(dates, meanlog, sdlog, gi_bounds = c(0, 20)) {
   ttd_days[] <- ttd_survival(c(day_mat), rep(dates, gi_range))
   
   # generation interval probability on each day post-infection
-  gi_days <- gi_probability(day_vec, meanlog, sdlog, bounds = gi_bounds)
+  gi_days <- gi_probability(cdf, day_vec, bounds = gi_bounds)
   
   # weighted sum to get reduction due to impeded transmission
   c(ttd_days %*% gi_days)

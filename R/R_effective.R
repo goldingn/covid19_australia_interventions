@@ -10,6 +10,8 @@ library(tidyr)
 library(RColorBrewer)
 source("R/functions.R")
 
+staging <- FALSE
+
 set.seed(2020-04-29)
 linelist <- latest_linelist()
 
@@ -81,17 +83,13 @@ local_cases <- date_by_state %>%
   select(-import_status) %>%
   as.matrix()
 
-library(greta.gp)
-
-# generation interval distribution; use SI distribution from Nishiura et al.
-nishiura <- nishiura_samples()
-meanlog <- mean(nishiura$param1)
-sdlog <- mean(nishiura$param2)
+# use Nishiura's serial interval as a generation interval
+gi_cdf <- nishiura_cdf()
 
 # circulant matrix of generation interval discrete probabilities
 # lower bound of 1 day so cases can't infect others on the day of infection
 day_diff <- time_difference_matrix(n_dates)
-gi_mat_naive <- gi_probability(day_diff, meanlog, sdlog, bounds = c(0, 20))
+gi_mat_naive <- gi_probability(gi_cdf, day_diff)
 
 # compute fraction surviving without detection in circulant matrix format,
 # multiply by GI matrix and rescale to get new GI distribution on each day
@@ -101,8 +99,7 @@ ttd_mat[] <- ttd_survival(days = c(day_diff),
 rel_gi_mat <- gi_mat_naive * ttd_mat
 scaling <- surveillance_effect(
   dates = dates,
-  meanlog = meanlog,
-  sdlog = sdlog,
+  cdf = gi_cdf,
   gi_bounds = c(0, 20)
 )
 gi_mat <- sweep(rel_gi_mat, 2, scaling, FUN = "/")
@@ -124,6 +121,8 @@ delays <- as.numeric(latest_detection_date - dates)
 detection_prob <- 1 - ttd_survival(delays, dates)
 local_infectious <- sweep(local_infectious, 1, detection_prob, FUN = "*")
 imported_infectious <- sweep(imported_infectious, 1, detection_prob, FUN = "*")
+
+library(greta.gp)
 
 # the reduction from R0 down to R_eff for imported cases due to different
 # quarantine measures each measure applied during a different period. Q_t is
@@ -149,7 +148,7 @@ log_Qt <- log_q[q_index]
 # contacts per 24h (itself modelled from mobility data, calibrated against
 # contact surveys) and the relative transmission probability per contact,
 # inferred from surveys on micro-distancing behaviour.
-distancing_effect <- distancing_effect_model(mobility_dates)
+distancing_effect <- distancing_effect_model(mobility_dates, gi_cdf)
 
 # pull out R_t component due to distancing for locally-acquired cases, and
 # extend to correct length
@@ -187,9 +186,8 @@ valid <- which(local_valid & import_valid, arr.ind = TRUE)
 dates_long <- min(dates) + seq_along(date_nums) - 1
 surveillance_reff_local_reduction <- surveillance_effect(
   dates = dates_long,
-  meanlog = meanlog,
-  sdlog = sdlog,
-  gi_bounds = c(0, 20))
+  cdf = gi_cdf
+)
 
 
 # log Reff for locals and imports
@@ -252,7 +250,7 @@ R_eff_loc_12 <- exp(log_R_eff_loc)
 R_eff_imp_12 <- exp(log_R_eff_imp)
 
 # vector of generation interval probabilities
-gi_vec <- gi_probability(0:20, meanlog, sdlog, bounds = c(0, 20))
+gi_vec <- gi_probability(gi_cdf)
 
 # check fit of projected cases against national epi curve
 check_projection(draws,
@@ -269,7 +267,7 @@ check_projection(draws,
 # Reff local component one under only micro- and only macro-distancing
 de <- distancing_effect
 
-infectious_days <- infectious_period()
+infectious_days <- infectious_period(gi_cdf)
 
 household_infections_micro <- de$HC_0 * (1 - de$p ^ de$HD_0)
 non_household_infections_micro <- de$OC_0 * infectious_days *
@@ -303,7 +301,10 @@ output_directories <- c("",
                         "counterfactual_2",
                         "counterfactual_3")
 
-# output_directories <- file.path(output_directories, "staging")
+# put in a separatee directory if testing something
+if (staging) {
+  output_directories <- file.path(output_directories, "staging")
+}
 
 for (type in 1:5) {
   
@@ -766,7 +767,6 @@ local_infectiousness <- gi_mat %*% first_locals
 # Given this basic force of infection, R for locally-acquired cases (mean trend,
 # no clusters), and the infectiousness profile, iterate the dynamics to compute
 # the numbers of local cases
-gi_vec <- gi_probability(0:20, meanlog, sdlog)
 cases_basic_quarantine <- project_local_cases(
   infectiousness = local_infectiousness,
   R_local = R_eff_loc_1[seq_len(n_dates), ],
