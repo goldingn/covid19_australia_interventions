@@ -50,7 +50,6 @@ state_index <- state_datastream_lookup %>%
   pull(state) %>%
   match(states)
 
-
 # social distancing latent factor as a function of behavioural switches
 # triggered by the major interventions
 date_num <- as.numeric(dates - first_date)

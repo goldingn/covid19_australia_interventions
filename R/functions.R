@@ -90,7 +90,8 @@ google_mobility <- function() {
       parks_percent_change_from_baseline = col_double(),
       transit_stations_percent_change_from_baseline = col_double(),
       workplaces_percent_change_from_baseline = col_double(),
-      residential_percent_change_from_baseline = col_double()
+      residential_percent_change_from_baseline = col_double(),
+      census_fips_code = col_character()
     )) %>%
     filter(country_region == "Australia") %>%
     tidyr::pivot_longer(
@@ -114,7 +115,7 @@ google_mobility <- function() {
 # download and format Apple's mobility data - will need to update the url regularly
 apple_mobility <- function() {
   # get link from: https://www.apple.com/covid19/mobility
-  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2009HotfixDev25/v3/en-us/applemobilitytrends-2020-06-07.csv"
+  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2010HotfixDev17/v3/en-us/applemobilitytrends-2020-06-13.csv"
   data <- readr::read_csv(
     url,
     col_types = cols(
@@ -185,7 +186,7 @@ apple_mobility <- function() {
 citymapper_mobility <- function() {
   
   # get link from: https://citymapper.com/cmi/about
-  url <- "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20200609.csv"
+  url <- "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20200614.csv"
   data <- readr::read_csv(
     url,
     skip = 3,
@@ -2516,7 +2517,9 @@ surveillance_effect <- function(dates, cdf, gi_bounds = c(0, 20)) {
 
 # get the mean date of symptom onset give a date of detection (using the
 # time-varying time to detection distribution)
-impute_one_onset <- function(detection_date, max_days = 40) {
+impute_one_onset <- function(detection_date, method = c("expected", "random"), max_days = 40) {
+  
+  method <- match.arg(method)
   
   # get possible dates of infection
   delays <- seq_len(max_days) 
@@ -2528,20 +2531,30 @@ impute_one_onset <- function(detection_date, max_days = 40) {
   surv_from <- ttd_survival(delays, possible_infection_dates)
   surv_to <- ttd_survival(delays + 1, possible_infection_dates)
   prob <- surv_from - surv_to
-  
-  # normalise to get probabilities of different delays, and compute expected time since infection
+
+  # normalise to get probabilities of different delays
   prob <- prob / sum(prob)
-  expected_TSI <- sum(delays * prob)
+
+  # compute either the expected time since infection, or draw a random one
+  TSI <- switch(method,
+                expected = round(sum(delays * prob)),
+                random = sample(delays, 1, prob = prob))
   
-  # subtract 5 to get expcted timee since symptom onset, round, and convert to the date
-  onset_date <- detection_date - round(expected_TSI - 5)
+  # subtract 5 to get expcted time since symptom onset, round, and convert to the date
+  onset_date <- detection_date - (TSI - 5)
   onset_date
   
 }
 
-impute_onsets <- function(detection_dates, max_days = 40) {
+impute_onsets <- function(detection_dates,
+                          method = c("expected", "random"),
+                          max_days = 40) {
   
-  onset_dates <- lapply(detection_dates, impute_one_onset, max_days = max_days)
+  method <- match.arg(method)
+  onset_dates <- lapply(detection_dates,
+                        impute_one_onset,
+                        method  = method,
+                        max_days = max_days)
   do.call(c, onset_dates)
   
 }
@@ -2600,7 +2613,11 @@ latest_linelist <- function (dir = "~/not_synced/nndss") {
     # notification receive date seems buggy, and is sometimes before the notification date and speecimen collection
     mutate(
       date_confirmation = pmax(NOTIFICATION_RECEIVE_DATE,
-                               NOTIFICATION_DATE)
+                               NOTIFICATION_DATE,
+                               na.rm = TRUE),
+      # # when the above is mixed with NAs, the return value is a numeric :/
+      # date_confirmation = as.POSIXct(date_confirmation,
+      #                             origin = as.Date("1970-01-01"))
     ) %>%
     select(
       date_onset = TRUE_ONSET_DATE,
@@ -2629,6 +2646,14 @@ latest_linelist <- function (dir = "~/not_synced/nndss") {
     mutate_at(
       vars(starts_with("date_")),
       ~as.Date(.)
+    ) %>%
+    # for cases missing a date of detection, assume it's the day before the date
+    # of confirmation (1 days is the median and mode of this delay distribution)
+    mutate(
+      date_detection = case_when(
+        is.na(date_detection) ~ date_confirmation - 1,
+        TRUE ~ date_detection
+      )
     )
   
   # save a formatted copy, and return

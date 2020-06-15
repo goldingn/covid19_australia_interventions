@@ -18,7 +18,10 @@ linelist <- latest_linelist()
 # impute the onset dates (only 0.6% of cases) using expected value from time to
 # detection distribution. Do this outside dplyr to avoid duplicating slow computations
 missing_onset <- is.na(linelist$date_onset)
-imputed_onsets <- impute_onsets(linelist$date_detection[missing_onset])
+imputed_onsets <- impute_onsets(
+  linelist$date_detection[missing_onset],
+  method = "random"
+)
 linelist$date_onset[missing_onset] <- imputed_onsets
 
 # build date-by-state matrices of the counts of new local and imported cases and
