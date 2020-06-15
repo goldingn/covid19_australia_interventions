@@ -172,11 +172,36 @@ n_date_nums <- length(date_nums)
 inducing_date_nums <- rev(seq(n_date_nums, 1, by = -5))
 n_inducing <- length(inducing_date_nums)
 
-# temporally correlated errors in R_eff for local cases - representing all the
+# temporally correlated errors in R_eff for local and imported cases - representing all the
 # stochastic transmission dynamics in the community, such as outbreaks in
-# communities with higher or lower tranmission rates.
-epsilon_O <- epsilon_gp(date_nums, n_states, inducing_date_nums)
-epsilon_L <- epsilon_gp(date_nums, n_states, inducing_date_nums)
+# communities with higher or lower tranmission rates, and interstate and
+# temporal variation in quarantine effectiveness not captured by the step
+# function
+
+kernel_O <- rbf(
+  lengthscales = lognormal(3, 1),
+  variance = normal(0, 0.5, truncation = c(0, Inf)) ^ 2,
+)
+
+epsilon_O <- epsilon_gp(
+  date_nums = date_nums,
+  n_states = n_states,
+  kernel = kernel_O,
+  inducing_date_nums = inducing_date_nums
+)
+
+kernel_L <- rational_quadratic(
+  lengthscales = lognormal(3, 1),
+  variance = normal(0, 0.5, truncation = c(0, Inf)) ^ 2,
+  alpha = lognormal(3, 1)
+)
+
+epsilon_L <- epsilon_gp(
+  date_nums = date_nums,
+  n_states = n_states,
+  kernel = kernel_L,
+  inducing_date_nums = inducing_date_nums
+)
 
 # work out which elements to exclude (because there were no infectious people)
 # local_infectious_sim <- calculate(local_infectious, nsim = 1)[[1]][1, , ]
@@ -224,7 +249,7 @@ m <- model(expected_infections_vec)
 
 draws <- mcmc(
   m,
-  sampler = hmc(Lmin = 25, Lmax = 30),
+  sampler = hmc(Lmin = 10, Lmax = 15),
   chains = 10,
   one_by_one = TRUE
 )

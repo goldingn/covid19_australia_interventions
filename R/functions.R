@@ -1992,19 +1992,10 @@ macrodistancing_model <- function(data,
 epsilon_gp <- function(
   date_nums,
   n_states,
+  kernel,
   inducing_date_nums = date_nums,
-  alpha = lognormal(3, 1),
-  lengthscale = lognormal(3, 1),
-  sigma = normal(0, 0.5, truncation = c(0, Inf)),
   sigma_state = normal(0, 0.5, truncation = c(0, Inf), dim = n_states),
   tol = 1e-6) {
-  
-  # GP kernel  
-  kernel <- rational_quadratic(
-    lengthscales = lengthscale,
-    variance = sigma ^ 2,
-    alpha = alpha
-  )
   
   # whitened representation of GP
   n_inducing <- length(inducing_date_nums)
