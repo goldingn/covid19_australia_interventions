@@ -52,7 +52,7 @@ contacts_ga <- negative_binomial(out$size, out$prob)
 contacts_sim <- calculate(contacts_ga, values = draws, nsim = nsim)[[1]][, , 1]
 bayesplot::ppc_ecdf_overlay(
   contacts$contacts,
-  contacts_sim,
+  contacts_sim[1:1000, ],
   discrete = TRUE
 )
 
@@ -101,10 +101,25 @@ idx <- contacts_inla %>%
 
 sry <- glm$summary.fitted.values[idx, ]
 survey_points <- survey_points %>%
-  mutate(estimate = sry$mean,
-         lower = sry$`0.025quant`,
-         upper = sry$`0.975quant`) %>%
+  mutate(
+    date = date + 3,
+    estimate = sry$mean,
+    lower = sry$`0.025quant`,
+    upper = sry$`0.975quant`
+  ) %>%
   mutate(type = "Nowcast")
+
+# get holiday dates and subset to where they overlap with surveys
+holiday_lines <- survey_points %>%
+  mutate(date_start = date - 3,
+         date_end = date + 3) %>%
+  select(state, date_start, date_end) %>%
+  left_join(
+    holiday_dates() %>%
+      mutate(state = abbreviate_states(state))
+  ) %>%
+  filter(date < date_end & date > date_start)
+
 
 
 type <- 1
@@ -143,11 +158,23 @@ p <- plot_trend(pred_sim,
     colour = grey(0.5)
   ) + 
   
+  # rug marks for holidays
+  geom_rug(
+    aes(date),
+    data = holiday_lines,
+    col = green,
+    size = 1,
+    length = unit(0.1, "npc"),
+    sides = "b",
+    inherit.aes = FALSE
+  ) +
+  
   # add survey results estimate
   geom_point(
     aes(date, estimate),
     data = survey_points,
-    size = 0.5
+    size = 4,
+    pch = "_"
   ) +
   geom_errorbar(
     aes(
@@ -157,10 +184,14 @@ p <- plot_trend(pred_sim,
       ymax = upper
     ),
     data = survey_points,
+    size = 4,
+    alpha = 0.2,
     width = 0
   )
 
+
 p
+
 
 # get required aspect ratio
 panel_width <- 11.69 / 2

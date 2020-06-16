@@ -147,12 +147,15 @@ p <- ggplot(line_df) +
   geom_point(
     aes(date, percentage),
     data = point_df,
-    size = 0.5
+    size = 3,
+    pch = "_"
   ) +
   
   geom_errorbar(
     aes(date, percentage, ymin = lower, ymax = upper),
     data = point_df,
+    size = 3,
+    alpha = 0.2,
     width = 0
   ) +
   
@@ -203,3 +206,4 @@ pred_summary <- pred_plot %>%
 
 saveRDS(pred_summary,
         file = "outputs/microdistancing_trend_summary.RDS")
+

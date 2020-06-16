@@ -3,10 +3,8 @@
 source("R/functions.R")
 set.seed(2020-06-10)
 
-linelist <- readRDS("~/not_synced/nnds/linelist_formatted.RDS")
-
 # make the detection date the earliest of peciment conllection or notification
-detection <- linelist %>%
+detection <- latest_linelist() %>%
   # remove any cases where first specimen collection is being reported as after
   # case confirmation (data entry error with dates, so detection date could be
   # erroneous)
