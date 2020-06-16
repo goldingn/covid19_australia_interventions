@@ -480,9 +480,8 @@ for (type in 1:5) {
     ylab(expression(R["eff"]~component))
   
   ggsave(file.path(dir, "figures/R_eff_1_local_surv.png"),
-         width = multi_width,
-         height = multi_height,
-         scale = 0.8)
+         width = panel_width,
+         height = panel_height * 1.25)
   
   # Component 1 for national / state populations
   plot_trend(R_eff_loc_1_sim,
