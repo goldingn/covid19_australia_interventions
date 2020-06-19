@@ -113,18 +113,6 @@ gi_mat <- sweep(rel_gi_mat, 2, scaling, FUN = "/")
 local_infectious <- gi_mat %*% local_cases
 imported_infectious <- gi_mat %*% imported_cases
 
-# account for underreporting of recent infections (recent infections have had
-# less time to be detected), by multiplying the number of active cases on each
-# date by the probability of detection and reporting by the time of the most
-# recent linelist. There is an average of one day from specimen collection to
-# confirmation, and the linelist covers the previous day, so the date by which
-# they need to have been detected two days prior to the linelist date.
-latest_detection_date <- linelist_date - 2
-delays <- as.numeric(latest_detection_date - dates)
-detection_prob <- 1 - ttd_survival(delays, dates)
-local_infectious <- sweep(local_infectious, 1, detection_prob, FUN = "*")
-imported_infectious <- sweep(imported_infectious, 1, detection_prob, FUN = "*")
-
 library(greta.gp)
 
 # the reduction from R0 down to R_eff for imported cases due to different
@@ -239,11 +227,35 @@ log_new_from_loc_vec <- log(local_infectious[valid]) + log_R_eff_loc[1:n_dates, 
 log_new_from_imp_vec <- log(imported_infectious[valid]) + log_R_eff_imp[1:n_dates, ][valid]
 expected_infections_vec <- exp(log_new_from_loc_vec) + exp(log_new_from_imp_vec)
 
-# try negative binomial likelihood
+# negative binomial likelihood for number of cases
 sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf), dim = n_states)
 size <- 1 / sqrt(sqrt_inv_size[valid[, 2]])
 prob <- 1 / (1 + expected_infections_vec / size)
-distribution(local_cases[valid]) <- negative_binomial(size, prob)
+
+# Account for right truncation; underreporting of recent infections which have
+# had less time to be detected. Given the number of cases N_t infected on day t
+# (that will ever be detected), the number of cases N^*_t infected on that day
+# that are known about so far is drawn from a binomial sample with probability
+# p, from the time-to-detection distribution. Since N_t is drawn from a negative
+# binomial,  N^*_t is drawn from a compound binomial/negative binomial mixture
+# distribution. Fortunately that turns out to be a negative binomial with
+# modified probability parameter (NB is poisson-gamma, so binomial-NB is
+# binomial-poisson-gamma, but binomial-poisson is poisson with rate lambda * p and gamma times a constant is gamma,
+# so it's a poisson-gamma, which is NB).
+
+# There is an average of one day from specimen collection to confirmation, and
+# the linelist covers the previous day, so the date by which they need to have
+# been detected two days prior to the linelist date.
+latest_detection_date <- linelist_date - 2
+delays <- as.numeric(latest_detection_date - dates)
+detection_prob <- 1 - ttd_survival(delays, dates)
+detection_prob_vec <- detection_prob[valid[, 1]]
+
+# Modify the probability to account for truncation. When detection_prob_vec = 1,
+# this collapses to prob
+prob_trunc <- 1 / (1 + detection_prob_vec * (1 - prob) / prob)
+
+distribution(local_cases[valid]) <- negative_binomial(size, prob_trunc)
 
 m <- model(expected_infections_vec)
 
@@ -332,7 +344,7 @@ output_directories <- c("",
                         "counterfactual_2",
                         "counterfactual_3")
 
-# put in a separatee directory if testing something
+# put in a separate directory if testing something
 if (staging) {
   output_directories <- file.path(output_directories, "staging")
 }
