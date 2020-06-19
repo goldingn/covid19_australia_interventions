@@ -141,6 +141,7 @@ pmf_sums <- rowSums(pmf)
 pmf_rescaled <- sweep(pmf, 1, pmf_sums, FUN = "/")
 pmf_sims <- calculate(pmf_rescaled, values = draws, nsim = nsim)[[1]]
 pmf_mean <- apply(pmf_sims, 2:3, mean)
+pmf_sd <- apply(pmf_sims, 2:3, sd)
 
 # check the pmfs normalise
 all(rowSums(pmf_mean) == 1)
@@ -189,7 +190,6 @@ get_quantile <- function (cdf, prob) {
   days[idx]
 }
 
-
 get_mean <- function (cdf) {
   days <- seq_along(cdf) - 6
   prob <- c(0, diff(cdf))
@@ -203,7 +203,6 @@ get_quantile_mat <- function(prob, cdf) {
 get_mean_mat <- function(cdf) {
   apply(cdf, 1, get_mean)
 }
-
 
 deciles_lower <- seq(0.05, 0.45, by = 0.05)
 deciles_upper <- 1 - deciles_lower

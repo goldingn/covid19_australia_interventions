@@ -205,7 +205,6 @@ surveillance_reff_local_reduction <- surveillance_effect(
   cdf = gi_cdf
 )
 
-
 # log Reff for locals and imports
 log_R_eff_loc <- sweep(
   log_R_eff_loc_1 + epsilon_L,
@@ -271,7 +270,7 @@ convergence(draws)
 # check fit of observation model against data 
 nsim <- coda::niter(draws) * coda::nchain(draws)
 nsim <- min(10000, nsim)
-cases <- negative_binomial(size, prob)
+cases <- negative_binomial(size, prob_trunc)
 cases_sim <- calculate(cases, values = draws, nsim = nsim)[[1]][, , 1]
 
 # overall PPC check
