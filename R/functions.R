@@ -2475,7 +2475,7 @@ ttd_survival <- function(days, dates) {
   
   # line up days (direct index against ttd elements since we're counting from
   # infection, not symptom onset)
-  days_idx <- days - 1
+  days_idx <- days + 1
   days_idx <- pmax(days_idx, 1)
   days_idx <- pmin(days_idx, ncol(cdf_mat))
   
