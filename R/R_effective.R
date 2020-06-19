@@ -169,7 +169,7 @@ R_eff_imp_1 <- exp(log_R_eff_imp_1)
 # build a matrix of inducing points, regularly spaced over time but with one on
 # the most recent date
 n_date_nums <- length(date_nums)
-inducing_date_nums <- rev(seq(n_date_nums, 1, by = -5))
+inducing_date_nums <- rev(seq(n_date_nums, 1, by = -3))
 n_inducing <- length(inducing_date_nums)
 
 # temporally correlated errors in R_eff for local and imported cases - representing all the
