@@ -6,7 +6,6 @@ data <- microdistancing_data()
 barometer_distance <- data$barometer_data
 pred_data <- data$prediction_data
 
-# Need Bayesian fit as lme4 fit is singular, and doesn't have right structure
 library(greta)
 
 n_locations <- max(barometer_distance$state_id)

@@ -1812,11 +1812,8 @@ distancing_effect_model <- function(dates, gi_cdf) {
     waning_effects = waning_effects
   )
   
-  rows <- 
   pred_data_wide <- pred_data %>%
     pivot_wider(names_from = state, values_from = distancing)
-  
-  
   
   # reshape to date-by-state matrix
   wide_dim <- c(n_distinct(pred_data$date), n_distinct(pred_data$state))
@@ -2551,17 +2548,30 @@ impute_onsets <- function(detection_dates,
 }
 
 # read in the latest linelist and format for analysis
-latest_linelist <- function (dir = "~/not_synced/nndss") {
+get_linelist <- function (file = NULL, dir = "~/not_synced/nndss") {
   
-  # find the latest file
-  files <- list.files(dir, pattern = ".xlsx$", full.names = TRUE)
-  date_time_text <- gsub("^COVID-19 UoM ", "", basename(files)) 
-  date_time_text <- gsub(".xlsx$", "", date_time_text)
-  date_times <- as.POSIXct(date_time_text, format = "%d%b%Y %H%M")
-  latest <- which.max(date_times)
+  if (is.null(file)) {
+    # find the latest file
+    files <- list.files(dir, pattern = ".xlsx$", full.names = TRUE)
+    date_time_text <- gsub("^COVID-19 UoM ", "", basename(files)) 
+    date_time_text <- gsub(".xlsx$", "", date_time_text)
+    date_times <- as.POSIXct(date_time_text, format = "%d%b%Y %H%M")
+    latest <- which.max(date_times)
+    ll_date <- date_times[latest]
+    file <- files[latest]
+  } else {
+    file <- file.path(dir, file)
+    date_time_text <- gsub("^COVID-19 UoM ", "", basename(file)) 
+    date_time_text <- gsub(".xlsx$", "", date_time_text)
+    ll_date <- as.POSIXct(date_time_text, format = "%d%b%Y %H%M")
+  }
+  
+
+  
+  
   
   dat <- readxl::read_xlsx(
-    files[latest],
+    file,
     col_types = c(
       STATE = "text",
       CONFIRMATION_STATUS = "numeric",
@@ -2619,7 +2629,7 @@ latest_linelist <- function (dir = "~/not_synced/nndss") {
     ) %>%
     mutate(
       report_delay = as.numeric(date_confirmation - date_onset),
-      date_linelist = as.Date(date_times[latest]),
+      date_linelist = as.Date(ll_date),
       region = as.factor(region)
     ) %>%
     

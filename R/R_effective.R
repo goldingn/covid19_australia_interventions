@@ -13,7 +13,7 @@ source("R/functions.R")
 staging <- FALSE
 
 set.seed(2020-04-29)
-linelist <- latest_linelist()
+linelist <- get_linelist()
 
 # impute the onset dates (only 0.6% of cases) using expected value from time to
 # detection distribution. Do this outside dplyr to avoid duplicating slow computations
