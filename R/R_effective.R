@@ -344,6 +344,23 @@ for (type in 1:5) {
              recursive = TRUE,
              showWarnings = FALSE)
   
+  # save local case data, dates, and detection probabilities for Rob
+  cbind(
+    data.frame(
+      date_onset = dates + 5,
+      detection_probability = detection_prob
+    ),
+    local_cases
+  ) %>%
+    pivot_longer(
+      cols = c(-date_onset, -detection_probability),
+      names_to = "state",
+      values_to = "count"
+    ) %>%
+    write.csv(file.path(dir, "local_cases_input.csv"), row.names = FALSE)
+  
+  
+  
   # subset or extend projections based on type of projection
   if (type == 1) {
     # for the nowcast, estimate up to the latest mobility data
