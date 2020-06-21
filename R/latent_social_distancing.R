@@ -56,6 +56,7 @@ date_num <- as.numeric(dates - first_date)
 trigger_date_num <- as.numeric(interventions$date - first_date)
 distancing <- latent_behaviour_switch(date_num, trigger_date_num)
 
+
 # add term for recent change to social distancing (some proportion either
 # switching back to baseline behaviour or increasing distancing behaviour)
 # make this a linear increase since a peak (with prior mean one week after the
@@ -64,15 +65,13 @@ last_date_num <- n_dates - 1
 last_intervention_date_num <- as.numeric(max(interventions$date) - first_date)
 peak_range <- last_date_num - last_intervention_date_num
 
-# how far back from the last date was the peak of distancing?
+# when was the peak of distancing?
 peak <- normal(last_intervention_date_num + 7,
                3.5 / 1.96,
                truncation = c(last_intervention_date_num, last_date_num))
-effect_period <- last_date_num - peak
+waning_effect <- latent_hinge(peak, date_num)
 
-distancing_effect <- 1 + ((date_num - last_date_num) / effect_period)
-nullify <- (sign(distancing_effect) + 1) / 2
-distancing_effect <- distancing_effect * nullify
+# when was the infleciton point in each state?
 
 # latent factor for pre-distancing surge in mobility with a prior that it peaks
 # around the time of the first restriction
@@ -97,11 +96,11 @@ back_to_work <- latent_behaviour_switch(date_num,
 doy <- lubridate::wday(dates)
 day_weights <- latent_spline()
 weekday <- day_weights[doy]
-  
+
 # combine into latent factor matrix
 latents_ntnl <- cbind(bump,
                       distancing,
-                      distancing_effect,
+                      waning_effect,
                       back_to_work,
                       weekday)
 n_latents_ntnl <- ncol(latents_ntnl)
@@ -116,7 +115,7 @@ latent_names <- c("Preparation",
 # latent factor
 means_ntnl <- normal(0, 10, dim = c(n_latents_ntnl, n_datastreams))
 sds_ntnl <- normal(0, 1, dim = c(n_latents_ntnl, n_datastreams),
-                       truncation = c(0, Inf))
+                   truncation = c(0, Inf))
 
 # hierarchical decentring with a 3D array squished into two dimensions
 loadings_ntnl_raw <- normal(0, 1, dim = c(n_latents_ntnl, n_state_datastreams))
@@ -147,19 +146,27 @@ holiday[is_a_holiday] <- holiday_weights
 maxes <- apply(holiday, 2, "max")
 holiday <- sweep(holiday, 2, maxes, "/")
 
-# holiday is date-by-state - get state-datastream weights and apply them to the correct ones
-means_holiday <- normal(0, 10, dim = n_datastreams)
-sds_holiday <- normal(0, 1, dim = n_datastreams, truncation = c(0, Inf))
-
-# hierarchical decentring with a 3D array squished into two dimensions
-loadings_holiday_raw <- normal(0, 1, dim = n_state_datastreams)
-loadings_holiday <- means_holiday[datastream_index] + loadings_holiday_raw * sds_holiday[datastream_index]
-
-# expand out the holiday index to replicate states
+# holiday is date-by-state, get state-datastream weights and apply
+# loadings_holiday <- hierarchical_normal(n_state_datastreams, datastream_index, sd_sd = 1)
+loadings_holiday <- normal(0, 10, dim = n_datastreams)
 holiday_latents <- holiday[, state_index]
 trends_holiday <- sweep(holiday_latents, 2, loadings_holiday, FUN = "*")
 
-trends <- trends_ntnl + trends_holiday
+# get inflection points for waning in each state - some point after the national peak
+peak_to_inflections <- normal(0.5, 0.1,
+                              truncation = c(0, 1),
+                              dim = c(1, n_states))
+range <- last_date_num - peak
+inflections <- peak + peak_to_inflections * range
+inflection_effect <- latent_hinge(inflections, date_num)
+
+# no hierarchical structure on this - it happens to a different extent in each state and datastream
+loadings_inflection <- normal(0, 10, dim = n_state_datastreams)
+inflection_latents <- inflection_effect[, state_index]
+trends_inflection <- sweep(inflection_latents, 2, loadings_inflection, FUN = "*")
+
+trends_state <- trends_holiday + trends_inflection
+trends <- trends_ntnl + trends_state
 
 # extract expected trend for each observation and define likelihood
 rows <- match(mobility$date, dates)
@@ -171,11 +178,11 @@ distribution(mobility$trend) <- normal(mean = trends[idx],
                                        sd = sigma_obs[cols])
 
 # fit model
-m <- model(loadings_ntnl, loadings_holiday)
+m <- model(loadings_ntnl, loadings_holiday, loadings_inflection)
 draws <- mcmc(m,
-              sampler = hmc(Lmin = 35, Lmax = 40),
-              chains = 20,
-              n_samples = 2000)
+              sampler = hmc(Lmin = 5, Lmax = 10),
+              chains = 10,
+              n_samples = 1000)
 
 convergence(draws)
 
@@ -318,7 +325,7 @@ for(this_state in states) {
     plot_data <- mobility %>%
       filter(state == this_state,
              datastream == this_datastream)
-
+    
     if (nrow(plot_data) == 0) {
       
       plot(1, 1,
@@ -368,7 +375,7 @@ for(this_state in states) {
       abline(v = last_date, lty = 2)
       
     }
-
+    
     # add facet labels
     if (this_state == states[1]) {
       

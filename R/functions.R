@@ -501,6 +501,16 @@ latent_spline <- function (days = 1:7, knots = 4) {
   
 }
 
+# a hinge effect, 0 before the inflection point, then linear to 1 at the most recent period
+latent_hinge <- function(inflection_dates, date_num) {
+  last_date_num <- max(date_num)
+  effect_periods <- last_date_num - inflection_dates
+  time_remaining <- date_num - last_date_num
+  distancing_effects <- 1 + kronecker(time_remaining, effect_periods, FUN = "/")
+  nullify <- (sign(distancing_effects) + 1) / 2
+  distancing_effects * nullify
+}
+
 state_populations <- function() {
   tibble::tribble(
     ~state, ~population,
@@ -2345,11 +2355,22 @@ convergence <- function(draws) {
 }
 
 # define a zero-mean hierarchical normal prior over a vector of length n
-hierarchical_normal <- function(n, mean_sd = 10, sd_sd = 0.5) {
-  mean <- normal(0, mean_sd)
-  sd <- normal(0, sd_sd, truncation = c(0, Inf))
+hierarchical_normal <- function(n, index = NULL, mean_sd = 10, sd_sd = 0.5) {
+  
+  indexed <- !is.null(index)
+  hyper_n <- ifelse(indexed, max(index), 1)
+  
+  mean <- normal(0, mean_sd, dim = hyper_n)
+  sd <- normal(0, sd_sd, truncation = c(0, Inf), dim = hyper_n)
   raw <- normal(0, 1, dim = n)
+  
+  if (indexed) {
+    mean <- mean[index]
+    sd <- sd[index]
+  }
+  
   mean + raw * sd
+  
 }
 
 microdistancing_params <- function(n_locations = 8) {
