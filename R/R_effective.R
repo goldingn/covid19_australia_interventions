@@ -115,6 +115,13 @@ imported_infectious <- gi_mat %*% imported_cases
 
 library(greta.gp)
 
+# reduction in R due to surveillance detecting and isolating infectious people
+dates_long <- min(dates) + seq_along(date_nums) - 1
+surveillance_reff_local_reduction <- surveillance_effect(
+  dates = dates_long,
+  cdf = gi_cdf
+)
+
 # the reduction from R0 down to R_eff for imported cases due to different
 # quarantine measures each measure applied during a different period. Q_t is
 # R_eff_t / R0 for each time t, modelled as a monotone decreasing step function
@@ -144,8 +151,16 @@ distancing_effect <- distancing_effect_model(mobility_dates, gi_cdf)
 # pull out R_t component due to distancing for locally-acquired cases, and
 # extend to correct length
 extend_idx <- pmin(seq_along(date_nums), nrow(distancing_effect$R_t))
+R_eff_loc_1_no_surv <- distancing_effect$R_t[extend_idx, ]
 
-R_eff_loc_1 <- distancing_effect$R_t[extend_idx, ]
+# multiply by the surveillance effect
+R_eff_loc_1 <- sweep(
+  R_eff_loc_1_no_surv,
+  1,
+  surveillance_reff_local_reduction,
+  FUN = "*"
+)
+
 log_R_eff_loc_1 <- log(R_eff_loc_1)
 
 # extract R0 from this model and estimate R_t component due to quarantine for
@@ -198,20 +213,8 @@ local_valid <- is.finite(local_infectious) & local_infectious > 0
 import_valid <- is.finite(imported_infectious) & imported_infectious > 0
 valid <- which(local_valid & import_valid, arr.ind = TRUE)
 
-# reduction in R due to surveillance detecting and isolating infectious people
-dates_long <- min(dates) + seq_along(date_nums) - 1
-surveillance_reff_local_reduction <- surveillance_effect(
-  dates = dates_long,
-  cdf = gi_cdf
-)
-
 # log Reff for locals and imports
-log_R_eff_loc <- sweep(
-  log_R_eff_loc_1 + epsilon_L,
-  1,
-  log(surveillance_reff_local_reduction),
-  FUN = "+"
-)
+log_R_eff_loc <- log_R_eff_loc_1 + epsilon_L
 
 log_R_eff_imp <- sweep(
   epsilon_O,
@@ -791,7 +794,9 @@ exp_imports_output <- tibble(
   mutate(date_onset = date + 5)
 
 base_colour <- grey(0.5)
-ggplot(exp_imports_output) +
+exp_imports_output %>%
+  filter(date >= as.Date("2020-03-01")) %>%
+ggplot() +
   aes(date, mean) +
   facet_wrap(~state, ncol = 2) +
   geom_ribbon(aes(ymin = bottom,
@@ -811,47 +816,50 @@ ggplot(exp_imports_output) +
   xlab(element_blank()) +
   theme_minimal()
 
-
-# make counterfactual predictions of case counts if quarantine had never been
-# extended to all arrivals (imports get local first-stage quarantine Reff)
-
-# do this at national level, and start at a time when there were more cases, as
-# in the check
-
-# Compute local cases directly caused by imports under assumption about Reff for
-# imports, then disaggregate those locally-acquired (from imports) cases
-# according to their infectiousness profile to get force of local infection
-R_eff_imp_first <- exp(log_R0 + log_q[3])
-first_locals <- imported_infectious * R_eff_imp_first
-local_infectiousness <- gi_mat %*% first_locals
-
-# Given this basic force of infection, R for locally-acquired cases (mean trend,
-# no clusters), and the infectiousness profile, iterate the dynamics to compute
-# the numbers of local cases
-cases_basic_quarantine <- project_local_cases(
-  infectiousness = local_infectiousness,
-  R_local = R_eff_loc_1[seq_len(n_dates), ],
-  disaggregation_probs = gi_vec
-)
-
-cases_basic_quarantine_ntnl <- rowSums(cases_basic_quarantine)
-cumul_cases_basic_quarantine_ntnl <- cumsum(cases_basic_quarantine_ntnl)
-cumul_cases_basic_quarantine_sim <- calculate(cumul_cases_basic_quarantine_ntnl,
-                                              values = draws,
-                                              nsim = 1000)[[1]]
-
-plot_trend(cumul_cases_basic_quarantine_sim,
-           multistate = FALSE,
-           ylim = c(0, 7500),
-           hline_at = 7226,
-           dates = dates,
-           base_colour = "red",
-           vline_at = intervention_dates()$date,
-           min_date = min(dates)) +
-  ggtitle("Counterfactual: no blanket quarantine of overseas arrivals",
-          "Assumes both travel restrictions and social distancing took place") +
-  ylab("Cumulative infections")
-
-mn <- colMeans(cumul_cases_basic_quarantine_sim)
-head(mn, 50)
+ggsave(file.path("outputs/figures/number_of_import_local_infections.png"),
+       width = multi_width,
+       height = multi_height,
+       scale = 0.8)
+# # make counterfactual predictions of case counts if quarantine had never been
+# # extended to all arrivals (imports get local first-stage quarantine Reff)
+# 
+# # do this at national level, and start at a time when there were more cases, as
+# # in the check
+# 
+# # Compute local cases directly caused by imports under assumption about Reff for
+# # imports, then disaggregate those locally-acquired (from imports) cases
+# # according to their infectiousness profile to get force of local infection
+# R_eff_imp_first <- exp(log_R0 + log_q[3])
+# first_locals <- imported_infectious * R_eff_imp_first
+# local_infectiousness <- gi_mat %*% first_locals
+# 
+# # Given this basic force of infection, R for locally-acquired cases (mean trend,
+# # no clusters), and the infectiousness profile, iterate the dynamics to compute
+# # the numbers of local cases
+# cases_basic_quarantine <- project_local_cases(
+#   infectiousness = local_infectiousness,
+#   R_local = R_eff_loc_1[seq_len(n_dates), ],
+#   disaggregation_probs = gi_vec
+# )
+# 
+# cases_basic_quarantine_ntnl <- rowSums(cases_basic_quarantine)
+# cumul_cases_basic_quarantine_ntnl <- cumsum(cases_basic_quarantine_ntnl)
+# cumul_cases_basic_quarantine_sim <- calculate(cumul_cases_basic_quarantine_ntnl,
+#                                               values = draws,
+#                                               nsim = 1000)[[1]]
+# 
+# plot_trend(cumul_cases_basic_quarantine_sim,
+#            multistate = FALSE,
+#            ylim = c(0, 7500),
+#            hline_at = 7226,
+#            dates = dates,
+#            base_colour = "red",
+#            vline_at = intervention_dates()$date,
+#            min_date = min(dates)) +
+#   ggtitle("Counterfactual: no blanket quarantine of overseas arrivals",
+#           "Assumes both travel restrictions and social distancing took place") +
+#   ylab("Cumulative infections")
+# 
+# mn <- colMeans(cumul_cases_basic_quarantine_sim)
+# head(mn, 50)
 
