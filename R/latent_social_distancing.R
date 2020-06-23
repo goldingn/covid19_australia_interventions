@@ -56,7 +56,6 @@ date_num <- as.numeric(dates - first_date)
 trigger_date_num <- as.numeric(interventions$date - first_date)
 distancing <- latent_behaviour_switch(date_num, trigger_date_num)
 
-
 # add term for recent change to social distancing (some proportion either
 # switching back to baseline behaviour or increasing distancing behaviour)
 # make this a linear increase since a peak (with prior mean one week after the
@@ -71,7 +70,7 @@ peak <- normal(last_intervention_date_num + 7,
                truncation = c(last_intervention_date_num, last_date_num))
 waning_effect <- latent_hinge(peak, date_num)
 
-# when was the infleciton point in each state?
+# when was the inflection point in each state?
 
 # latent factor for pre-distancing surge in mobility with a prior that it peaks
 # around the time of the first restriction
@@ -90,11 +89,33 @@ back_to_work <- latent_behaviour_switch(date_num,
                                         tau_back_to_work,
                                         kappa = kappa_back_to_work)
 
-# spline latent factor for weekly variation and expand out to dates fix Sunday
-# (day 1) at 1 so that the sign is constrained and there's no identifiability
-# issue against the loadings
+# fixed covariate for weekly variation, expanded out to dates. This is poorly
+# identified in the model when trying to model e.g. a spline on day of the
+# week, but the data is pretty much fully crossed
+day_weights <- mobility %>%
+  filter(date < as.Date("2020-03-01")) %>%
+  mutate(
+    day = lubridate::wday(date),
+  ) %>%
+  group_by(datastream, day) %>%
+  summarise(weight = mean(trend)) %>%
+  group_by(datastream) %>%
+  mutate(
+    weight = weight - min(weight),
+    weight = weight / max(weight)
+  ) %>%
+  # colapse down to overall weights for now
+  group_by(day) %>%
+  summarise(
+    weight = mean(weight) 
+  ) %>%
+  mutate(
+    weight = weight - min(weight),
+    weight = weight / max(weight)
+  ) %>%
+  pull(weight)
+  
 doy <- lubridate::wday(dates)
-day_weights <- latent_spline()
 weekday <- day_weights[doy]
 
 # combine into latent factor matrix
@@ -138,17 +159,26 @@ holiday_matrix <- holidays %>%
   dplyr::select(-date) %>%
   as.matrix()
 
-is_a_holiday <- which(holiday_matrix)
-n_holidays <- length(is_a_holiday)
-holiday_weights <- uniform(0, 1, dim = n_holidays)
+holiday_idx <- which(holiday_matrix, arr.ind = TRUE)
+# find first holiday in each state
+match <- outer(holiday_idx[, 2], seq_along(states), FUN = "==")
+first_holiday <- apply(match, 2, function(x) which(x)[1])
+n_holidays <- nrow(holiday_idx)
+
+n_params <- n_holidays - length(first_holiday)
+holiday_params <- normal(1, 1, dim = n_params, truncation = c(0, Inf))
+holiday_weights <- ones(n_holidays)
+holiday_weights[-first_holiday] <- holiday_params
+
+# need to set the first holiday in each state to 1, set the others to be
+# variables
 holiday <- zeros(nrow(holiday_matrix), ncol(holiday_matrix))
-holiday[is_a_holiday] <- holiday_weights
-maxes <- apply(holiday, 2, "max")
-holiday <- sweep(holiday, 2, maxes, "/")
+holiday[holiday_idx] <- holiday_weights
 
 # holiday is date-by-state, get state-datastream weights and apply
-# loadings_holiday <- hierarchical_normal(n_state_datastreams, datastream_index, sd_sd = 1)
-loadings_holiday <- normal(0, 10, dim = n_datastreams)
+loadings_holiday <- hierarchical_normal(n_state_datastreams, state_index)
+# state_index
+# loadings_holiday <- normal(0, 10, dim = n_state_datastreams)
 holiday_latents <- holiday[, state_index]
 trends_holiday <- sweep(holiday_latents, 2, loadings_holiday, FUN = "*")
 
@@ -178,13 +208,28 @@ distribution(mobility$trend) <- normal(mean = trends[idx],
                                        sd = sigma_obs[cols])
 
 # fit model
-m <- model(loadings_ntnl, loadings_holiday, loadings_inflection)
+m <- model(loadings_ntnl, loadings_holiday)
 draws <- mcmc(m,
-              sampler = hmc(Lmin = 5, Lmax = 10),
+              sampler = hmc(Lmin = 15, Lmax = 20),
               chains = 10,
               n_samples = 1000)
 
 convergence(draws)
+# 
+# 
+# mi <- attr(draws, "model_info")
+# free <- as.matrix(mi$raw_draws)
+# free_cor <- abs(cor(free, method = "spearman"))
+# diag(free_cor) <- 0
+# free_cor[lower.tri(free_cor)] <- 0
+# idx <- which(free_cor > 0.9, arr.ind = TRUE)
+# eg <- m$dag$example_parameters(free = TRUE)
+# n_free <- vapply(eg, length, FUN.VALUE = numeric(1))
+# end <- cumsum(n_free)
+# start <- end - n_free + 1
+# 
+# cbind(start, end)
+# idx
 
 # ~~~~~~~~~
 # plot fits
