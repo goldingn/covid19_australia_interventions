@@ -70,8 +70,6 @@ peak <- normal(last_intervention_date_num + 7,
                truncation = c(last_intervention_date_num, last_date_num))
 waning_effect <- latent_hinge(peak, date_num)
 
-# when was the inflection point in each state?
-
 # latent factor for pre-distancing surge in mobility with a prior that it peaks
 # around the time of the first restriction
 tau_bump_mean <- min(trigger_date_num)
@@ -182,13 +180,46 @@ loadings_holiday <- hierarchical_normal(n_state_datastreams, state_index)
 holiday_latents <- holiday[, state_index]
 trends_holiday <- sweep(holiday_latents, 2, loadings_holiday, FUN = "*")
 
+# set informative priors for some inflection dates
+inf_infl_date_priors <- tibble::tribble(
+  ~state, ~mean_date, ~sd_days,
+  # VIC announced reimposed restrictions on June 20 (to start June 22), and saw
+  # an uptick in cases for the week preceding that; expect there may be a change
+  # around this time.
+  # "Victoria", as.Date("2020-06-14"), 3.5
+)
+
+# default uninformative priors
+min_infl_date <- as.Date("2020-05-01")
+range_infl_dates <- as.numeric(last_date - min_infl_date)
+
+uninf_infl_date_priors <- expand_grid(
+  state = states,
+  mean_date = min_infl_date + range_infl_dates / 2,
+  sd_days = range_infl_dates / 4
+) 
+
+# in the absence of informative priors, use an uninformative prior with mean
+# about halfway from the start of May (earliest point we think it could
+# inflect), and the latest date
+infl_date_priors <- uninf_infl_date_priors %>%
+  filter(!state %in% inf_infl_date_priors$state) %>%
+  bind_rows(
+    inf_infl_date_priors
+  ) %>%
+  # convert this into a prior over the time since the peak
+  mutate(
+    mean_date_num = mean_date - min(dates) + 1,
+    mean_date_num = as.numeric(mean_date_num)
+  ) %>%
+  arrange(state)
+
 # get inflection points for waning in each state - some point after the national peak
-peak_to_inflections <- normal(0.5, 0.1,
-                              truncation = c(0, 1),
-                              dim = c(1, n_states))
-range <- last_date_num - peak
-inflections <- peak + peak_to_inflections * range
-inflection_effect <- latent_hinge(inflections, date_num)
+truncation_datenums <- as.numeric(c(min_infl_date, last_date) - min(dates) + 1)
+inflections <- normal(infl_date_priors$mean_date_num,
+                      infl_date_priors$sd_days,
+                      truncation = truncation_datenums)
+inflection_effect <- latent_hinge(t(inflections), date_num)
 
 # no hierarchical structure on this - it happens to a different extent in each state and datastream
 loadings_inflection <- normal(0, 10, dim = n_state_datastreams)
@@ -208,15 +239,16 @@ distribution(mobility$trend) <- normal(mean = trends[idx],
                                        sd = sigma_obs[cols])
 
 # fit model
-m <- model(loadings_ntnl, loadings_holiday)
+m <- model(loadings_ntnl, loadings_holiday, loadings_inflection)
 draws <- mcmc(m,
               sampler = hmc(Lmin = 15, Lmax = 20),
               chains = 10,
+              warmup = 1000,
               n_samples = 1000)
 
 convergence(draws)
-# 
-# 
+
+# # dig into posterior correlations
 # mi <- attr(draws, "model_info")
 # free <- as.matrix(mi$raw_draws)
 # free_cor <- abs(cor(free, method = "spearman"))
@@ -269,6 +301,7 @@ trend_lower <- apply(sim, 2:3, quantile, 0.025)
 trend_upper <- apply(sim, 2:3, quantile, 0.975)
 
 # loop through states making multipanel model fit plots
+plot_date_lim <- c(as.Date("2020-03-01"), last_date)
 
 for (j in seq_len(n_states)) {
   file <- paste0("outputs/figures/", states[j], "_datastream_model_fit.png")
@@ -309,9 +342,9 @@ for (j in seq_len(n_states)) {
     
     ylim <- range(c(plot_data$trend, est))
     plot(est[, 1] ~ dates_plot,
-         xlim = range(dates),
          type = "n",
          ylim = ylim,
+         xlim = plot_date_lim,
          ylab = "",
          xlab = "",
          yaxt = "n")
@@ -399,7 +432,7 @@ for(this_state in states) {
       ylim <- range(c(plot_data$trend, est))
       
       plot(est[, 1] ~ dates_plot,
-           xlim = range(dates),
+           xlim = plot_date_lim,
            type = "n",
            ylim = ylim,
            ylab = "",
@@ -545,18 +578,32 @@ ggsave("outputs/figures/loadings_datastream.png",
 # distancing latent factor, turning red when it seems to be pushing it in the
 # opposite direction from social distancing
 
-# get state-dataset loadings for the distancing change factor
-change_loadings <- loadings_ntnl[latent_names == "Waning distancing", ]
+# get the smoothed timeseries of mobility relative to our baseline, for each
+# state and datastream (combine distancing, waning and inflection)
 
-# set direction relative to the direction of the social distancing factor for
-# that state-dataset (negative implies regression of the distancing effect), and
-# scale it to be relative to the amount of social distancing change
-distancing_loadings <- loadings_ntnl[latent_names == "Social distancing", ]
-distancing_change <- change_loadings * sign(distancing_loadings)
-distancing_change_relative <- distancing_change / abs(distancing_loadings)
+loadings_keep <- latent_names %in% c("Social distancing", "Waning distancing")
+mobility_ntnl <- latents_ntnl[, loadings_keep] %*% loadings_ntnl[loadings_keep, ]
+mobility_trends <- mobility_ntnl + trends_inflection
+
+# direction of the change (e.g. positive for google residential)
+direction <- sign(loadings_ntnl[latent_names == "Social distancing", ])
+# latest value
+latest <- mobility_trends[n_dates, ]
+# value at the peak
+peak <- t(apply(abs(mobility_trends), 2, "max")) * direction
+
+# what % of the way has it waned back to baseline from the peak
+distancing_change_relative <- -(peak - latest) / peak
+
+# get % change at peak, and return relative to peak
+# 
+# # set direction relative to the direction of the social distancing factor for
+# # that state-dataset (negative implies regression of the distancing effect), and
+# # scale it to be relative to the amount of social distancing change
+# distancing_change <- perc_change * sign(peak_distancing)
+# distancing_change_relative <- distancing_change / abs(peak_distancing)
 
 distancing_change_relative_draws <- calculate(distancing_change_relative, values = draws, nsim = 10000)[[1]]
-
 
 # summarise posterior, and add state and datastream info
 est <- summarise_vec_posterior(
@@ -742,23 +789,31 @@ waning_amount_params <- list(
 saveRDS(waning_amount_params,
         file = "outputs/waning_amount_parameters.RDS")
 
-# save state-level posteriors over % change in google metrics
-datastreams_keep <- grepl("^Google: ", state_datastream_lookup$datastream)
-loadings_keep <- latent_names %in% c("Social distancing", "Waning distancing")
-# state_datastream_lookup[datastreams_keep, ]
-# dim(loadings_ntnl)
 
-perc_change_google <- latents_ntnl[,loadings_keep] %*% loadings_ntnl[loadings_keep, datastreams_keep]
+# save state-level posteriors over % change in google metrics from just-pre-covid period
+datastreams_keep <- grepl("^Google: ", state_datastream_lookup$datastream)
+loadings_keep <- latent_names %in% c("Preparation", "Social distancing", "Waning distancing")
+
+perc_change_google_ntnl <- latents_ntnl[,loadings_keep] %*% loadings_ntnl[loadings_keep, datastreams_keep]
+perc_change_google_state <- trends_inflection[, datastreams_keep]
+perc_change_google <- perc_change_google_ntnl + perc_change_google_state
 change_google <- 1 + (perc_change_google / 100)
 
 nsim <- coda::niter(draws) * coda::nchain(draws)
 change_google_sim <- calculate(change_google, values = draws, nsim = nsim)[[1]]
 change_google_means <- apply(change_google_sim, 2:3, mean)
+change_google_sds <- apply(change_google_sim, 2:3, sd)
 tile <- rep(seq_len(8 * 6), each = n_dates)
 google_change <- state_datastream_lookup[datastreams_keep, ][tile, ]
 google_change$change <- c(change_google_means)
+google_change$change_sd <- c(change_google_sds)
 google_change$date <- rep(dates, 8 * 6)
 
 saveRDS(google_change,
         file = "outputs/google_change_trends.RDS")
 
+google_change %>%
+  filter(state == "South Australia" &
+           datastream == "Google: time at residential") %>%
+  plot(change ~ date, data = ., type = "l")
+  

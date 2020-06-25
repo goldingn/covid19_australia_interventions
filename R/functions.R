@@ -115,7 +115,7 @@ google_mobility <- function() {
 # download and format Apple's mobility data - will need to update the url regularly
 apple_mobility <- function() {
   # get link from: https://www.apple.com/covid19/mobility
-  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2010HotfixDev24/v3/en-us/applemobilitytrends-2020-06-19.csv"
+  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2010HotfixDev27/v3/en-us/applemobilitytrends-2020-06-22.csv"
   data <- readr::read_csv(
     url,
     col_types = cols(
@@ -186,7 +186,7 @@ apple_mobility <- function() {
 citymapper_mobility <- function() {
   
   # get link from: https://citymapper.com/cmi/about
-  url <- "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20200621.csv"
+  url <- "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20200623.csv"
   data <- readr::read_csv(
     url,
     skip = 3,
@@ -595,7 +595,8 @@ pal <- function(colour = "green") {
   
 }
 
-plot_latent_factor <- function (factor, draws, dates, key_dates, cols = grey(c(0.9, 0.7, 0.5, 0.3)), title = "") {
+plot_latent_factor <- function (factor, draws, dates, key_dates,
+                                cols = grey(c(0.9, 0.7, 0.5, 0.3)), title = "") {
   
   est <- summarise_vec_posterior(factor, draws)
   plot(est[, 1] ~ dates,
