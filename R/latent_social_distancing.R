@@ -113,14 +113,9 @@ day_weights <- mobility %>%
 id <- match(state_datastreams, colnames(day_weights))
 day_weights <- day_weights[, id]
 
-# plot(day_weights[, 1], type = "n")
-# for(i in 1:n_state_datastreams) {
-#   lines(day_weights[, i])
-# }
-
 # expand out to dates-by-state-datastreams, and apply hierarchical model to loadings so effects are similar beetween states
 dow <- lubridate::wday(dates)
-dow_latent <- day_weights[dow, datastream_index]
+dow_latent <- day_weights[dow, ]
 loadings_dow <- hierarchical_normal(n_state_datastreams, datastream_index)
 trends_dow <- sweep(dow_latent, 2, loadings_dow, FUN = "*")
 
@@ -138,10 +133,25 @@ latent_names <- c("Preparation",
 
 # hierarchical prior on loadings, so states have similar values, within for each
 # latent factor
-means_ntnl <- normal(0, 10, dim = c(n_latents_ntnl, n_datastreams))
-sds_ntnl <- normal(0, 1, dim = c(n_latents_ntnl, n_datastreams),
+# normal with sd 10; rescaled to help sampler
+
+# for identifability, state the sign for time at home as beng the opposite
+prior_sign <- ifelse(datastreams == "Google: time at residential", -1, 1)
+
+# doubly hierarchical prior on the national latent-factor loadings:
+# top-level parameters for each each latent factor
+means_ntnl_mean <- normal(0, 10, dim = n_latents_ntnl)
+means_ntnl_sd <- normal(0, 0.5, truncation = c(0, Inf), dim = n_latents_ntnl)
+
+# mid-level parameters for each latent factor and datastream (accounting for
+# different sign in mean for some datastreams);
+means_ntnl_raw <- normal(0, 1, dim = c(n_latents_ntnl, n_datastreams))
+means_ntnl_mean_sign <- kronecker(means_ntnl_mean, t(prior_sign))
+means_ntnl <- means_ntnl_mean_sign + sweep(means_ntnl_raw, 1, means_ntnl_sd, FUN = "*")
+sds_ntnl <- normal(0, 0.5, dim = c(n_latents_ntnl, n_datastreams),
                    truncation = c(0, Inf))
 
+# bottom-level parameters for each state-datastream
 # hierarchical decentring with a 3D array squished into two dimensions
 loadings_ntnl_raw <- normal(0, 1, dim = c(n_latents_ntnl, n_state_datastreams))
 loadings_ntnl <- means_ntnl[, datastream_index] + loadings_ntnl_raw * sds_ntnl[, datastream_index]
@@ -192,17 +202,14 @@ inf_infl_date_priors <- tibble::tribble(
   # VIC announced reimposed restrictions on June 20 (to start June 22), and saw
   # an uptick in cases for the week preceding that; expect there may be a change
   # around this time.
-  # "Victoria", as.Date("2020-06-14"), 3.5
+  "Victoria", as.Date("2020-06-20"), 7
 )
 
 # default uninformative priors
-min_infl_date <- as.Date("2020-05-01")
-range_infl_dates <- as.numeric(last_date - min_infl_date)
-
 uninf_infl_date_priors <- expand_grid(
   state = states,
-  mean_date = min_infl_date + range_infl_dates / 2,
-  sd_days = range_infl_dates / 8
+  mean_date = as.Date("2020-05-07"),
+  sd_days = 7
 ) 
 
 # in the absence of informative priors, use an uninformative prior with mean
@@ -220,15 +227,27 @@ infl_date_priors <- uninf_infl_date_priors %>%
   ) %>%
   arrange(state)
 
-# get inflection points for waning in each state - some point after the national peak
-truncation_datenums <- as.numeric(c(min_infl_date, last_date) - min(dates) + 1)
+# get inflection points for waning in each state - some point after the national
+# peak, but no closer than a week from the earliest final datapoint in any
+# datastream (otherwise it will try to explain an incomplete weekly trend using
+# this)
+earliest_latest_date <- mobility %>%
+  group_by(state_datastream) %>%
+  summarise(latest_date = max(date)) %>%
+  ungroup() %>%
+  summarise(earliest_date = min(latest_date)) %>%
+  pull(earliest_date)
+truncation_dates <- c(as.Date("2020-05-01"),
+                      earliest_latest_date - 14)
+truncation_datenums <- as.numeric(truncation_dates - min(dates) + 1)
 inflections <- normal(infl_date_priors$mean_date_num,
                       infl_date_priors$sd_days,
                       truncation = truncation_datenums)
 inflection_effect <- latent_hinge(t(inflections), date_num)
 
 # no hierarchical structure on this - it happens to a different extent in each state and datastream
-loadings_inflection <- normal(0, 10, dim = n_state_datastreams)
+loadings_inflection_raw <- normal(0, 1, dim = n_state_datastreams)
+loadings_inflection <- loadings_inflection_raw * 10
 inflection_latents <- inflection_effect[, state_index]
 trends_inflection <- sweep(inflection_latents, 2, loadings_inflection, FUN = "*")
 
@@ -240,31 +259,39 @@ rows <- match(mobility$date, dates)
 cols <- match(mobility$state_datastream, state_datastreams)
 idx <- cbind(rows, cols)
 
-sigma_obs <- normal(0, 1, truncation = c(0, Inf), dim = n_state_datastreams)
-
-# df <- normal(0, 1, truncation = c(0, Inf))
-# sigma_obs <- normal(0, 1, truncation = c(0, Inf))
-# distribution(mobility$trend) <- student(df = df,
-#                                         mu = trends[idx],
-#                                         sigma = sigma_obs)
-
-# distribution(mobility$trend) <- cauchy(location = trends[idx],
-#                                        scale = sigma_obs)
+# hierarchical model on log observation error across state-datastreams; rescaled
+# to help the sampler
+log_sigma_obs_mean <- normal(0, 10)
+log_sigma_obs_sd <- normal(0, 0.5, truncation = c(0, Inf))
+log_sigma_obs_raw <- normal(0, 20, dim = n_state_datastreams)
+log_sigma_obs <- log_sigma_obs_mean + log_sigma_obs_sd * log_sigma_obs_raw / 20
+sigma_obs <- exp(log_sigma_obs)
 
 distribution(mobility$trend) <- normal(mean = trends[idx],
                                        sd = sigma_obs[cols])
 
 # fit model
-m <- model(loadings_ntnl, loadings_holiday, loadings_inflection)
+m <- model(tau_back_to_work, kappa_back_to_work,
+           tau_bump, kappa_bump,
+           peak,
+           loadings_dow,
+           holiday_params,
+           inflections,
+           sigma_obs)
+
 draws <- mcmc(m,
-              # sampler = hmc(Lmin = 15, Lmax = 20),
+              sampler = hmc(Lmin = 25, Lmax = 30),
               chains = 10)
+
+draws <- extra_samples(draws, 2000)
 
 convergence(draws)
 
 # # dig into posterior correlations
 # mi <- attr(draws, "model_info")
 # free <- as.matrix(mi$raw_draws)
+# widths <- apply(free, 2, sd)
+# plot(widths)
 # free_cor <- abs(cor(free, method = "spearman"))
 # diag(free_cor) <- 0
 # free_cor[lower.tri(free_cor)] <- 0
@@ -273,9 +300,9 @@ convergence(draws)
 # n_free <- vapply(eg, length, FUN.VALUE = numeric(1))
 # end <- cumsum(n_free)
 # start <- end - n_free + 1
-# 
 # cbind(start, end)
 # idx
+# m$dag$tf_name(greta:::get_node(log_sigma_obs_raw))
 
 # ~~~~~~~~~
 # plot fits
@@ -307,12 +334,6 @@ dev.off()
 # plot datastreams and latent factor fit
 
 # simulate with error variance
-# errors <- cauchy(0, sigma_obs, dim = dim(trends))
-# errors <- student(df = df,
-#                   mu = 0,
-#                   sigma = sigma_obs,
-#                   dim = dim(trends))
-# latent_fit <- trends + errors
 errors <- normal(0, 1, dim = dim(trends))
 latent_fit <- trends + sweep(errors, 2, sigma_obs, FUN = "*")
 sim <- calculate(latent_fit, values = draws, nsim = 1000)[[1]]
@@ -826,14 +847,13 @@ change_google_sds <- apply(change_google_sim, 2:3, sd)
 tile <- rep(seq_len(8 * 6), each = n_dates)
 google_change <- state_datastream_lookup[datastreams_keep, ][tile, ]
 google_change$change <- c(change_google_means)
-google_change$change_sd <- c(change_google_sds)
 google_change$date <- rep(dates, 8 * 6)
 
 saveRDS(google_change,
         file = "outputs/google_change_trends.RDS")
 
 google_change %>%
-  filter(state == "South Australia" &
+  filter(state == "Victoria" &
            datastream == "Google: time at residential") %>%
   plot(change ~ date, data = ., type = "l")
   
