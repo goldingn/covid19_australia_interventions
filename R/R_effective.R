@@ -90,22 +90,7 @@ local_cases <- date_by_state %>%
 gi_cdf <- nishiura_cdf()
 
 # circulant matrix of generation interval discrete probabilities
-# lower bound of 1 day so cases can't infect others on the day of infection
-day_diff <- time_difference_matrix(n_dates)
-gi_mat_naive <- gi_probability(gi_cdf, day_diff)
-
-# compute fraction surviving without detection in circulant matrix format,
-# multiply by GI matrix and rescale to get new GI distribution on each day
-ttd_mat <- day_diff
-ttd_mat[] <- ttd_survival(days = c(day_diff),
-                          dates = rep(dates, each = n_dates))
-rel_gi_mat <- gi_mat_naive * ttd_mat
-scaling <- surveillance_effect(
-  dates = dates,
-  cdf = gi_cdf,
-  gi_bounds = c(0, 20)
-)
-gi_mat <- sweep(rel_gi_mat, 2, scaling, FUN = "/")
+gi_mat <- gi_matrix(gi_cdf, dates, gi_bounds = c(0, 20))
 
 # disaggregate imported and local cases according to the generation interval
 # probabilities to get the expected number of infectious people in each state
@@ -292,7 +277,7 @@ R_eff_loc_12 <- exp(log_R_eff_loc)
 R_eff_imp_12 <- exp(log_R_eff_imp)
 
 # vector of generation interval probabilities
-gi_vec <- gi_probability(gi_cdf)
+gi_vec <- gi_vector(gi_cdf, max(dates))
 
 # check fit of projected cases against national epi curve
 check_projection(draws,
@@ -863,3 +848,85 @@ ggsave(file.path("outputs/figures/number_of_import_local_infections.png"),
 # mn <- colMeans(cumul_cases_basic_quarantine_sim)
 # head(mn, 50)
 
+# forecast locally-acquired cases
+forecast <- forecast_locals(local_cases = local_cases,
+                            imported_cases = imported_cases,
+                            Reff_locals = R_eff_loc_12,
+                            Reff_imports = R_eff_imp_12,
+                            dates = dates_type,
+                            gi_cdf = gi_cdf,
+                            simulation_start = latest_date,
+                            gi_bounds = c(0, 20))
+
+
+# is it less than 0.5 and after the projection period?
+# if so it gets a 0 (else a 1), apply a
+# cumulative minimum to that to get a mask multiply that by the cases to get
+# extinction
+n_forecast <- nrow(forecast) - nrow(local_cases)
+
+# in the forecasting period?
+projection_mask <- rbind(
+  matrix(0,
+         nrow(local_cases),
+         n_states),
+  matrix(1,
+         n_forecast,
+         n_states)
+)
+
+# small enough to round to 0
+small_mask <- forecast < 0.5
+
+# invert this (small and forecasting gets 0)
+forecast_mask <- 1 - (projection_mask * small_mask)
+
+# tmp <- calculate(forecast_mask, values = draws, nsim = 1)[[1]][1, , ]
+
+# set all subsequent dates to 0
+forecast_mask <- apply(forecast_mask, 2, "cumprod")
+# cap forecasts by this
+forecast_capped <- forecast * forecast_mask
+
+forecast_sim <- calculate(c(forecast),
+                          values = draws,
+                          nsim = nsim)[[1]]
+
+forecast_capped_sim <- calculate(c(forecast_capped),
+                                 values = draws,
+                                 nsim = nsim)[[1]]
+
+
+plot_trend(forecast_sim,
+           dates = dates_type,
+           multistate = TRUE,
+           base_colour = "red",
+           hline_at = NULL,
+           ylim = c(0, 100),
+           vline_at = quarantine_dates,
+           vline2_at = projection_date) + 
+  ggtitle(label = "Forecast numbers of locally-acquired cases",
+          subtitle = "Beware the Atto-foxes of Greater Brisbane") +
+  ylab("New infections per day")
+
+ggsave(file.path("~/Desktop/forecast.png"),
+       width = multi_width,
+       height = multi_height,
+       scale = 0.8)
+
+plot_trend(forecast_capped_sim,
+           dates = dates_type,
+           multistate = TRUE,
+           base_colour = "red",
+           hline_at = NULL,
+           ylim = c(0, 100),
+           vline_at = quarantine_dates,
+           vline2_at = projection_date) + 
+  ggtitle(label = "Forecast numbers of locally-acquired cases",
+          subtitle = "Beware the Atto-foxes of Greater Brisbane") +
+  ylab("New infections per day")
+
+ggsave(file.path("~/Desktop/forecast_capped.png"),
+       width = multi_width,
+       height = multi_height,
+       scale = 0.8)

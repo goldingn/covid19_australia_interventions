@@ -2699,6 +2699,184 @@ get_linelist <- function (file = NULL, dir = "~/not_synced/nndss") {
   
 }
 
+# function to get a greta array forecasting numbers of locally-acquired cases
+# in each state into the future.
+
+# local cases and imported cases should be matrices conntaining integer (or
+# fractional) numbers of observed or assumed cases infected on each date.
+# Reff_locals and Reff_imports should be either matrices or 2D greta arrays of
+# transmission potential for locally-acquired and imported cases. All four of
+# these arguments must have the same number of columns. Reff_locals and
+# Reff_imports must have the same number of rows, which should be greater than
+# or equal to the numbers of rows in local_cases and imported_cases. Where
+# local_cases and imported_cases have fewer rows than the other matrices, they
+# will be padded with zeros to represent an assumption of no imported cases or
+# other local cases injecxted into the local population. dates must be a vector
+# of dates with as many elements as rows in the Reff matrices, andgi_cdf must be
+# a function returning the continuous version of the generation interval
+# distribution.
+
+# the function first computes the number of *primary* local cases - those
+# infected by imported cases - and then uses a discrete convolution to compute
+# the expected number of secondary local infections (local-local) into the
+# future. Note this a deterministic simulation of real-valued case counts, so it
+# is impossible for a simulated outbreak to go extinct, and a case count of
+# close to 0 cases will inevitably lead to a large outbreak if Reff exceeds 1.
+forecast_locals <- function (local_cases, imported_cases,
+                             Reff_locals, Reff_imports,
+                             dates, gi_cdf,
+                             simulation_start = dates[nrow(local_cases)],
+                             gi_bounds = c(0, 20)) {
+  
+  n_dates <- length(dates)
+  n_states <- ncol(Reff_locals)
+  
+  # check inputs
+  if (nrow(Reff_locals) != n_dates |
+      nrow(Reff_imports) != n_dates) {
+    stop("Reff_locals and Reff_imports must have the same number of rows ",
+         "as there are elements in dates")
+  }
+  
+  if (ncol(Reff_imports) != n_states |
+      ncol(local_cases) != n_states |
+      ncol(imported_cases) != n_states) {
+    stop("all input matrices must have the same number of columns")
+  }
+  
+  if (nrow(local_cases) > n_dates |
+      nrow(imported_cases) > n_dates) {
+    stop("local_cases and imported_cases must fewer or equal numbers ",
+         "of rows to the Reff matrices")
+  }
+  
+  # pad the cases data if needed
+  local_cases <- pad_cases_matrix(local_cases, n_dates, which = "after")
+  imported_cases <- pad_cases_matrix(imported_cases, n_dates, which = "after")
+  
+  # create the generation interval matrix and vector
+  gi_mat <- gi_matrix(gi_cdf, dates, gi_bounds = gi_bounds)
+  gi_vec <- gi_vector(gi_cdf, max(dates), gi_bounds = gi_bounds)
+  
+  # infectiousness of imported cases over time
+  imported_infectious <- gi_mat %*% imported_cases
+  
+  # expected number of primary (import-local) locally-acquired cases
+  primary_local_cases <- imported_infectious * Reff_imports
+  
+  # infectiousness of primary locally-acquired cases
+  primary_local_infectiousness <- gi_mat %*% primary_local_cases
+  
+  # infectiousness of observed (or assumed) locally-acquired cases
+  existing_local_infectiousness <- gi_mat %*% local_cases
+  
+  # sum get local infectiousness not caused by dynamic cases
+  local_infectiousness <- existing_local_infectiousness +
+    primary_local_infectiousness
+  
+  # work out where to simulate from
+  start_idx <- match(simulation_start, dates)
+  sim_idx <- seq(start_idx, n_dates, by = 1)
+  
+  # simulate the expected numbers of secondary local cases
+  secondary_local_cases <- project_local_cases(
+    infectiousness = local_infectiousness[sim_idx, ],
+    R_local = Reff_locals[sim_idx, ],
+    disaggregation_probs = gi_vec
+  )
+  
+  # pad the result with 0s to represent simulated cases
+  secondary_local_cases <- pad_cases_matrix(secondary_local_cases,
+                                            n_dates,
+                                            "before")
+  
+  # matrix of just the primary local cases after the observed cases
+  new_primary_local_cases <- zeros(n_dates, n_states)
+  new_primary_local_cases[sim_idx, ] <- primary_local_cases[sim_idx, ]
+  
+  # combine with primary local cases to get the total number of new
+  # locally-acquired cases
+  forecast_local_cases <- local_cases + new_primary_local_cases + secondary_local_cases
+  
+  forecast_local_cases
+  
+}
+
+pad_cases_matrix <- function(cases, n_dates, which = c("after", "before")) {
+  
+  which <- match.arg(which)
+  
+  if (nrow(cases) < n_dates) {
+    
+    pad <- matrix(0,
+                  nrow = n_dates - nrow(cases),
+                  ncol = ncol(cases))
+
+    if (inherits(cases, "greta_array")) {
+      pad <- as_data(pad)
+    }
+    
+    cases <- switch(which,
+                    before = rbind(pad, cases),
+                    after = rbind(cases, pad))
+  }
+  
+  cases
+  
+}
+
+# build a convolution matrix for the discrete generation interval, applying the
+# effect of improving surveillance and normalising to integrate to 1
+gi_matrix <- function(gi_cdf, dates, gi_bounds = c(0, 20)) {
+  
+  n_dates <- length(dates)
+  
+  # baseline GI matrix, without effects of improved surveillance
+  day_diff <- time_difference_matrix(n_dates)
+  gi_mat_naive <- gi_probability(gi_cdf, day_diff)
+  
+  # compute fraction surviving without detection in circulant matrix format,
+  # multiply by GI matrix and rescale to get new GI distribution on each day
+  ttd_mat <- day_diff
+  ttd_mat[] <- ttd_survival(days = c(day_diff),
+                            dates = rep(dates, each = n_dates))
+  rel_gi_mat <- gi_mat_naive * ttd_mat
+  scaling <- surveillance_effect(
+    dates = dates,
+    cdf = gi_cdf,
+    gi_bounds = gi_bounds
+  )
+  gi_mat <- sweep(rel_gi_mat, 2, scaling, FUN = "/")
+  
+  gi_mat
+  
+}
+
+# build a vector of discrete generation interval probability masses for a given
+# date, applying the effect of improving surveillance and normalising to
+# integrate to 1
+gi_vector <- function(gi_cdf, date, gi_bounds = c(0, 20)) {
+
+  # baseline GI vector, without effects of improved surveillance
+  days <- seq(gi_bounds[1], gi_bounds[2])
+  gi_vec_naive <- gi_probability(gi_cdf, days = days, bounds = gi_bounds)
+  
+  # compute fraction surviving without detection in circulant matrix format,
+  # multiply by GI matrix and rescale to get new GI distribution on each day
+  ttd_vec <- ttd_survival(days = days, dates = rep(date, each = length(days)))
+  rel_gi_vec <- gi_vec_naive * ttd_vec
+  scaling <- surveillance_effect(
+    dates = date,
+    cdf = gi_cdf,
+    gi_bounds = gi_bounds
+  )
+  gi_vec <- rel_gi_vec / scaling
+  
+  gi_vec
+  
+}
+
+
 # colours for plotting
 blue <- "steelblue3"
 purple <- "#C3A0E8"
