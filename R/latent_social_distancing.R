@@ -88,47 +88,53 @@ back_to_work <- latent_behaviour_switch(date_num,
                                         kappa = kappa_back_to_work)
 
 # fixed covariate for weekly variation, expanded out to dates. This is poorly
-# identified in the model when trying to model e.g. a spline on day of the
-# week, but the data is pretty much fully crossed
+# identified in the model when trying to model e.g. a spline on day of the week,
+# but the data is pretty much fully crossed so we should be fine to compute it
+# up front
 day_weights <- mobility %>%
-  filter(date < as.Date("2020-03-01")) %>%
+  filter(date > as.Date("2020-05-01")) %>%
   mutate(
     day = lubridate::wday(date),
   ) %>%
-  group_by(datastream, day) %>%
+  group_by(state_datastream, day) %>%
   summarise(weight = mean(trend)) %>%
-  group_by(datastream) %>%
+  group_by(state_datastream) %>%
   mutate(
     weight = weight - min(weight),
     weight = weight / max(weight)
   ) %>%
-  # colapse down to overall weights for now
-  group_by(day) %>%
-  summarise(
-    weight = mean(weight) 
+  pivot_wider(
+    names_from = state_datastream, values_from = weight
   ) %>%
-  mutate(
-    weight = weight - min(weight),
-    weight = weight / max(weight)
-  ) %>%
-  pull(weight)
-  
-doy <- lubridate::wday(dates)
-weekday <- day_weights[doy]
+  select(-day) %>%
+  as.matrix()
+
+# reorder to match datastreams
+id <- match(state_datastreams, colnames(day_weights))
+day_weights <- day_weights[, id]
+
+# plot(day_weights[, 1], type = "n")
+# for(i in 1:n_state_datastreams) {
+#   lines(day_weights[, i])
+# }
+
+# expand out to dates-by-state-datastreams, and apply hierarchical model to loadings so effects are similar beetween states
+dow <- lubridate::wday(dates)
+dow_latent <- day_weights[dow, datastream_index]
+loadings_dow <- hierarchical_normal(n_state_datastreams, datastream_index)
+trends_dow <- sweep(dow_latent, 2, loadings_dow, FUN = "*")
 
 # combine into latent factor matrix
 latents_ntnl <- cbind(bump,
                       distancing,
                       waning_effect,
-                      back_to_work,
-                      weekday)
+                      back_to_work)
 n_latents_ntnl <- ncol(latents_ntnl)
 
 latent_names <- c("Preparation",
                   "Social distancing",
                   "Waning distancing",
-                  "Back to work",
-                  "Weekly variation")
+                  "Back to work")
 
 # hierarchical prior on loadings, so states have similar values, within for each
 # latent factor
@@ -196,7 +202,7 @@ range_infl_dates <- as.numeric(last_date - min_infl_date)
 uninf_infl_date_priors <- expand_grid(
   state = states,
   mean_date = min_infl_date + range_infl_dates / 2,
-  sd_days = range_infl_dates / 4
+  sd_days = range_infl_dates / 8
 ) 
 
 # in the absence of informative priors, use an uninformative prior with mean
@@ -226,7 +232,7 @@ loadings_inflection <- normal(0, 10, dim = n_state_datastreams)
 inflection_latents <- inflection_effect[, state_index]
 trends_inflection <- sweep(inflection_latents, 2, loadings_inflection, FUN = "*")
 
-trends_state <- trends_holiday + trends_inflection
+trends_state <- trends_holiday + trends_inflection + trends_dow
 trends <- trends_ntnl + trends_state
 
 # extract expected trend for each observation and define likelihood
@@ -235,16 +241,24 @@ cols <- match(mobility$state_datastream, state_datastreams)
 idx <- cbind(rows, cols)
 
 sigma_obs <- normal(0, 1, truncation = c(0, Inf), dim = n_state_datastreams)
+
+# df <- normal(0, 1, truncation = c(0, Inf))
+# sigma_obs <- normal(0, 1, truncation = c(0, Inf))
+# distribution(mobility$trend) <- student(df = df,
+#                                         mu = trends[idx],
+#                                         sigma = sigma_obs)
+
+# distribution(mobility$trend) <- cauchy(location = trends[idx],
+#                                        scale = sigma_obs)
+
 distribution(mobility$trend) <- normal(mean = trends[idx],
                                        sd = sigma_obs[cols])
 
 # fit model
 m <- model(loadings_ntnl, loadings_holiday, loadings_inflection)
 draws <- mcmc(m,
-              sampler = hmc(Lmin = 15, Lmax = 20),
-              chains = 10,
-              warmup = 1000,
-              n_samples = 1000)
+              # sampler = hmc(Lmin = 15, Lmax = 20),
+              chains = 10)
 
 convergence(draws)
 
@@ -293,6 +307,12 @@ dev.off()
 # plot datastreams and latent factor fit
 
 # simulate with error variance
+# errors <- cauchy(0, sigma_obs, dim = dim(trends))
+# errors <- student(df = df,
+#                   mu = 0,
+#                   sigma = sigma_obs,
+#                   dim = dim(trends))
+# latent_fit <- trends + errors
 errors <- normal(0, 1, dim = dim(trends))
 latent_fit <- trends + sweep(errors, 2, sigma_obs, FUN = "*")
 sim <- calculate(latent_fit, values = draws, nsim = 1000)[[1]]
