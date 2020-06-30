@@ -2798,7 +2798,18 @@ forecast_locals <- function (local_cases, imported_cases,
   # locally-acquired cases
   forecast_local_cases <- local_cases + new_primary_local_cases + secondary_local_cases
   
-  forecast_local_cases
+  # get the probability (poisson assumption) of one for more new
+  # locally-acquired cases
+  forecast_local_infectious <- gi_mat %*% forecast_local_cases
+  expected_transmission <- forecast_local_infectious * Reff_locals + 
+    primary_local_cases
+  p_cases <- 1 - exp(-expected_transmission)
+
+  list(
+    local_cases = forecast_local_cases,
+    seecondary_local_cases = secondary_local_cases,
+    probability_of_cases = p_cases
+  )
   
 }
 

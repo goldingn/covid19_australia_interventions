@@ -31,7 +31,7 @@ distribution(barometer_distance$count) <- binomial(
 m <- model(waning_effects, distancing_effects, peak)
 
 set.seed(2020-05-30)
-draws <- mcmc(m, chains = 4)
+draws <- mcmc(m, chains = 10)
 convergence(draws)
 
 prob_pred <- microdistancing_model(
