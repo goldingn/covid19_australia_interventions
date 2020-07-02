@@ -312,10 +312,7 @@ p
 panel_width <- 11.69 / 2
 panel_height <- 8.27 / 3
 
-ggsave("outputs/figures/surveillance_effect.png",
-       width = panel_width,
-       height = panel_height * 1.25,
-       scale = 1)
+save_ggplot("surveillance_effect.png", multi = FALSE)
 
 # save the cdf matrix and dates for use in Reff model
 data.frame(date = dates) %>%

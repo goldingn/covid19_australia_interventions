@@ -433,24 +433,6 @@ for (type in 1:5) {
     R_eff_loc_1_sim[, projected_dates, ] <- R_eff_loc_1_sim[, projected_dates, ] + add_Reff
     R_eff_loc_12_sim[, projected_dates, ] <- R_eff_loc_12_sim[, projected_dates, ] + add_Reff
   }
-  
-  # david does 8.27 x 11.69 (landscape A4) for 3x2 panels
-  # aspect ratio of 0.707:1 h:w
-  # want A4 *portrait* width (8.27) with same aspect ratio
-  
-  # get required aspect ratio
-  panel_width <- 11.69 / 2
-  panel_height <- 8.27 / 3
-  panel_ratio <- panel_height / panel_width
-  
-  # work out dimensions for 4x2 panels for reports
-  multi_mfrow <- c(4, 2)
-  multi_width <- 8.27
-  multi_height <- (multi_width / multi_mfrow[2]) * panel_ratio * multi_mfrow[1]
-  
-  # add a bit of space for the title
-  multi_height <- multi_height * 1.2
-  
   # Component 1 for national / state populations
   
   # microdistancing only
@@ -464,11 +446,8 @@ for (type in 1:5) {
             subtitle = expression(R["eff"]~"if"~only~"micro-distancing"~behaviour~had~changed)) +
     ylab(expression(R["eff"]~component))
   
-  ggsave(file.path(dir, "figures/R_eff_1_local_micro.png"),
-         width = multi_width,
-         height = multi_height,
-         scale = 0.8)
-  
+  save_ggplot("R_eff_1_local_micro.png", dir)
+
   # macrodistancing only
   plot_trend(R_eff_loc_1_macro_sim,
              dates = dates_type,
@@ -480,10 +459,7 @@ for (type in 1:5) {
             subtitle = expression(R["eff"]~"if"~only~"macro-distancing"~behaviour~had~changed)) +
     ylab(expression(R["eff"]~component))
   
-  ggsave(file.path(dir, "figures/R_eff_1_local_macro.png"),
-         width = multi_width,
-         height = multi_height,
-         scale = 0.8)
+  save_ggplot("R_eff_1_local_macro.png", dir)
   
   # improved surveilance only
   plot_trend(R_eff_loc_1_surv_sim,
@@ -496,9 +472,7 @@ for (type in 1:5) {
             subtitle = expression(R["eff"]~"if"~only~surveillance~effectiveness~had~changed)) +
     ylab(expression(R["eff"]~component))
   
-  ggsave(file.path(dir, "figures/R_eff_1_local_surv.png"),
-         width = panel_width,
-         height = panel_height * 1.25)
+  save_ggplot("R_eff_1_local_surv.png", dir, multi = FALSE)
   
   # Component 1 for national / state populations
   plot_trend(R_eff_loc_1_sim,
@@ -511,25 +485,20 @@ for (type in 1:5) {
             subtitle = expression(Component~of~R["eff"]~due~to~social~distancing)) +
     ylab(expression(R["eff"]~component))
   
-  ggsave(file.path(dir, "figures/R_eff_1_local.png"),
-         width = multi_width,
-         height = multi_height,
-         scale = 0.8)
+  save_ggplot("R_eff_1_local.png", dir)
   
   plot_trend(R_eff_imp_1_sim,
              dates = dates_type,
              multistate = FALSE,
              base_colour = orange,
+             ylim = c(0, 0.4),
              vline_at = quarantine_dates,
              vline2_at = projection_date) + 
     ggtitle(label = "Impact of quarantine of overseas arrivals",
             subtitle = expression(Component~of~R["eff"]~due~to~quarantine~of~overseas~arrivals)) +
     ylab(expression(R["eff"]~component))
   
-  ggsave(file.path(dir, "figures/R_eff_1_import.png"),
-         width = panel_width,
-         height = panel_height * 1.25,
-         scale = 1)
+  save_ggplot("R_eff_1_import.png", dir, multi = FALSE)
   
   # Reff for active cases
   p <- plot_trend(R_eff_loc_12_sim,
@@ -554,25 +523,20 @@ for (type in 1:5) {
   
   p
   
-  ggsave(file.path(dir, "figures/R_eff_12_local.png"),
-         width = multi_width,
-         height = multi_height,
-         scale = 0.8)
+  save_ggplot("R_eff_12_local.png", dir)
   
   plot_trend(R_eff_imp_12_sim,
              dates = dates_type,
              multistate = TRUE,
              base_colour = orange,
+             ylim = c(0, 0.4),
              vline_at = quarantine_dates,
              vline2_at = projection_date) +
     ggtitle(label = "Import to local transmission potential",
             subtitle = "Average across active cases") +
     ylab(expression(R["eff"]~from~"overseas-acquired"~cases))
   
-  ggsave(file.path(dir, "figures/R_eff_12_imported.png"),
-         width = multi_width,
-         height = multi_height,
-         scale = 0.8)
+  save_ggplot("R_eff_12_imported.png", dir)
   
   # component 2 (noisy error trends)
   p <- plot_trend(epsilon_L_sim,
@@ -599,10 +563,7 @@ for (type in 1:5) {
   
   p
   
-  ggsave(file.path(dir, "figures/R_eff_2_local.png"),
-         width = multi_width,
-         height = multi_height,
-         scale = 0.8)
+  save_ggplot("R_eff_2_local.png", dir)
   
   plot_trend(epsilon_O_sim,
              dates = dates_type,
@@ -616,11 +577,8 @@ for (type in 1:5) {
             subtitle = expression(Deviation~from~log(R["eff"])~of~"import-local"~transmission)) +
     ylab("Deviation")
   
-  ggsave(file.path(dir, "figures/R_eff_2_imported.png"),
-         width = multi_width,
-         height = multi_height,
-         scale = 0.8)
-  
+  save_ggplot("R_eff_2_imported.png", dir)
+
   if (type == 1) {
     
     # represent simulations as matrix and lop off extra dates
@@ -761,7 +719,6 @@ for (type in 1:5) {
                                      values = draws,
                                      nsim = nsim)[[1]]
     
-    
     plot_trend(forecast_sim,
                dates = dates_type,
                multistate = TRUE,
@@ -773,10 +730,7 @@ for (type in 1:5) {
       ggtitle(label = "Forecast numbers of locally-acquired cases") +
       ylab("New infections per day")
     
-    ggsave(file.path(dir, "figures/forecast.png"),
-           width = multi_width,
-           height = multi_height,
-           scale = 0.8)
+    save_ggplot("forecast.png", dir)
     
     plot_trend(forecast_sim,
                dates = dates_type,
@@ -789,10 +743,7 @@ for (type in 1:5) {
       ggtitle(label = "Forecast numbers of locally-acquired cases") +
       ylab("New infections per day")
     
-    ggsave(file.path(dir, "figures/forecast_low.png"),
-           width = multi_width,
-           height = multi_height,
-           scale = 0.8)
+    save_ggplot("forecast_low.png", dir)
     
     plot_trend(forecast_capped_sim,
                dates = dates_type,
@@ -805,10 +756,7 @@ for (type in 1:5) {
       ggtitle(label = "Forecast numbers of locally-acquired cases") +
       ylab("New infections per day")
     
-    ggsave(file.path(dir, "figures/forecast_capped.png"),
-           width = multi_width,
-           height = multi_height,
-           scale = 0.8)
+    save_ggplot("forecast_capped.png", dir)
     
   }
   
@@ -914,10 +862,8 @@ ggplot() +
   xlab(element_blank()) +
   theme_minimal()
 
-ggsave(file.path("outputs/figures/number_of_import_local_infections.png"),
-       width = multi_width,
-       height = multi_height,
-       scale = 0.8)
+save_ggplot("number_of_import_local_infections.png")
+
 # # make counterfactual predictions of case counts if quarantine had never been
 # # extended to all arrivals (imports get local first-stage quarantine Reff)
 # 

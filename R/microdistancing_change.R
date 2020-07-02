@@ -180,10 +180,7 @@ multi_height <- (multi_width / multi_mfrow[2]) * panel_ratio * multi_mfrow[1]
 # add a bit of space for the title
 multi_height <- multi_height * 1.2
 
-ggsave("outputs/figures/microdistancing_effect.png",
-       width = multi_width,
-       height = multi_height,
-       scale = 0.8)
+save_ggplot("microdistancing_effect.png")
 
 # save the model fit
 saveRDS(pred_plot, file = "outputs/microdistancing_trends.RDS")
