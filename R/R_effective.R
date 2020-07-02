@@ -252,7 +252,7 @@ draws <- mcmc(
   chains = 10,
   one_by_one = TRUE
 )
-draws <- extra_samples(draws, 1000)
+# draws <- extra_samples(draws, 1000, one_by_one = TRUE)
 
 convergence(draws)
 
@@ -359,8 +359,6 @@ for (type in 1:5) {
     ) %>%
     write.csv(file.path(dir, "local_cases_input.csv"), row.names = FALSE)
   
-  
-  
   # subset or extend projections based on type of projection
   if (type == 1) {
     # for the nowcast, estimate up to the latest mobility data
@@ -372,18 +370,66 @@ for (type in 1:5) {
   }
   n_projected <- n_dates + as.numeric(last_date - max(dates))
   rows <- pmin(n_dates + n_extra, seq_len(n_projected))
+  dates_type <- min(dates) - 1 + seq_along(rows)
   
-  R_eff_loc_1_vec <- c(R_eff_loc_1[rows, ])
+  # duplicate these so they can be modified for scenarios
+  R_eff_loc_1_proj <- R_eff_loc_1
+  R_eff_loc_12_proj <- R_eff_loc_12
+  R_eff_loc_1_micro_proj <- R_eff_loc_1_micro
+  R_eff_loc_1_macro_proj <- R_eff_loc_1_macro
+  R_eff_loc_1_surv_proj <- R_eff_loc_1_surv
+  epsilon_L_proj <- epsilon_L
+  
+  # for counterfactuals, relevel the Reffs in VIC to predetermined minima
+  if (type > 2) {
+    
+    # component 1 minimum = 2020-04-13
+    # component 2 minimum = 2020-03-29
+    
+    # type 3 (distancing) or 5 (both), reduce component 1 to match minimum
+    # distribution
+    if (type %in% c(3, 5)) {
+      
+      minimum_idx <- which(dates == as.Date("2020-04-13"))
+      state_idx <- which(states == "VIC")
+      # after the projection date, set the component 1 value to this one
+      duplicate_idx <- seq_along(dates_type)
+      duplicate_idx[dates_type >= projection_date] <- minimum_idx
+      R_eff_loc_1_proj[, state_idx] <- R_eff_loc_1_proj[duplicate_idx, state_idx]
+      R_eff_loc_1_micro_proj[, state_idx] <- R_eff_loc_1_micro_proj[duplicate_idx, state_idx]
+      R_eff_loc_1_macro_proj[, state_idx] <- R_eff_loc_1_macro_proj[duplicate_idx, state_idx]
+      R_eff_loc_1_surv_proj <- R_eff_loc_1_surv_proj[duplicate_idx]
+    }
+    
+    # type 4 (isolation) or 5 (both), reduce component 1 to match minimum
+    # distribution
+    if (type %in% c(4, 5)) {
+      
+      minimum_idx <- which(dates == as.Date("2020-03-29"))
+      state_idx <- which(states == "VIC")
+      # after the projection date, set the epsilon_L value to this one
+      duplicate_idx <- seq_along(dates_type)
+      duplicate_idx[dates_type >= projection_date] <- minimum_idx
+      epsilon_L_proj[, state_idx] <- epsilon_L_proj[duplicate_idx, state_idx]
+      
+    }
+    
+    R_eff_loc_12_proj <- exp(log(R_eff_loc_1_proj) + epsilon_L_proj)
+    
+  }
+  
+  
+  R_eff_loc_1_vec <- c(R_eff_loc_1_proj[rows, ])
   R_eff_imp_1_vec <- c(R_eff_imp_1[rows, ])
   R_eff_imp_12_vec <- c(R_eff_imp_12[rows, ])
-  R_eff_loc_12_vec <- c(R_eff_loc_12[rows, ])
+  R_eff_loc_12_vec <- c(R_eff_loc_12_proj[rows, ])
   
-  epsilon_L_vec <- c(epsilon_L[rows, ])
+  epsilon_L_vec <- c(epsilon_L_proj[rows, ])
   epsilon_O_vec <- c(epsilon_O[rows, ])
   
-  R_eff_loc_1_micro_vec <- c(R_eff_loc_1_micro[rows, ])
-  R_eff_loc_1_macro_vec <- c(R_eff_loc_1_macro[rows, ])
-  R_eff_loc_1_surv_vec <- c(R_eff_loc_1_surv[rows])
+  R_eff_loc_1_micro_vec <- c(R_eff_loc_1_micro_proj[rows, ])
+  R_eff_loc_1_macro_vec <- c(R_eff_loc_1_macro_proj[rows, ])
+  R_eff_loc_1_surv_vec <- c(R_eff_loc_1_surv_proj[rows])
   
   OC_t_state_vec <- c(de$OC_t_state)
   
@@ -414,25 +460,6 @@ for (type in 1:5) {
   R_eff_loc_1_surv_sim <- sims$R_eff_loc_1_surv_vec
   OC_t_state_sim <- sims$OC_t_state_vec
   
-  dates_type <- min(dates) - 1 + seq_along(rows)
-  
-  # for counterfactuals, relevel the R0s after calculating them
-  if (type > 2) {
-    
-    counterfactual_Reff <- switch(as.character(type),
-                                  "3" = 1.1,
-                                  "4" = 1.2,
-                                  "5" = 1.5)
-    
-    dates_long <- rep(dates_type, n_states)
-    projected_dates_long <- dates_long >= change_date
-    projected_dates <- dates_type >= change_date
-    
-    mean_Reff <- mean(R_eff_loc_1_sim[, projected_dates, ])
-    add_Reff <- counterfactual_Reff - mean_Reff
-    R_eff_loc_1_sim[, projected_dates, ] <- R_eff_loc_1_sim[, projected_dates, ] + add_Reff
-    R_eff_loc_12_sim[, projected_dates, ] <- R_eff_loc_12_sim[, projected_dates, ] + add_Reff
-  }
   # Component 1 for national / state populations
   
   # microdistancing only
@@ -659,7 +686,7 @@ for (type in 1:5) {
   )
   
   # make forecasts
-  if (type == 2) {
+  if (type >= 2) {
     
     # forecast locally-acquired cases
     
@@ -675,7 +702,7 @@ for (type in 1:5) {
     
     forecast_list <- forecast_locals(local_cases = local_cases[keep_idx, ],
                                      imported_cases = imported_cases[keep_idx, ],
-                                     Reff_locals = R_eff_loc_12,
+                                     Reff_locals = R_eff_loc_12_proj,
                                      Reff_imports = R_eff_imp_12,
                                      dates = dates_type,
                                      gi_cdf = gi_cdf,
@@ -906,6 +933,28 @@ save_ggplot("number_of_import_local_infections.png")
 # 
 # mn <- colMeans(cumul_cases_basic_quarantine_sim)
 # head(mn, 50)
+
+
+# when was the minnimum of the posterior mean of component 1 and of component 2 in VIC?
+minimum_dates_vic <- read_csv("outputs/r_eff_1_local_samples.csv") %>%
+  mutate(reff = "1") %>%
+  bind_rows(
+    read_csv("outputs/r_eff_12_local_samples.csv") %>%
+      mutate(reff = "12")
+  ) %>%
+  filter(state == "VIC") %>%
+  pivot_longer(cols = starts_with("sim"),
+               names_to = "sim",
+               values_to = "value") %>%
+  group_by(date, reff) %>%
+  summarise(mean = mean(value)) %>%
+  group_by(reff) %>%
+  mutate(min = mean == min(mean)) %>%
+  filter(min)
+
+minimum_dates_vic
+# component 1 minimum = 2020-04-13
+# component 2 minimum = 2020-03-29
 
 
 
