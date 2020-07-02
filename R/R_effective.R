@@ -328,16 +328,20 @@ R_eff_loc_1_surv <- exp(log_R0 + log(surveillance_reff_local_reduction))
 
 output_directories <- c("",
                         "projection",
-                        "counterfactual_1",
-                        "counterfactual_2",
-                        "counterfactual_3")
+                        "scenario_1_half_distancing",
+                        "scenario_2_full_distancing",
+                        "scenario_3_isolation_no_distancing",
+                        "scenario_4_isolation_and_distancing")
 
 # put in a separate directory if testing something
 if (staging) {
   output_directories <- file.path(output_directories, "staging")
 }
 
-for (type in 1:5) {
+# types <- seq_along(output_directories)
+types <- 5:6
+
+for (type in types) {
   
   dir <- file.path("outputs", output_directories[type])
   dir.create(file.path(dir, "figures"),
@@ -386,30 +390,34 @@ for (type in 1:5) {
     # component 1 minimum = 2020-04-13
     # component 2 minimum = 2020-03-29
     
-    # type 3 (distancing) or 5 (both), reduce component 1 to match minimum
-    # distribution
-    if (type %in% c(3, 5)) {
+    # either type of distancing (half or full) or full distancing plus isolation
+    if (type %in% c(3, 4, 6)) {
       
-      minimum_idx <- which(dates == as.Date("2020-04-13"))
+      # if it's half distancing, use the date that relaxation of restrictions
+      # was implemented (at which point macro and micro had already waned),
+      # otherwise, use the date of maximum distancing (minimum of component 1)
+      scenario_date <- ifelse(type == 3,
+                             as.Date("2020-05-13"),
+                             as.Date("2020-04-13"))
+      
+      # after the projection date, set the component 1 value to the one form this date
       state_idx <- which(states == "VIC")
-      # after the projection date, set the component 1 value to this one
       duplicate_idx <- seq_along(dates_type)
-      duplicate_idx[dates_type >= projection_date] <- minimum_idx
+      duplicate_idx[dates_type >= projection_date] <- which(dates == scenario_date)
       R_eff_loc_1_proj[, state_idx] <- R_eff_loc_1_proj[duplicate_idx, state_idx]
       R_eff_loc_1_micro_proj[, state_idx] <- R_eff_loc_1_micro_proj[duplicate_idx, state_idx]
       R_eff_loc_1_macro_proj[, state_idx] <- R_eff_loc_1_macro_proj[duplicate_idx, state_idx]
       R_eff_loc_1_surv_proj <- R_eff_loc_1_surv_proj[duplicate_idx]
     }
     
-    # type 4 (isolation) or 5 (both), reduce component 1 to match minimum
-    # distribution
-    if (type %in% c(4, 5)) {
+    # if the scenario includes full isolation, reduce component 2 to match
+    # minimum distribution
+    if (type %in% c(5, 6)) {
       
-      minimum_idx <- which(dates == as.Date("2020-03-29"))
-      state_idx <- which(states == "VIC")
       # after the projection date, set the epsilon_L value to this one
+      state_idx <- which(states == "VIC")
       duplicate_idx <- seq_along(dates_type)
-      duplicate_idx[dates_type >= projection_date] <- minimum_idx
+      duplicate_idx[dates_type >= projection_date] <- which(dates == as.Date("2020-03-29"))
       epsilon_L_proj[, state_idx] <- epsilon_L_proj[duplicate_idx, state_idx]
       
     }
@@ -432,6 +440,10 @@ for (type in 1:5) {
   R_eff_loc_1_surv_vec <- c(R_eff_loc_1_surv_proj[rows])
   
   OC_t_state_vec <- c(de$OC_t_state)
+
+  # make sure the seeds are the same for each type of prediction, so the samples
+  # match
+  set.seed(2020-06-02)
   
   # simulate from posterior for quantitities of interest
   sims <- calculate(
