@@ -705,12 +705,10 @@ for (type in types) {
     # drop last two days of case data, because detection probabilities are very low
     keep_idx <- seq_len(nrow(local_cases) - 2)
     
-    
     # add constant rate of imported cases - model numbers of imports per day from
     # two weeks after the last quarantine date (mandatory hotel quarantine
     # introduced), using a poisson model with offset of the population size; add
     # those expectations to the imported cases data.
-    
     
     forecast_list <- forecast_locals(local_cases = local_cases[keep_idx, ],
                                      imported_cases = imported_cases[keep_idx, ],
@@ -742,8 +740,6 @@ for (type in types) {
     
     # invert this (small and forecasting gets 0)
     forecast_mask <- 1 - (projection_mask * small_mask)
-    
-    # tmp <- calculate(forecast_mask, values = draws, nsim = 1)[[1]][1, , ]
     
     # set all subsequent dates to 0
     forecast_mask <- apply(forecast_mask, 2, "cumprod")
@@ -796,6 +792,17 @@ for (type in types) {
       ylab("New infections per day")
     
     save_ggplot("forecast_capped.png", dir)
+    
+    # save forecast draws
+    forecast_sim_mat <- t(forecast_sim[, , 1])
+    colnames(forecast_sim_mat) <- paste0("sim", seq_len(ncol(forecast_sim_mat)))
+    df_base %>%
+      cbind(
+        forecast_sim_mat
+      ) %>%
+      write_csv(
+        file.path(dir, "forecast_samples.csv")
+      )
     
   }
   
