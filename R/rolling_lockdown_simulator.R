@@ -3,6 +3,7 @@
 
 source("R/functions.R")
 
+library(sf)
 # simulate new cases given the infectiousness of current cases and Reff
 sim_new_infections <- function(infectiousness, r_eff, import_rate, size = 3) {
   n <- length(infectiousness)
@@ -81,7 +82,7 @@ update_detections <- function(idx, state) {
 
 # one step of the simulation, simultaneously across multiple areas
 update_state <- function(idx, state) {
-
+  
   # simulate infection process  
   state <- update_infections(idx, state)
   
@@ -101,20 +102,21 @@ iterate_state <- function(state, start = 2) {
   state
 }
 
-# determine when cases would be detected
-# random, from distribution? how to dot his without recomputing?
-# at each step, transfer over to a new matrix of connfirmations
-
 set.seed(2020-07-04)
+
+# load melbourne postcode geometries and populations
+# prep_melbourne_postcodes()
+melbourne <- st_read("data/abs/melbourne_postal.shp")
+n_suburbs <- nrow(melbourne)
+# plot(melbourne["POP_DENS"], lty = 0)
 
 # dates and suburbs
 dates <- seq(as.Date("2020-07-01"), as.Date("2020-08-01"), by = 1)
 n_dates <- length(dates)
-n_suburbs <- 30
 
 # empty cases matrix with some initial case counts
 infections <- matrix(0, n_dates, n_suburbs)  
-infections[1, ] <- rpois(n_suburbs, 1)
+infections[1, 1] <- 5
 
 # empty matrix of dates of confirmation
 detections <- matrix(0, n_dates, n_suburbs)  
@@ -127,8 +129,10 @@ gi_mat <- gi_matrix(gi_cdf, dates)
 r_eff <- matrix(1.4, n_dates, n_suburbs)
 
 # mobility between suburbs
-coords <- matrix(rnorm(2 * n_suburbs, 0, 5), n_suburbs)
-mobility <- exp(-0.5 * as.matrix(dist(coords)))
+melbourne_centroids <- st_centroid(melbourne)
+distance <- st_distance(melbourne_centroids, melbourne_centroids)
+distance_km <- units::drop_units(distance) / 1e3
+mobility <- exp(-0.5 * distance_km)
 import_rate <- sweep(mobility, 1, rowSums(mobility), FUN = "/")
 
 state <- list(
@@ -138,11 +142,22 @@ state <- list(
   import_rate = import_rate
 )
 
-# iterate through the dates
-state <- iterate_state(state)
-
+system.time(
+  state <- iterate_state(state)
+)
 
 image(state$infections_matrix)
 tail(state$infections_matrix)
 colSums(state$infections_matrix)
 sum(state$infections_matrix)
+
+
+# to do:
+#  get posterior samples of Reff and negative binomial size
+#  incorporate parameter draws in samples
+#  get postal OD matrix for Melbourne LGAs from gravity model
+#  get case counts by location from linelist
+#  probabilistically assign case counts based on these and info on hotspots?
+#  run simulation without lockdown policy reducing Reff and import rates
+#  add different lockdown policies (no incidence limits)
+

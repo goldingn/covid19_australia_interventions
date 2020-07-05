@@ -2924,6 +2924,85 @@ save_ggplot <- function (filename,
   
 }
 
+prep_melbourne_postcodes <- function(
+  box = c(xmin = 144.8, ymin = -38, xmax = 145.3, ymax = -37.6),
+  filepath = "data/abs/melbourne_postal.shp"
+) {
+  
+  library(sf)
+  
+  # crop post office areas to Melbourne region
+  # find populations for them
+  # pull out S2 point locations for them from Google data
+  poa <- st_read(
+    "data/abs/POA_2016_AUST.shp",
+    stringsAsFactors = FALSE
+  ) %>%
+    filter(
+      stringr::str_starts(POA_CODE16, "3")
+    )
+  
+  # crop postal areas to Melbourne-ish
+  melbourne_crop <- st_crop(poa, box)
+  inter <- st_intersects(poa, melbourne_crop)
+  keep <- vapply(inter, length, FUN.VALUE = numeric(1)) > 0
+  melbourne <- poa[keep, ]
+  
+  # load meshblocks and find those intersecting with these postal areas
+  mesh <- st_read(
+    "data/abs/MB_2016_VIC.shp",
+    stringsAsFactors = FALSE
+  )
+  inter <- st_intersects(mesh, melbourne)
+  keep <- vapply(inter, length, FUN.VALUE = numeric(1)) > 0
+  melbourne_mesh <- mesh[keep, ]
+  
+  # load populations of all meshblocks
+  mesh_pop <- read_csv(
+    "data/abs/2016 census mesh block counts.csv",
+    col_types = cols(
+      MB_CODE_2016 = col_character(),
+      MB_CATEGORY_NAME_2016 = col_character(),
+      AREA_ALBERS_SQKM = col_double(),
+      Dwelling = col_double(),
+      Person = col_double(),
+      State = col_double()
+    )
+  ) %>%
+    rename(
+      MB_CODE16 = MB_CODE_2016
+    )
+  
+  # add populations onto shapefile
+  melbourne_mesh <- melbourne_mesh %>%
+    left_join(
+      mesh_pop
+    )
+  
+  # get intersection with postal areas to sum populations
+  coverages <- st_covered_by(melbourne_mesh, melbourne)
+  idx <- rep(NA, length(coverages))
+  idx[lengths(coverages) > 0] <- unlist(coverages)
+  
+  postal_pop <- melbourne_mesh %>%
+    st_drop_geometry() %>%
+    mutate(
+      POA_CODE16 = melbourne$POA_CODE16[idx]
+    ) %>%
+    group_by(POA_CODE16) %>%
+    summarise(
+      POP = sum(Person)
+    )
+  
+  melbourne %>%
+    left_join(postal_pop) %>%
+    mutate(
+      POP_DENS = POP / AREASQKM16
+    ) %>%
+    st_write(filepath, delete_layer = TRUE)
+  
+}
+
 # colours for plotting
 blue <- "steelblue3"
 purple <- "#C3A0E8"
