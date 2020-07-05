@@ -2926,7 +2926,7 @@ save_ggplot <- function (filename,
 
 prep_melbourne_postcodes <- function(
   box = c(xmin = 144.8, ymin = -38, xmax = 145.3, ymax = -37.6),
-  filepath = "data/abs/melbourne_postal.shp"
+  filepath = "data/abs/melbourne_postal.RDS"
 ) {
   
   library(sf)

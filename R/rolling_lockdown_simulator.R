@@ -106,9 +106,8 @@ set.seed(2020-07-04)
 
 # load melbourne postcode geometries and populations
 # prep_melbourne_postcodes()
-melbourne <- st_read("data/abs/melbourne_postal.shp")
+melbourne <- readRDS("data/abs/melbourne_postal.rds")
 n_suburbs <- nrow(melbourne)
-# plot(melbourne["POP_DENS"], lty = 0)
 
 # dates and suburbs
 dates <- seq(as.Date("2020-07-01"), as.Date("2020-08-01"), by = 1)
