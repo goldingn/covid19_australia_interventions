@@ -120,9 +120,6 @@ lockdown_import_rate <- function(idx, state, config) {
   
   import_rate
   
-  
-  
-  
 }
 
 # simulate new infections and update state object
@@ -166,7 +163,7 @@ increment_detections <- function(idx,
   
   # remove those not inside the matrix
   valid <- elements[, 1] <= n_dates
-  elements <- elements[valid, ]  
+  elements <- elements[valid, , drop = FALSE]  
   
   # count the number in each cell and add to detections matrix
   unique_elements <- unique(elements)
@@ -206,7 +203,8 @@ random_initial_infections <- function(expected_infections, size) {
 sim_initial_cases <- function(initial_expected_infections,
                               nbinom_size,
                               dates,
-                              gi_cdf) {
+                              delay_probs_all,
+                              gi_matrix) {
   
   n_suburbs <- ncol(initial_expected_infections)
   n_dates_prior <- nrow(initial_expected_infections)
@@ -221,11 +219,7 @@ sim_initial_cases <- function(initial_expected_infections,
   initial_infections_all <- rbind(initial_infections, empty_infections)
   
   dates_all <- min(dates) + seq(-n_dates_prior, n_dates - 1)
-  initial_active_cases <- gi_matrix(gi_cdf, dates_all) %*% initial_infections_all
-  
-  
-  # detection delay distribution probabilities for each date
-  delay_probs_all <- lapply(dates_all, delay_prob)
+  initial_active_cases <- gi_matrix %*% initial_infections_all
   
   detections_all <- matrix(0, n_dates_prior + n_dates, n_suburbs)
   for (i in seq_len(n_dates_prior)) {
@@ -252,9 +246,12 @@ prepare_config <- function (idx,
                             initial_expected_infections,
                             import_rate,
                             dates,
+                            delay_probs,
+                            delay_probs_all,
                             populations,
-                            gi_cdf = nishiura_cdf(),
-                            lockdown_policy = original_policy) {
+                            gi_mat,
+                            gi_mat_all,
+                            lockdown_policy = original_policy()) {
   
   # pull relevant samples
   nbinom_size <- nbinom_size_samples[idx]
@@ -268,18 +265,13 @@ prepare_config <- function (idx,
     initial_expected_infections = initial_expected_infections,
     nbinom_size = nbinom_size,
     dates = dates,
-    gi_cdf = gi_cdf
+    delay_probs_all = delay_probs_all,
+    gi_matrix = gi_mat_all
   )
   
   initial_active_cases <- initial_cases$active_cases
   initial_detections <- initial_cases$detections
 
-  # generation interval convolution matrix
-  gi_mat <- gi_matrix(gi_cdf, dates)
-  
-  # detection delay distribution probabilities for each date
-  delay_probs <- lapply(dates, delay_prob)
-  
   # return configuration for this simulation
   list(
     n_dates = length(dates),
@@ -302,16 +294,17 @@ prepare_config <- function (idx,
 
 # iterate the state for all dates
 iterate_state <- function(state, config) {
+  
   for (idx in seq_len(config$n_dates)) {
+    
+    # lockdown decision process
+    state$lockdown_matrix <- config$lockdown_policy(idx, state, config)
     
     # infection process  
     state$infections_matrix <- update_infections(idx, state, config)
     
     # detection process
     state$detections_matrix <- update_detections(idx, state, config)
-    
-    # lockdown decision process
-    state$lockdown_matrix <- config$lockdown_policy(idx, state, config)
     
   }
   
@@ -330,31 +323,41 @@ run_simulation <- function(config) {
   )
   
   # iterate the state dynamics
-  final_state <- iterate_state(initial_state, config)
+  results <- iterate_state(initial_state, config)
   
-  final_state
+  # get summaries
+  results$cases <- rowSums(results$detections_matrix)
+  results$people_in_lockdown <- (results$lockdown_matrix %*% config$populations)[, 1]
+  
+  results
   
 }
 
 # the original lockdown policy: if a suburb has 5+ cases and an incidence of >20
 # per 100,000 over some time period (a week?), lockdown that suburb
-original_policy <- function(idx, state, config, incidence_days = 7, count_threshold = 5, incidence_threshold = 20) {
-
-  # count the number of cases in the last few days
-  days <- idx - seq_len(incidence_days) + 1
-  days <- unique(pmax(1, days))
+original_policy <- function(incidence_days = 7, count_threshold = 5, incidence_threshold = 20) {
   
-  count <- colSums(state$detections_matrix[days, , drop = FALSE])
-  incidence <- count * 1e5 / config$populations
-  
-  # from here on, lock down that suburb
-  new_lockdown <- count > count_threshold & incidence > incidence_threshold
-  old_idx <- pmax(idx - 1, 1)
-  current_lockdown <- state$lockdown_matrix[old_idx, ]
-  state$lockdown_matrix[idx, ] <- pmax(as.numeric(new_lockdown), current_lockdown)
-  
-  state$lockdown_matrix
+  lockdown_policy <- function(idx, state, config) {
+    
+    # count the number of cases in the last few days
+    days <- idx - seq_len(incidence_days) + 1
+    days <- unique(pmax(1, days))
+    
+    count <- colSums(state$detections_matrix[days, , drop = FALSE])
+    incidence <- count * 1e5 / config$populations
+    
+    # from here on, lock down that suburb
+    new_lockdown <- count > count_threshold & incidence > incidence_threshold
+    old_idx <- pmax(idx - 1, 1)
+    current_lockdown <- state$lockdown_matrix[old_idx, ]
+    state$lockdown_matrix[idx, ] <- pmax(as.numeric(new_lockdown), current_lockdown)
+    
+    state$lockdown_matrix
+    
+  }
       
+  lockdown_policy
+  
 }
 
 
@@ -426,15 +429,17 @@ rownames(initial_expected_infections) <- as.character(local_cases$date)
 # dates and suburbs
 dates <- max(local_cases$date) + seq_len(6 * 7)
 n_dates <- length(dates)
-
+n_dates_prior <- nrow(initial_expected_infections)
+dates_all <- min(dates) + seq(-n_dates_prior, n_dates - 1)
+  
 import_rate <- gravity_model(
   geometry = melbourne,
   population = melbourne$POP,
-  leaving_probability = 0.1,
+  leaving_probability = 0.25,
   coef = c(-10, -10, 1, 1)
 )
 
-n_samples <- 100
+n_samples <- 1000
 size_samples <- 1 / sqrt(abs(rnorm(n_samples, 0, 0.5)))
 
 # R effective across suburbs and times
@@ -445,36 +450,116 @@ r_eff_samples <- replicate(n_samples,
 leaving_reduction_samples <- runif(n_samples, 0.2, 0.8)
 r_eff_reduction_samples <- runif(n_samples, 0.2, 0.8)
 
-config <- prepare_config(
-  idx = 1,
-  nbinom_size_samples = size_samples,
-  r_eff_samples = r_eff_samples,
-  r_eff_reduction_samples = r_eff_reduction_samples,
-  leaving_reduction_samples = leaving_reduction_samples,
-  initial_expected_infections = initial_expected_infections,
-  import_rate = import_rate,
-  dates = dates,
-  populations <- melbourne$POP
-)
+# prepare and run simulations in parallel
+library(future.apply)
+plan(multisession)
 
-results <- run_simulation(config)
+# generation interval convolution matrix for dynamic part and for dynamic &
+# pre-dynamic part
+gi_cdf <- nishiura_cdf()
+gi_mat <- gi_matrix(gi_cdf, dates)
+gi_mat_all <- gi_matrix(gi_cdf, dates_all)
 
-sum(results$infections_matrix)
-sum(results$detections_matrix)
-image(results$infections_matrix)
-image(results$detections_matrix)
-tail(results$infections_matrix)
-totals <- colSums(results$infections_matrix)
-sum(totals)
-plot(rowSums(results$detections_matrix), type = "l")
-melbourne$POA_CODE16[which.max(totals)]
+# detection delay distribution probabilities for each date
+delay_probs <- lapply(dates, delay_prob)
+delay_probs_all <- lapply(dates_all, delay_prob)
 
-image(results$lockdown_matrix)
+configs <- future_lapply(seq_len(n_samples),
+                         prepare_config,
+                         nbinom_size_samples = size_samples,
+                         r_eff_samples = r_eff_samples,
+                         r_eff_reduction_samples = r_eff_reduction_samples,
+                         leaving_reduction_samples = leaving_reduction_samples,
+                         initial_expected_infections = initial_expected_infections,
+                         import_rate = import_rate,
+                         dates = dates,
+                         delay_probs = delay_probs,
+                         delay_probs_all = delay_probs_all,
+                         gi_mat = gi_mat,
+                         gi_mat_all = gi_mat_all,
+                         populations = melbourne$POP,
+                         lockdown_policy = original_policy())
 
+results <- future_lapply(configs, run_simulation)
+
+# combine results
+postcode_case_list <- lapply(results, `[[`, "detections_matrix")
+postcode_case_sims <- do.call(abind, c(postcode_case_list, list(along = 0)))
+
+mn <- apply(postcode_case_sims, 2:3, mean)
+quants <- apply(postcode_case_sims, 2:3, quantile, c(0.05, 0.25, 0.5, 0.75, 0.95))
+
+df <- tibble(
+  postcode = rep(melbourne$POA_CODE16, each = n_dates),
+  date = rep(dates, n_suburbs),
+  mean = c(mn),
+  median = c(quants[3, , ]),
+  ci_50_lo = c(quants[2, , ]),
+  ci_50_hi = c(quants[4, , ]),
+  ci_90_lo = c(quants[1, , ]),
+  ci_90_hi = c(quants[5, , ])
+) %>%
+  group_by(postcode) %>%
+  mutate(max = max(ci_90_hi)) %>%
+  arrange(max)
+
+top_suburbs <- df %>%
+  summarise(total = sum(mean)) %>%
+  arrange(desc(total)) %>%
+  head(8) %>%
+  pull(postcode)
+
+library(ggplot2)
+base_colour <- blue
+
+p <- df %>%
+  ungroup() %>%
+  filter(postcode %in% top_suburbs) %>%
+  mutate(
+    postcode = factor(postcode, levels = top_suburbs),
+    type = "Nowcast"
+  ) %>%
+  arrange(desc(max)) %>%
+  ggplot() + 
+  
+  aes(date, mean, fill = type) +
+  
+  xlab(element_blank()) +
+  
+  scale_y_continuous(position = "right") +
+  scale_x_date(date_breaks = "1 months", date_labels = "%b %d") +
+  scale_alpha(range = c(0, 0.5)) +
+  scale_fill_manual(values = c("Nowcast" = base_colour)) +
+  
+  geom_ribbon(aes(ymin = ci_90_lo,
+                  ymax = ci_90_hi),
+              alpha = 0.2) +
+  geom_ribbon(aes(ymin = ci_50_lo,
+                  ymax = ci_50_hi),
+              alpha = 0.5) +
+  geom_line(aes(y = ci_90_lo),
+            colour = base_colour,
+            alpha = 0.8) + 
+  geom_line(aes(y = ci_90_hi),
+            colour = base_colour,
+            alpha = 0.8) + 
+  
+  facet_wrap(~ postcode, ncol = 2) +
+  
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  theme(legend.position = "none",
+        strip.background = element_blank(),
+        strip.text = element_text(hjust = 0, face = "bold"),
+        axis.title.y.right = element_text(vjust = 0.5, angle = 90),
+        panel.spacing = unit(1.2, "lines")) +
+  ylab("confirmed cases per day")
+
+  p
+  save_ggplot("postcode_forecast.png", multi = TRUE)
+
+  
 # to do:
-#  run simulation without lockdown policy reducing Reff and import rates
-#  add different lockdown policies (no incidence limits)
+#  add different lockdown policies
 #  get posterior samples of Reff and negative binomial size
-#  incorporate parameter draws in samples
 #  incorporate FB OD matrix
-#  make diagnostic plots
