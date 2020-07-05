@@ -4,21 +4,22 @@
 source("R/functions.R")
 
 library(sf)
-# simulate new cases given the infectiousness of current cases and Reff
-sim_new_infections <- function(infectiousness, r_eff, import_rate, size = 3) {
-  n <- length(infectiousness)
-  expected_infections <- infectiousness * r_eff
-  reallocated_infections <- expected_infections %*% import_rate
-  rnbinom(n, size, mu = reallocated_infections)
+
+# discrete probability distribution over days to case detection, for infections on this date
+delay_prob <- function(date) {
+  days <- seq_len(101) - 1 
+  survival <- ttd_survival(days, rep(date, length(days)))
+  diff(c(0, 1 - survival))
 }
 
+# simulate n values of days to detection
 detection_delay <- function(n, prob) {
   if (n > 0) {
     days <- sample.int(
       length(prob),
       size = n,
       replace = TRUE,
-      prob =  prob
+      prob = prob
     )
     days - 1
   }
@@ -35,33 +36,32 @@ combine <- function(matrix) {
 }
 
 # simulate new infections and update state object
-update_infections <- function(idx, state) {
+update_infections <- function(idx, state, config) {
   
-  active_cases <- gi_mat %*% state$infections_matrix
-  new_infections <- sim_new_infections(
-    active_cases[idx, ],
-    state$r_eff_matrix[idx, ],
-    state$import_rate
-  )
+  active_cases <- config$gi_matrix %*% state$infections_matrix
+  expected_infections <- active_cases[idx, ] * config$r_eff[idx, ]
+  reallocated_infections <- expected_infections %*% config$import_rate
+  n_suburbs <- ncol(active_cases)
+  new_infections <- rnbinom(n_suburbs,
+                            config$size,
+                            mu = reallocated_infections)
   state$infections_matrix[idx, ] <- new_infections
   state
   
 }
 
 # simulate detection process for new infections and update state object
-update_detections <- function(idx, state) {
+update_detections <- function(idx, state, config) {
   
   new_infections <- state$infections_matrix[idx, ]
   
   # get probabilities of detection on days following this infection date
   max_days <- nrow(state$infections_matrix)
-  days <- seq_len(101) - 1 
-  survival <- ttd_survival(days, rep(dates[idx], length(days)))
-  prob <- diff(c(0, 1 - survival))
   
   # for each new infection in each suburb, assign a random day of future
   # detection
-  delays <- unlist(lapply(new_infections, detection_delay, prob))
+  delay_prob <- config$delay_probs[[idx]]
+  delays <- unlist(lapply(new_infections, detection_delay, delay_prob))
   suburbs <- rep(seq_len(n_suburbs), new_infections)
   elements <- cbind(idx + delays, suburbs)
   
@@ -80,24 +80,26 @@ update_detections <- function(idx, state) {
   
 }
 
-# one step of the simulation, simultaneously across multiple areas
-update_state <- function(idx, state) {
+# one step of the simulation, simultaneously across multiple suburbs
+update_state <- function(idx, state, config) {
   
   # simulate infection process  
-  state <- update_infections(idx, state)
+  state <- update_infections(idx, state, config)
   
   # simulate detection process
-  state <- update_detections(idx, state)
+  state <- update_detections(idx, state, config)
   
   state
   
 }
 
-iterate_state <- function(state, start = 2) {
+# iterate the state for all dates
+iterate_state <- function(state, config) {
+  start <- config$start
   end <- nrow(state$infections_matrix)
   for (idx in seq(start, end)) {
     # if (idx == 28) browser()
-    state <- update_state(idx, state)
+    state <- update_state(idx, state, config)
   }
   state
 }
@@ -106,14 +108,15 @@ set.seed(2020-07-04)
 
 # load melbourne postcode geometries and populations
 # prep_melbourne_postcodes()
-melbourne <- readRDS("data/abs/melbourne_postal.rds")
+melbourne <- readRDS("data/abs/melbourne_postal.rds") %>%
+  filter(POP > 0)
 n_suburbs <- nrow(melbourne)
 
 # dates and suburbs
 dates <- seq(as.Date("2020-07-01"), as.Date("2020-08-01"), by = 1)
 n_dates <- length(dates)
 
-# empty cases matrix with some initial case counts
+# empty cases matrix with some initial infections in the CBD
 infections <- matrix(0, n_dates, n_suburbs)  
 infections[1, 1] <- 5
 
@@ -131,30 +134,51 @@ r_eff <- matrix(1.4, n_dates, n_suburbs)
 melbourne_centroids <- st_centroid(melbourne)
 distance <- st_distance(melbourne_centroids, melbourne_centroids)
 distance_km <- units::drop_units(distance) / 1e3
-mobility <- exp(-0.5 * distance_km)
+# diag(distance_km) <- 1e-3
+log_pop <- log(melbourne$POP)
+log_pop_matrix <- matrix(rep(log_pop, n_suburbs),
+                         n_suburbs,
+                         n_suburbs)
+log_mobility <- -10 +
+  -1 * log(distance_km) +
+  1 * log_pop_matrix +
+  1 * t(log_pop_matrix)
+mobility <- exp(log_mobility)
+diag(mobility) <- 0
 import_rate <- sweep(mobility, 1, rowSums(mobility), FUN = "/")
+# probability that a contact is outside the postcode
+leaving_probability <- 0.25
+diag(import_rate) <- 1 / leaving_probability - 1
+import_rate <- sweep(import_rate, 1, rowSums(import_rate), FUN = "/")
 
 state <- list(
   infections_matrix = infections,
-  detections_matrix = detections,
+  detections_matrix = detections
+)
+
+config <- list(
+  dates = dates,
+  start = 2,
+  size = 1 / sqrt(abs(rnorm(1, 0, 0.5))),
+  gi_matrix = gi_mat,
   r_eff_matrix = r_eff,
+  delay_probs = lapply(dates, delay_prob),
   import_rate = import_rate
 )
 
 system.time(
-  state <- iterate_state(state)
+  state <- iterate_state(state, config)
 )
 
 image(state$infections_matrix)
 tail(state$infections_matrix)
-colSums(state$infections_matrix)
-sum(state$infections_matrix)
-
+totals <- colSums(state$infections_matrix)
+sum(totals)
+melbourne$POA_CODE16[which.max(totals)]
 
 # to do:
 #  get posterior samples of Reff and negative binomial size
 #  incorporate parameter draws in samples
-#  get postal OD matrix for Melbourne LGAs from gravity model
 #  get case counts by location from linelist
 #  probabilistically assign case counts based on these and info on hotspots?
 #  run simulation without lockdown policy reducing Reff and import rates
