@@ -2579,6 +2579,16 @@ impute_onsets <- function(detection_dates,
   
 }
 
+# clean up some weird date encoding in the linelist
+clean_date <- function (original_date) {
+  weird_date <- !grepl("2020", original_date)
+  corrected_date <- gsub("^\\d\\d\\d\\d", "2020", original_date)
+  # don't use ifelse as it converts to a numeric
+  date <- original_date
+  date[weird_date] <- corrected_date[weird_date]
+  date
+}
+
 # read in the latest linelist and format for analysis
 get_linelist <- function (file = NULL, dir = "~/not_synced/nndss") {
   
@@ -2597,10 +2607,6 @@ get_linelist <- function (file = NULL, dir = "~/not_synced/nndss") {
     date_time_text <- gsub(".xlsx$", "", date_time_text)
     ll_date <- as.POSIXct(date_time_text, format = "%d%b%Y %H%M")
   }
-  
-
-  
-  
   
   dat <- readxl::read_xlsx(
     file,
@@ -2633,13 +2639,21 @@ get_linelist <- function (file = NULL, dir = "~/not_synced/nndss") {
   dat <- dat %>%
     filter(!is.na(STATE))
   
-  # David's parsing of the place of acquisition codes
-  dat$TRUE_ONSET_DATE[!grepl("2020", dat$TRUE_ONSET_DATE)] <- gsub('^\\d\\d\\d\\d', '2020', dat$TRUE_ONSET_DATE[!grepl("2020", dat$TRUE_ONSET_DATE)])
-  dat$NOTIFICATION_RECEIVE_DATE[!grepl("2020", dat$NOTIFICATION_RECEIVE_DATE)] <- gsub('^\\d\\d\\d\\d', '2020', dat$NOTIFICATION_RECEIVE_DATE[!grepl("2020", dat$NOTIFICATION_RECEIVE_DATE)])
-  dat$import_status <- "imported"
-  dat$import_status[grepl(pattern="^1101",dat$PLACE_OF_ACQUISITION)] <- "local"
-  dat$import_status[grepl(pattern="^00038888",dat$PLACE_OF_ACQUISITION)] <- "local"
-  dat$import_status[is.na(dat$PLACE_OF_ACQUISITION)] <- "local"
+  
+  # tidy up dates and parsse place of acquisition to local (Australia) vs. overseas
+  dat <- dat %>%
+    mutate(
+      TRUE_ONSET_DATE = clean_date(TRUE_ONSET_DATE),
+      NOTIFICATION_RECEIVE_DATE = clean_date(NOTIFICATION_RECEIVE_DATE)
+    ) %>%
+    mutate(
+      import_status = ifelse(
+        is.na(PLACE_OF_ACQUISITION) |
+          grepl("^1101|^00038888", PLACE_OF_ACQUISITION),
+        "local",
+        "imported"
+      )
+    )
   
   # Generate linelist data
   linelist <- dat %>%
