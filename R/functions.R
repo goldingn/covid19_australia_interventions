@@ -2655,6 +2655,35 @@ get_linelist <- function (file = NULL, dir = "~/not_synced/nndss") {
       )
     )
   
+  # record state of acquisition
+  dat <- dat %>%
+    # fill in missing places of acquisition with correct code
+    mutate(
+      PLACE_OF_ACQUISITION = ifelse(
+        is.na(PLACE_OF_ACQUISITION),
+        "00038888",
+        PLACE_OF_ACQUISITION)
+    ) %>%
+    mutate(
+      postcode = substr(PLACE_OF_ACQUISITION, 5, 8),
+      state_of_acquisition = case_when(
+        grepl("^26", postcode) ~ "ACT",
+        grepl("^2", postcode) ~ "NSW",
+        grepl("^3", postcode) ~ "VIC",
+        grepl("^4", postcode) ~ "QLD",
+        grepl("^5", postcode) ~ "SA",
+        grepl("^6", postcode) ~ "WA",
+        grepl("^7", postcode) ~ "TAS",
+        grepl("^08", postcode) ~ "NT",
+        TRUE ~ "NA"
+      ),
+      state_of_acquisition = ifelse(
+        state_of_acquisition == "NA",
+        NA,
+        state_of_acquisition
+      )
+    )
+  
   # Generate linelist data
   linelist <- dat %>%
     # notification receive date seems buggy, and is sometimes before the notification date and speecimen collection
@@ -2671,7 +2700,8 @@ get_linelist <- function (file = NULL, dir = "~/not_synced/nndss") {
       date_detection = SPECIMEN_DATE,
       date_confirmation,
       region = STATE,
-      import_status
+      import_status,
+      state_of_acquisition
     ) %>%
     mutate(
       report_delay = as.numeric(date_confirmation - date_onset),
