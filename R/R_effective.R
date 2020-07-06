@@ -426,7 +426,6 @@ for (type in types) {
     
   }
   
-  
   R_eff_loc_1_vec <- c(R_eff_loc_1_proj[rows, ])
   R_eff_imp_1_vec <- c(R_eff_imp_1[rows, ])
   R_eff_imp_12_vec <- c(R_eff_imp_12[rows, ])
@@ -440,7 +439,22 @@ for (type in types) {
   R_eff_loc_1_surv_vec <- c(R_eff_loc_1_surv_proj[rows])
   
   OC_t_state_vec <- c(de$OC_t_state)
+  
+  # some things for VIC postcode-level simulations
+  vic_idx <- which(states == "VIC")
+  full_reduction_idx <- which(dates == as.Date("2020-04-13"))
+  half_reduction_idx <- which(dates == as.Date("2020-05-13"))
 
+  # nbinom sample size and ratio of Reffs component 1 from now to previous times post-lockdown
+  vic_r_eff_min_full <- R_eff_loc_1_proj[full_reduction_idx, vic_idx]
+  vic_r_eff_min_half <- R_eff_loc_1_proj[half_reduction_idx, vic_idx]
+  vic_r_eff_now <- R_eff_loc_1_proj[n_dates, vic_idx]
+  
+  vic_r_eff_reduction_full <- vic_r_eff_min_full / vic_r_eff_now 
+  vic_r_eff_reduction_half <- vic_r_eff_min_half / vic_r_eff_now 
+  vic_r_eff <- R_eff_loc_12_proj[rows, vic_idx]
+  vic_size <- 1 / sqrt(sqrt_inv_size[vic_idx])
+  
   # make sure the seeds are the same for each type of prediction, so the samples
   # match
   set.seed(2020-06-02)
@@ -457,6 +471,10 @@ for (type in types) {
     R_eff_loc_1_macro_vec,
     R_eff_loc_1_surv_vec,
     OC_t_state_vec,
+    vic_r_eff_reduction_full,
+    vic_r_eff_reduction_half,
+    vic_r_eff,
+    vic_size,
     values = draws,
     nsim = nsim
   )
@@ -471,6 +489,22 @@ for (type in types) {
   R_eff_loc_1_macro_sim <- sims$R_eff_loc_1_macro_vec
   R_eff_loc_1_surv_sim <- sims$R_eff_loc_1_surv_vec
   OC_t_state_sim <- sims$OC_t_state_vec
+  vic_r_eff_reduction_full_sim <- sims$vic_r_eff_reduction_full
+  vic_r_eff_reduction_half_sim <- sims$vic_r_eff_reduction_half
+  vic_r_eff_sim <- sims$vic_r_eff
+  vic_size_sim <- sims$vic_size
+  
+  # save draws for postcode forecasting
+  postcode_draws <- list(
+    vic_size = vic_size_sim[, 1, 1],
+    vic_r_eff_reduction_full = vic_r_eff_reduction_full_sim[, 1, 1],
+    vic_r_eff_reduction_half = vic_r_eff_reduction_half_sim[, 1, 1],
+    vic_r_eff = vic_r_eff_sim[, , 1],
+    dates = dates_type
+  )
+  
+  saveRDS(postcode_draws,
+          file = file.path(dir, "postcode_forecast_draws.RDS"))
   
   # Component 1 for national / state populations
   

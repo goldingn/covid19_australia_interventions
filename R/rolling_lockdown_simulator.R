@@ -49,6 +49,7 @@ gravity_model <- function(geometry, population,
 # modify an import rate matrix to set the probability that a infectee is
 # inside/outside the suburb
 set_leaving_probability <- function(import_rate, leaving_probability) {
+  
   # make off-diagnal elements on each row (probability of visiting each other
   # suburbs if leaving) sum to 1
   diag(import_rate) <- 0
@@ -97,7 +98,7 @@ combine <- function(matrix) {
 lockdown_r_eff <- function(idx, state, config) {
   baseline_r_eff <- config$r_eff_matrix[idx, ]
   lockdown_status <- state$lockdown_matrix[idx, ]
-  modification <- 1 - lockdown_status * config$r_eff_reduction
+  modification <- 1 - lockdown_status * (1 - config$r_eff_reduction)
   baseline_r_eff * modification
 }
 
@@ -391,7 +392,7 @@ local_cases <- read_csv(
 
 # use (active?) case distribution between lockdown suburbs as reported by the
 # Age on July 3rd to disagreggate expected number of infections by postcode
-case_distrib <- tibble::tribble(
+case_distrib_old <- tibble::tribble(
   ~postcode, ~cases,
   3064, 52,
   3047, 25,
@@ -403,7 +404,9 @@ case_distrib <- tibble::tribble(
   3055, 3,
   3032, 9,
   3012, 8,
-) %>%
+)
+
+case_distrib <- case_distrib_old %>%
   mutate(
     fraction = cases / sum(cases),
     POA_CODE16 = as.character(postcode)
@@ -435,20 +438,34 @@ dates_all <- min(dates) + seq(-n_dates_prior, n_dates - 1)
 import_rate <- gravity_model(
   geometry = melbourne,
   population = melbourne$POP,
-  leaving_probability = 0.25,
-  coef = c(-10, -10, 1, 1)
+  leaving_probability = 0.4,
+  coef = c(0, -2.5, 1, 1)
 )
 
-n_samples <- 1000
-size_samples <- 1 / sqrt(abs(rnorm(n_samples, 0, 0.5)))
+# # check distribution of maximum proportion going in a non-origin suburb
+# # expect peak to be just below 0.09 (9% of cases' trips in 2 days prior to
+# # symptom onset were to neighburing postcodes)
+# test <- import_rate
+# diag(test) <- 0
+# maxes <- apply(test, 1, max)
+# hist(maxes, breaks = 50)
+# abline(v = 0.09)
+
+
+parameter_draws <- readRDS("outputs/projection/postcode_forecast_draws.RDS")
+
+n_samples <- 200
+size_samples <- parameter_draws$vic_size[seq_len(n_samples)]
+r_eff_reduction_samples <- parameter_draws$vic_r_eff_reduction_full[seq_len(n_samples)]
+leaving_reduction_samples <- runif(n_samples, 0.2, 0.5)
 
 # R effective across suburbs and times
-r_eff_samples <- replicate(n_samples,
-                           matrix(1.1, n_dates, n_suburbs),
-                           simplify = FALSE)
-
-leaving_reduction_samples <- runif(n_samples, 0.2, 0.8)
-r_eff_reduction_samples <- runif(n_samples, 0.2, 0.8)
+idx <- match(dates, parameter_draws$dates)
+r_eff_samples_mat <- parameter_draws$vic_r_eff[seq_len(n_samples), idx]
+r_eff_samples_list <- apply(r_eff_samples_mat, 1, list)
+r_eff_samples <- lapply(r_eff_samples_list, function(x) {
+  matrix(rep(x[[1]], n_suburbs), n_dates, n_suburbs)
+})
 
 # prepare and run simulations in parallel
 library(future.apply)
@@ -503,9 +520,10 @@ df <- tibble(
   mutate(max = max(ci_90_hi)) %>%
   arrange(max)
 
-top_suburbs <- df %>%
-  summarise(total = sum(mean)) %>%
-  arrange(desc(total)) %>%
+top_new_suburbs <- df %>%
+  filter(!postcode %in% case_distrib_old$postcode) %>%
+  summarise(peak = max(median)) %>%
+  arrange(desc(peak)) %>%
   head(8) %>%
   pull(postcode)
 
@@ -514,9 +532,9 @@ base_colour <- blue
 
 p <- df %>%
   ungroup() %>%
-  filter(postcode %in% top_suburbs) %>%
+  filter(postcode %in% top_new_suburbs) %>%
   mutate(
-    postcode = factor(postcode, levels = top_suburbs),
+    postcode = factor(postcode, levels = top_new_suburbs),
     type = "Nowcast"
   ) %>%
   arrange(desc(max)) %>%
@@ -555,11 +573,16 @@ p <- df %>%
         panel.spacing = unit(1.2, "lines")) +
   ylab("confirmed cases per day")
 
-  p
-  save_ggplot("postcode_forecast.png", multi = TRUE)
+p
 
-  
+save_ggplot("postcode_forecast.png", multi = TRUE)
+
+# image(mn)
+# image(results[[6]]$infections_matrix)
+
 # to do:
+#  use actual lockdowns and dates
+#  switch to suburbs for use with actual lockdowns
+#  make a map of forecasts
 #  add different lockdown policies
-#  get posterior samples of Reff and negative binomial size
 #  incorporate FB OD matrix
