@@ -193,7 +193,6 @@ p <- plot_trend(pred_sim,
 
 p
 
-
 # get required aspect ratio
 panel_width <- 11.69 / 2
 panel_height <- 8.27 / 3
