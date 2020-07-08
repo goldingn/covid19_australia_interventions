@@ -105,14 +105,17 @@ neg_sim <- sims[[1]][, , 1]
 ttd_sim <- sims[[2]][, , 1]
 
 # overall PPC check on each part of the likelihood
+# # idx <- rep(TRUE, nrow(detection))
+# check most recent period
+idx <- detection$date_confirmation > (Sys.Date() - 14)
 bayesplot::ppc_ecdf_overlay(
-  detection$negative,
-  neg_sim,
+  detection$negative[idx],
+  neg_sim[, idx],
   discrete = TRUE
 )
 bayesplot::ppc_ecdf_overlay(
-  detection$days_to_detection[nonneg],
-  ttd_sim,
+  detection$days_to_detection[nonneg][idx[nonneg]],
+  ttd_sim[, idx[nonneg]],
   discrete = TRUE
 )
 
