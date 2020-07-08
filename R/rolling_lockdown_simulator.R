@@ -499,6 +499,11 @@ configs <- future_lapply(seq_len(n_samples),
 
 results <- future_lapply(configs, run_simulation)
 
+
+# saveRDS(results, "~/Desktop/results_check.RDS")
+results_check <- readRDS("~/Desktop/results_check.RDS")
+identical(results, results_check)
+
 # combine results
 postcode_case_list <- lapply(results, `[[`, "detections_matrix")
 postcode_case_sims <- do.call(abind, c(postcode_case_list, list(along = 0)))
@@ -577,12 +582,34 @@ p
 
 save_ggplot("postcode_forecast.png", multi = TRUE)
 
-# image(mn)
-# image(results[[6]]$infections_matrix)
+png("~/Desktop/median_cases.png")
+image(log1p(quants[3, , ]),
+      main = "cases (median)")
+dev.off()
+
+png("~/Desktop/example1.png")
+par(mfrow = c(2, 1), mar = c(2, 2, 2, 1))
+i <- 10
+image(log1p(results[[i]]$detections_matrix),
+      main  = "cases")
+image(results[[i]]$lockdown_matrix,
+      main = "lockdown")
+dev.off()
+
+png("~/Desktop/example2.png")
+par(mfrow = c(2, 1), mar = c(2, 2, 2, 1))
+i <- 13
+image(log1p(results[[i]]$detections_matrix),
+      main  = "cases")
+image(results[[i]]$lockdown_matrix,
+      main = "lockdown")
+dev.off()
 
 # to do:
-#  use actual lockdowns and dates
-#  switch to suburbs for use with actual lockdowns
-#  make a map of forecasts
+#  switch to all Victorian LGAs
+#  speed up detection counting
+#  account for household infections in proportion leaving
+#  define loss of control & compute probability of reaching it
+#  make nicer plots
 #  add different lockdown policies
 #  incorporate FB OD matrix
