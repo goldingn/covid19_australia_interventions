@@ -454,6 +454,43 @@ holiday_dates <- function() {
     mutate(date = lubridate::date(date))
 }
 
+lockdown_lgas <- function() {
+  c(
+    "Banyule (C)",
+    "Bayside (C)",
+    "Boroondara (C)",
+    "Brimbank (C)", 
+    "Cardinia (S)",
+    "Casey (C)",
+    "Darebin (C)",
+    "Frankston (C)", 
+    "Glen Eira (C)",
+    "Greater Dandenong (C)",
+    "Hobsons Bay (C)", 
+    "Hume (C)",
+    "Kingston (C) (Vic.)",
+    "Knox (C)",
+    "Manningham (C)", 
+    "Maribyrnong (C)",
+    "Maroondah (C)",
+    "Melbourne (C)",
+    "Melton (C)", 
+    "Mitchell (S)",
+    "Monash (C)",
+    "Moonee Valley (C)",
+    "Moreland (C)", 
+    "Mornington Peninsula (S)",
+    "Nillumbik (S)",
+    "Port Phillip (C)", 
+    "Stonnington (C)",
+    "Whitehorse (C)",
+    "Whittlesea (C)",
+    "Wyndham (C)", 
+    "Yarra (C)",
+    "Yarra Ranges (S)"
+  )
+}
+
 # define a latent factor for state-switching behaviour. kappa are lengths of the
 # tails for early- and late-adopters; lambda are the relative contribution of
 # the triggers; tau are dates of triggers
