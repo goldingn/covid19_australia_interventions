@@ -2546,7 +2546,7 @@ impute_one_onset <- function(detection_date, method = c("expected", "random"), m
   method <- match.arg(method)
   
   # get possible dates of infection (cannot be within two days of infection)
-  delays <- seq_len(max_days) + 2 
+  delays <- seq_len(max_days - 2) + 2 
   possible_infection_dates <- detection_date - delays
   
   # probability of being detected this many days later (probability of detection
@@ -2563,7 +2563,8 @@ impute_one_onset <- function(detection_date, method = c("expected", "random"), m
                 expected = round(sum(delays * prob)),
                 random = sample(delays, 1, prob = prob))
   
-  # subtract 5 to get expcted time since symptom onset, round, and convert to the date
+  # subtract 5 to get expected time since symptom onset, round, and convert to
+  # the date
   onset_date <- detection_date - (TSI - 5)
   onset_date
   
@@ -2597,8 +2598,18 @@ clean_date <- function (original_date, min_date = as.Date("2020-01-01")) {
   date
 }
 
-# fetch the state corresponding to each postcode, using the lookup table
-# provided by NIR
+# convert a date-by-region matrix into long format 
+lengthen <- function(matrix, dates, region_name, value_name) {
+  matrix %>%
+    as.data.frame() %>%
+    bind_cols(date = dates) %>%
+    pivot_longer(-date,
+                 names_to = region_name,
+                 values_to = value_name)
+  
+}
+
+# fetch the state corresponding to each postcode
 postcode_to_state <- function(postcode) {
   
   state <- case_when(
@@ -2618,15 +2629,32 @@ postcode_to_state <- function(postcode) {
 
   state[state == "NA"] <- NA
   state
-
-  # read_xlsx("data/spatial/Postcodes for UoM.xlsx") %>%
-  #   right_join(
-  #     tibble(POSTCODE = as.character(postcode))
-  #   ) %>%
-  #   pull(
-  #     STATE
-  #   )
     
+}
+
+lga_to_state <- function (lga) {
+  
+  "data/spatial/LGA19_to_STATE16.csv" %>%
+    read_csv(
+      col_types = cols(
+        LGA_CODE_2019 = col_double(),
+        LGA_NAME_2019 = col_character(),
+        STATE_CODE_2016 = col_double(),
+        STATE_NAME_2016 = col_character()
+      )
+    ) %>%
+    select(
+      lga = LGA_NAME_2019,
+      state = STATE_NAME_2016
+    ) %>%
+    mutate(
+      state = abbreviate_states(state)
+    ) %>%
+    right_join(
+      tibble(lga = lga)
+    ) %>%
+    pull(state)
+  
 }
 
 # read in the latest linelist and format for analysis
@@ -2811,44 +2839,140 @@ load_linelist <- function () {
 }
 
 # convert imputed linelist into matrix of new infections by date and state
-infections_by_state <- function(linelist,
-                                from = min(linelist$date),
-                                to = max(linelist$date),
-                                type = c("local", "imported", "both")) {
+infections_by_region <- function(linelist,
+                                 region_type = c("state", "postcode_of_residence"),
+                                 case_type = c("local", "imported", "both"),
+                                 from = min(linelist$date),
+                                 to = max(linelist$date)) {
   
-  type <- match.arg(type)
-  
-  import_statuses <- sort(unique(linelist$import_status))
+  region_type <- match.arg(region_type)
+  case_type <- match.arg(case_type)
+
+  # get full range of dates (do this before dropping rows)
   dates <- seq(from, to, by = 1)
-  states <- sort(unique(linelist$state))
+    
+  # drop unneeded rows (and regions)
+  if (case_type != "both") {
+    linelist <- linelist %>%
+      filter(import_status == case_type)
+  }
+  
+  regions <- sort(unique(linelist[[region_type]]))
   
   # pad this with full set of dates, states, and import statuses
   grid <- expand_grid(
     date = dates,
-    import_status = import_statuses,
-    state = states
+    region = regions
   )
   
   # widen into matrices of date by state
-  date_by_state <- linelist %>%
+  new_infections <- linelist %>%
     mutate(cases = 1) %>%
+    rename(region = !!region_type) %>%
     right_join(grid) %>%
-    group_by(import_status, state, date) %>%
+    group_by(region, date) %>%
     summarise(cases = sum(cases, na.rm = TRUE)) %>%
     ungroup() %>%
-    pivot_wider(names_from = state, values_from = cases) %>%
-    select(-date)
-  
-  if (type != "both") {
-    date_by_state <- date_by_state %>%
-      filter(import_status == type)
-  }
-  
-  new_infections <- date_by_state %>%
-    select(-import_status) %>%
+    pivot_wider(names_from = region, values_from = cases) %>%
+    select(-date) %>%
     as.matrix()
   
   new_infections
+  
+}
+
+# aggregate infections and infectiousness for a given case type at lga level
+lga_infections <- function(linelist, dates, gi_mat, case_type = c("local", "imported")) {
+  
+  case_type <- match.arg(case_type)
+  
+  # aggregate locally-acquired cases by postcode and date
+  postcode_matrix <- linelist %>%
+    infections_by_region(
+      region_type = "postcode",
+      case_type = case_type,
+      from = min(dates),
+      to = max(dates)
+    )
+  
+  postcodes <- colnames(postcode_matrix)
+  
+  # read in postcode-lga lookup and weights
+  weights_tbl <- read_xlsx(
+    "data/spatial/CA_POSTCODE_2018_LGA_2018.xlsx",
+    sheet = 4,
+    skip = 5
+  ) %>%
+    filter(
+      row_number() > 1,
+      !is.na(RATIO)
+    ) %>%
+    select(
+      postcode = POSTCODE_2018...1,
+      lga = LGA_NAME_2018,
+      lga_code = LGA_CODE_2018,
+      weight = RATIO
+    ) %>%
+    # subset to observed postcodes
+    right_join(
+      tibble(
+        postcode = postcodes,
+      )
+    ) %>%
+    # assign unrecognised/unknown/overseas postcodes to a separate class
+    mutate(
+      lga = replace_na(lga, "other"),
+      weight = replace_na(weight, 1)
+    )
+  
+  # convert to matrix for weighting
+  weights_matrix <- weights_tbl %>%
+    select(-lga_code) %>%
+    pivot_wider(
+      names_from = lga,
+      values_from = "weight",
+      values_fill = list(weight = 0)
+    ) %>%
+    select(-postcode) %>%
+    as.matrix() %>%
+    `rownames<-`(postcodes)
+  
+  # aggregate cases to lga level
+  lga_matrix <- postcode_matrix %*% weights_matrix
+  lga <- lengthen(lga_matrix,
+                  dates,
+                  "lga",
+                  "infections")
+  
+  # get infectiousness of these cases
+  postcode_infectious_matrix <- gi_mat %*% postcode_matrix
+  lga_infectious_matrix <- postcode_infectious_matrix %*% weights_matrix
+  lga_infectious <- lengthen(lga_infectious_matrix,
+                             dates,
+                             "lga",
+                             "infectiousness")
+  
+  # convert both to long form and combine
+  lga_long <- lga %>%
+    left_join(
+      lga_infectious
+    ) %>%
+    # remove empty entries
+    filter(
+      infections > 0 | infectiousness > 0
+    ) %>%
+    # add LGA codes
+    left_join(
+      weights_tbl %>%
+        select(lga, lga_code) %>%
+        filter(!duplicated(.))
+    ) %>%
+    mutate(
+      state = lga_to_state(lga)
+    ) %>%
+    arrange(state, lga, date)
+  
+  lga_long
   
 }
 

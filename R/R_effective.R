@@ -4,21 +4,17 @@
 # see the manuscript for an explanation of the model that may or may not be out
 # of date.
 
-library(dplyr)
-library(readr)
-library(tidyr)
-library(RColorBrewer)
 source("R/functions.R")
 
 staging <- FALSE
 
 set.seed(2020-04-29)
 
+# load the linelist
 linelist <- load_linelist()
 
+# get date and state information
 states <- sort(unique(linelist$state))
-
-# dates in the linelist (used for fitting)
 earliest_date <- min(linelist$date)
 latest_date <- max(linelist$date)
 dates <- seq(earliest_date, latest_date, by = 1)
@@ -28,20 +24,37 @@ n_dates <- length(dates)
 n_extra <- as.numeric(Sys.Date() - max(dates)) + 7 * 6
 date_nums <- seq_len(n_dates + n_extra)
 
-local_cases <- infections_by_state(
-  linelist, 
-  from = earliest_date,
-  to = latest_date,
-  type = "local"
-)
+local_cases <- linelist %>%
+  infections_by_region(
+    region_type = "state",
+    case_type = "local"
+  )
 
-imported_cases <- infections_by_state(
-  linelist,
-  from = earliest_date,
-  to = latest_date,
-  type = "imported"
-)
+imported_cases <- linelist %>%
+  infections_by_region(
+    region_type = "state",
+    case_type = "imported"
+  )
 
+# Circulant matrix of generation interval discrete probabilities
+# use Nishiura's serial interval as a generation interval
+gi_cdf <- nishiura_cdf()
+gi_mat <- gi_matrix(gi_cdf, dates, gi_bounds = c(0, 20))
+
+# disaggregate imported and local cases according to the generation interval
+# probabilities to get the expected number of infectious people in each state
+# and time
+local_infectious <- gi_mat %*% local_cases
+imported_infectious <- gi_mat %*% imported_cases
+
+# get lga-level data (local and imported) and save
+linelist %>%
+  lga_infections(dates, gi_mat, case_type = "local") %>%
+  saveRDS("~/not_synced/lga_local_infections.RDS")
+
+linelist %>%
+  lga_infections(dates, gi_mat, case_type = "imported") %>%
+  saveRDS("~/not_synced/lga_imported_infections.RDS")
 
 # last date in the mobility data (used for plotting)
 google_change_data <- readRDS("outputs/google_change_trends.RDS")
@@ -59,17 +72,6 @@ tibble(
 ) %>%
   write_csv("outputs/output_dates.csv")
 
-# use Nishiura's serial interval as a generation interval
-gi_cdf <- nishiura_cdf()
-
-# circulant matrix of generation interval discrete probabilities
-gi_mat <- gi_matrix(gi_cdf, dates, gi_bounds = c(0, 20))
-
-# disaggregate imported and local cases according to the generation interval
-# probabilities to get the expected number of infectious people in each state
-# and time
-local_infectious <- gi_mat %*% local_cases
-imported_infectious <- gi_mat %*% imported_cases
 
 library(greta.gp)
 
