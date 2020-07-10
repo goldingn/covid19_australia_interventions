@@ -47,15 +47,6 @@ gi_mat <- gi_matrix(gi_cdf, dates, gi_bounds = c(0, 20))
 local_infectious <- gi_mat %*% local_cases
 imported_infectious <- gi_mat %*% imported_cases
 
-# get lga-level data (local and imported) and save
-linelist %>%
-  lga_infections(dates, gi_mat, case_type = "local") %>%
-  saveRDS("~/not_synced/lga_local_infections.RDS")
-
-linelist %>%
-  lga_infections(dates, gi_mat, case_type = "imported") %>%
-  saveRDS("~/not_synced/lga_imported_infections.RDS")
-
 # last date in the mobility data (used for plotting)
 google_change_data <- readRDS("outputs/google_change_trends.RDS")
 last_mobility_date <- max(google_change_data$date)
@@ -72,6 +63,18 @@ tibble(
 ) %>%
   write_csv("outputs/output_dates.csv")
 
+# save lga-level data (local and imported) for Cam & Nic
+linelist %>%
+  lga_infections(dates, gi_mat, case_type = "local") %>%
+  saveRDS(
+    paste0("~/not_synced/lga_local_infections_", linelist_date, ".RDS")
+  )
+
+linelist %>%
+  lga_infections(dates, gi_mat, case_type = "imported") %>%
+  saveRDS(
+    paste0("~/not_synced/lga_imported_infections_", linelist_date, ".RDS")
+  )
 
 library(greta.gp)
 

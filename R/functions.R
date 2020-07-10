@@ -2743,7 +2743,7 @@ get_linelist <- function (file = NULL, dir = "~/not_synced/nndss") {
     ) %>%
     mutate(
       postcode_of_acquisition = substr(PLACE_OF_ACQUISITION, 5, 8),
-      postcode_of_residence = POSTCODE,
+      postcode_of_residence = replace_na(POSTCODE, "8888"),
       state_of_acquisition = postcode_to_state(postcode_of_acquisition),
       state_of_residence = postcode_to_state(postcode_of_residence)
     )
@@ -2857,7 +2857,7 @@ infections_by_region <- function(linelist,
       filter(import_status == case_type)
   }
   
-  regions <- sort(unique(linelist[[region_type]]))
+  regions <- unique(linelist[[region_type]])
   
   # pad this with full set of dates, states, and import statuses
   grid <- expand_grid(
@@ -2936,6 +2936,9 @@ lga_infections <- function(linelist, dates, gi_mat, case_type = c("local", "impo
     select(-postcode) %>%
     as.matrix() %>%
     `rownames<-`(postcodes)
+  
+  # normalise so we don't lose any cases
+  weights_matrix <- sweep(weights_matrix, 1, rowSums(weights_matrix), FUN = "/")
   
   # aggregate cases to lga level
   lga_matrix <- postcode_matrix %*% weights_matrix
