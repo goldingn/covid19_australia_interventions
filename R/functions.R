@@ -2584,13 +2584,50 @@ impute_onsets <- function(detection_dates,
 }
 
 # clean up some weird date encoding in the linelist
-clean_date <- function (original_date) {
-  weird_date <- !grepl("2020", original_date)
+clean_date <- function (original_date, min_date = as.Date("2020-01-01")) {
+  weird <- !grepl("2020", original_date)
   corrected_date <- gsub("^\\d\\d\\d\\d", "2020", original_date)
   # don't use ifelse as it converts to a numeric
   date <- original_date
-  date[weird_date] <- corrected_date[weird_date]
+  date[weird] <- corrected_date[weird]
+  
+  # remove any that are out of bounds
+  early <- as.Date(date) < min_date
+  date[early] <- NA
+  
   date
+}
+
+# fetch the state corresponding to each postcode, using the lookup table
+# provided by NIR
+postcode_to_state <- function(postcode) {
+  
+  state <- case_when(
+    grepl("^26", postcode) ~ "ACT",
+    grepl("^2", postcode) ~ "NSW",
+    grepl("^3", postcode) ~ "VIC",
+    grepl("^4", postcode) ~ "QLD",
+    grepl("^5", postcode) ~ "SA",
+    grepl("^6", postcode) ~ "WA",
+    grepl("^7", postcode) ~ "TAS",
+    grepl("^08", postcode) ~ "NT",
+    # QLD seems to be recording some locations as 93xx (QLD po-box or LVR?) 9399
+    # is in NIR list as QLD, but 9301 is not)
+    grepl("^93", postcode) ~ "QLD",
+    TRUE ~ "NA"
+  )
+
+  state[state == "NA"] <- NA
+  state
+
+  # read_xlsx("data/spatial/Postcodes for UoM.xlsx") %>%
+  #   right_join(
+  #     tibble(POSTCODE = as.character(postcode))
+  #   ) %>%
+  #   pull(
+  #     STATE
+  #   )
+    
 }
 
 # read in the latest linelist and format for analysis
@@ -2616,6 +2653,7 @@ get_linelist <- function (file = NULL, dir = "~/not_synced/nndss") {
     file,
     col_types = c(
       STATE = "text",
+      POSTCODE = "numeric",
       CONFIRMATION_STATUS = "numeric",
       TRUE_ONSET_DATE = "date",
       SPECIMEN_DATE = "date",
@@ -2639,16 +2677,24 @@ get_linelist <- function (file = NULL, dir = "~/not_synced/nndss") {
       CV_CLOSE_CONTACT = "numeric"
     ))
   
+  if (is.numeric(dat$POSTCODE)) {
+    dat <- dat %>%
+      mutate(
+        POSTCODE = sprintf("%04d", dat$POSTCODE),
+        POSTCODE = ifelse(POSTCODE == "00NA", NA, POSTCODE) 
+      )
+  }
+  
   # Remove cases without a state
   dat <- dat %>%
     filter(!is.na(STATE))
-  
-  
-  # tidy up dates and parsse place of acquisition to local (Australia) vs. overseas
+
+  # tidy up dates and parse place of acquisition to local (Australia) vs. overseas
   dat <- dat %>%
     mutate(
       TRUE_ONSET_DATE = clean_date(TRUE_ONSET_DATE),
-      NOTIFICATION_RECEIVE_DATE = clean_date(NOTIFICATION_RECEIVE_DATE)
+      NOTIFICATION_RECEIVE_DATE = clean_date(NOTIFICATION_RECEIVE_DATE),
+      SPECIMEN_DATE = clean_date(SPECIMEN_DATE)
     ) %>%
     mutate(
       import_status = ifelse(
@@ -2659,7 +2705,7 @@ get_linelist <- function (file = NULL, dir = "~/not_synced/nndss") {
       )
     )
   
-  # record state of acquisition
+  # record state of acquisition, and residence
   dat <- dat %>%
     # fill in missing places of acquisition with correct code
     mutate(
@@ -2669,23 +2715,10 @@ get_linelist <- function (file = NULL, dir = "~/not_synced/nndss") {
         PLACE_OF_ACQUISITION)
     ) %>%
     mutate(
-      postcode = substr(PLACE_OF_ACQUISITION, 5, 8),
-      state_of_acquisition = case_when(
-        grepl("^26", postcode) ~ "ACT",
-        grepl("^2", postcode) ~ "NSW",
-        grepl("^3", postcode) ~ "VIC",
-        grepl("^4", postcode) ~ "QLD",
-        grepl("^5", postcode) ~ "SA",
-        grepl("^6", postcode) ~ "WA",
-        grepl("^7", postcode) ~ "TAS",
-        grepl("^08", postcode) ~ "NT",
-        TRUE ~ "NA"
-      ),
-      state_of_acquisition = ifelse(
-        state_of_acquisition == "NA",
-        NA,
-        state_of_acquisition
-      )
+      postcode_of_acquisition = substr(PLACE_OF_ACQUISITION, 5, 8),
+      postcode_of_residence = POSTCODE,
+      state_of_acquisition = postcode_to_state(postcode_of_acquisition),
+      state_of_residence = postcode_to_state(postcode_of_residence)
     )
   
   # Generate linelist data
@@ -2705,7 +2738,10 @@ get_linelist <- function (file = NULL, dir = "~/not_synced/nndss") {
       date_confirmation,
       region = STATE,
       import_status,
-      state_of_acquisition
+      postcode_of_acquisition,
+      postcode_of_residence,
+      state_of_acquisition,
+      state_of_residence
     ) %>%
     mutate(
       report_delay = as.numeric(date_confirmation - date_onset),
