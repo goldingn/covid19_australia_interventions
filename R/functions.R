@@ -2782,6 +2782,77 @@ get_linelist <- function (file = NULL, dir = "~/not_synced/nndss") {
   
 }
 
+impute_linelist <- function(linelist) {
+  
+  # impute the onset dates (only 0.6% of cases) using expected value from time to
+  # detection distribution. Do this outside dplyr to avoid duplicating slow computations
+  missing_onset <- is.na(linelist$date_onset)
+  imputed_onsets <- impute_onsets(
+    linelist$date_detection[missing_onset],
+    method = "random"
+  )
+  linelist$date_onset[missing_onset] <- imputed_onsets
+  
+  # build date-by-state matrices of the counts of new local and imported cases and
+  # imports by assumed date of infection (with an incubation period of 5 days)
+  linelist <- linelist %>%
+    rename(state = region,
+           date = date_onset) %>%
+    mutate(date = date - 5) %>%
+    select(-date_confirmation)
+  
+  linelist
+  
+}
+
+load_linelist <- function () {
+  get_linelist() %>%
+    impute_linelist()
+}
+
+# convert imputed linelist into matrix of new infections by date and state
+infections_by_state <- function(linelist,
+                                from = min(linelist$date),
+                                to = max(linelist$date),
+                                type = c("local", "imported", "both")) {
+  
+  type <- match.arg(type)
+  
+  import_statuses <- sort(unique(linelist$import_status))
+  dates <- seq(from, to, by = 1)
+  states <- sort(unique(linelist$state))
+  
+  # pad this with full set of dates, states, and import statuses
+  grid <- expand_grid(
+    date = dates,
+    import_status = import_statuses,
+    state = states
+  )
+  
+  # widen into matrices of date by state
+  date_by_state <- linelist %>%
+    mutate(cases = 1) %>%
+    right_join(grid) %>%
+    group_by(import_status, state, date) %>%
+    summarise(cases = sum(cases, na.rm = TRUE)) %>%
+    ungroup() %>%
+    pivot_wider(names_from = state, values_from = cases) %>%
+    select(-date)
+  
+  if (type != "both") {
+    date_by_state <- date_by_state %>%
+      filter(import_status == type)
+  }
+  
+  new_infections <- date_by_state %>%
+    select(-import_status) %>%
+    as.matrix()
+  
+  new_infections
+  
+}
+
+
 # function to get a greta array forecasting numbers of locally-acquired cases
 # in each state into the future.
 

@@ -13,78 +13,51 @@ source("R/functions.R")
 staging <- FALSE
 
 set.seed(2020-04-29)
-linelist <- get_linelist()
 
-# impute the onset dates (only 0.6% of cases) using expected value from time to
-# detection distribution. Do this outside dplyr to avoid duplicating slow computations
-missing_onset <- is.na(linelist$date_onset)
-imputed_onsets <- impute_onsets(
-  linelist$date_detection[missing_onset],
-  method = "random"
-)
-linelist$date_onset[missing_onset] <- imputed_onsets
+linelist <- load_linelist()
 
-# build date-by-state matrices of the counts of new local and imported cases and
-# imports by assumed date of infection (with an incubation period of 5 days)
-linelist <- linelist %>%
-  rename(state = region,
-         date = date_onset) %>%
-  mutate(date = date - 5) %>%
-  select(-date_confirmation)
-
-import_statuses <- sort(unique(linelist$import_status))
 states <- sort(unique(linelist$state))
 
 # dates in the linelist (used for fitting)
+earliest_date <- min(linelist$date)
 latest_date <- max(linelist$date)
-dates <- seq(min(linelist$date), latest_date, by = 1)
-
-# last date in the mobility data (used for plotting)
-google_change_data <- readRDS("outputs/google_change_trends.RDS")
-last_mobility_date <- max(google_change_data$date)
-mobility_dates <- seq(min(dates), last_mobility_date, by = 1)
-change_date <- last_mobility_date + 1
-linelist_date <- linelist$date_linelist[1]
-
-# save these for Freya and Rob to check
-tibble(
-  linelist_date = linelist_date,
-  latest_infection_date = max(dates),
-  latest_reff_date = last_mobility_date,
-  forecast_reff_change_date = change_date
-) %>%
-  write_csv("outputs/output_dates.csv")
+dates <- seq(earliest_date, latest_date, by = 1)
 
 n_states <- length(states)
 n_dates <- length(dates)
 n_extra <- as.numeric(Sys.Date() - max(dates)) + 7 * 6
 date_nums <- seq_len(n_dates + n_extra)
 
-# pad this with full set of dates, states, and import statuses
-grid <- expand_grid(
-  date = dates,
-  import_status = import_statuses,
-  state = states)
+local_cases <- infections_by_state(
+  linelist, 
+  from = earliest_date,
+  to = latest_date,
+  type = "local"
+)
 
-# widen into matrices of date by state
-date_by_state <- linelist %>%
-  mutate(cases = 1) %>%
-  right_join(grid) %>%
-  group_by(import_status, state, date) %>%
-  summarise(cases = sum(cases, na.rm = TRUE)) %>%
-  ungroup() %>%
-  pivot_wider(names_from = state, values_from = cases) %>%
-  select(-date)
+imported_cases <- infections_by_state(
+  linelist,
+  from = earliest_date,
+  to = latest_date,
+  type = "imported"
+)
 
-imported_cases <- date_by_state %>%
-  filter(import_status == "imported") %>%
-  select(-import_status) %>%
-  as.matrix()
 
-local_cases <- date_by_state %>%
-  filter(import_status == "local") %>%
-  select(-import_status) %>%
-  as.matrix()
+# last date in the mobility data (used for plotting)
+google_change_data <- readRDS("outputs/google_change_trends.RDS")
+last_mobility_date <- max(google_change_data$date)
+mobility_dates <- seq(earliest_date, last_mobility_date, by = 1)
+change_date <- last_mobility_date + 1
+linelist_date <- linelist$date_linelist[1]
+
+# save these for Freya and Rob to check
+tibble(
+  linelist_date = linelist_date,
+  latest_infection_date = latest_date,
+  latest_reff_date = last_mobility_date,
+  forecast_reff_change_date = change_date
+) %>%
+  write_csv("outputs/output_dates.csv")
 
 # use Nishiura's serial interval as a generation interval
 gi_cdf <- nishiura_cdf()
