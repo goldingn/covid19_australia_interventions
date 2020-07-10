@@ -2545,10 +2545,9 @@ impute_one_onset <- function(detection_date, method = c("expected", "random"), m
   
   method <- match.arg(method)
   
-  # get possible dates of infection
-  delays <- seq_len(max_days) 
+  # get possible dates of infection (cannot be within two days of infection)
+  delays <- seq_len(max_days) + 2 
   possible_infection_dates <- detection_date - delays
-  possible_infection_dates
   
   # probability of being detected this many days later (probability of detection
   # by this day, minus probability of detection by the previous day)
