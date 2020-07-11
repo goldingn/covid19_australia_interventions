@@ -72,16 +72,17 @@ delay_prob <- function(date) {
 }
 
 # simulate n values of days to detection
-detection_delay <- function(n, prob) {
+detection_delay <- function(region, new_infections, probs) {
+  n <- new_infections[region]
+  result <- NULL
   if (n > 0) {
-    days <- sample.int(
-      length(prob),
-      size = n,
-      replace = TRUE,
-      prob = prob
-    )
-    days - 1
+    count <- rmultinom(1, n, probs)
+    pos <- which(count > 0)
+    result <- cbind(delay = pos - 1,
+                    region = region,
+                    count = count[pos])
   }
+  result
 }
 
 # combine columns of a two-column matrix into single unnique identifier
@@ -152,29 +153,36 @@ increment_detections <- function(idx,
                                  detections_matrix,
                                  infections_matrix,
                                  delay_probs) {
-  
+
   new_infections <- infections_matrix[idx, ]
   delay_prob <- delay_probs[[idx]]
-  n_suburbs <- ncol(infections_matrix)
-  n_dates <- nrow(infections_matrix)
+  regions <- seq_along(new_infections)
+  n_dates <- nrow(infections_matrix) 
   
-  delays <- unlist(lapply(new_infections, detection_delay, delay_prob))
-  suburbs <- rep(seq_len(n_suburbs), new_infections)
-  elements <- cbind(idx + delays, suburbs)
+  delays_list <- lapply(regions,
+                        detection_delay,
+                        new_infections,
+                        delay_prob)
+  delays <- do.call(rbind, delays_list)
+
+  if (!is.null(delays)) {
+   
+    # numbers of new detections  
+    new_detections <- delays[, 3]
+    
+    # where to assign them  
+    elements <- delays[, 1:2, drop = FALSE]
+    elements[, 1] <- elements[, 1] + idx
+    valid <- elements[, 1] <= n_dates
+    elements <- elements[valid, , drop = FALSE] 
+    
+    # update counts
+    old_detections <- detections_matrix[elements]
+    detections_matrix[elements] <- old_detections + new_detections
+    
+  }
   
-  # remove those not inside the matrix
-  valid <- elements[, 1] <= n_dates
-  elements <- elements[valid, , drop = FALSE]  
-  
-  # count the number in each cell and add to detections matrix
-  unique_elements <- unique(elements)
-  counts <- table(combine(elements))
-  index <- match(combine(unique_elements), names(counts))
-  new_detections <- counts[index]
-  
-  old_detections <- detections_matrix[unique_elements]
-  detections_matrix[unique_elements] <- old_detections + new_detections
-  
+
   detections_matrix
   
 }
@@ -420,29 +428,30 @@ dates <- max(dates_prior) + seq_len(6 * 7)
 n_dates <- length(dates)
 n_dates_prior <- length(dates_prior)
 dates_all <- min(dates) + seq(-n_dates_prior, n_dates - 1)
-  
-import_rate <- gravity_model(
-  geometry = vic_lga,
-  population = vic_lga$pop,
-  leaving_probability = 0.4,
-  coef = c(0, -2.5, 1, 1)
-)
-
-# # check distribution of maximum proportion going in a non-origin suburb
-# # expect peak to be just below 0.09 (9% of cases' trips in 2 days prior to
-# # symptom onset were to neighburing postcodes)
-# test <- import_rate
-# diag(test) <- 0
-# maxes <- apply(test, 1, max)
-# hist(maxes, breaks = 50)
-# abline(v = 0.09)
 
 parameter_draws <- readRDS("outputs/projection/postcode_forecast_draws.RDS")
 
-n_samples <- 200
+n_samples <- 1000
 size_samples <- parameter_draws$vic_size[seq_len(n_samples)]
 r_eff_reduction_samples <- parameter_draws$vic_r_eff_reduction_full[seq_len(n_samples)]
 leaving_reduction_samples <- runif(n_samples, 0.2, 0.5)
+non_household_fraction <- parameter_draws$vic_fraction_non_household
+  
+# get the baseline fraction of new infections that are in another LGA
+
+# from contact questions, 33% of trips by cases in the time prior to symptom
+# onset were not within the same LGA
+
+# from Reff model the fraction of transmisions that are to non-household members
+# is around 45%
+outside_transmission_fraction <- mean(non_household_fraction) * 0.33
+
+import_rate <- gravity_model(
+  geometry = vic_lga,
+  population = vic_lga$pop,
+  leaving_probability = outside_transmission_fraction,
+  coef = c(0, -2.5, 1, 1)
+)
 
 # R effective across suburbs and times
 idx <- match(dates, parameter_draws$dates)
@@ -483,10 +492,6 @@ configs <- future_lapply(seq_len(n_samples),
                          lockdown_policy = original_policy())
 
 results <- future_lapply(configs, run_simulation)
-
-# # saveRDS(results, "~/Desktop/results_check.RDS")
-# results_check <- readRDS("~/Desktop/results_check.RDS")
-# identical(results, results_check)
 
 # combine results
 lga_case_list <- lapply(results, `[[`, "detections_matrix")
@@ -573,7 +578,7 @@ dev.off()
 
 png("~/Desktop/example1.png")
 par(mfrow = c(2, 1), mar = c(2, 2, 2, 1))
-i <- 3
+i <- 1
 image(log1p(results[[i]]$detections_matrix),
       main  = "cases")
 image(results[[i]]$lockdown_matrix,
@@ -582,7 +587,7 @@ dev.off()
 
 png("~/Desktop/example2.png")
 par(mfrow = c(2, 1), mar = c(2, 2, 2, 1))
-i <- 2
+i <- 7
 image(log1p(results[[i]]$detections_matrix),
       main  = "cases")
 image(results[[i]]$lockdown_matrix,
@@ -591,10 +596,9 @@ dev.off()
 
 # to do:
 #  start with current lockdown
-#  add policy of switching to statewide lockdown 
-#  speed up detection counting
-#  account for household infections in proportion leaving
+#  use Google data to construct an LGA movement matrix
+#  use Google data to construct a gravity model (population, distance, both LGAs
+#  in lockdown, one LGA in lockdown)
+#  add more lockdown policies - including statewide lockdown trigger
 #  define loss of control & compute probability of reaching it
 #  make nicer plots
-#  add different lockdown policies
-#  incorporate FB OD matrix

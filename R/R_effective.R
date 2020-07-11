@@ -443,6 +443,14 @@ for (type in types) {
   vic_r_eff <- R_eff_loc_12_proj[rows, vic_idx]
   vic_size <- 1 / sqrt(sqrt_inv_size[vic_idx])
   
+  # fraction of infections that are in the household
+  household_infections <- de$HC_0 * (1 - de$p ^ HD_t)
+  non_household_infections <- de$OC_t_state * de$gamma_t_state *
+    infectious_days * (1 - de$p ^ de$OD_0)
+  R_t <- household_infections + non_household_infections
+  fraction_non_household <- non_household_infections / R_t
+  vic_fraction_non_household <- fraction_non_household[n_dates, vic_idx]
+  
   # make sure the seeds are the same for each type of prediction, so the samples
   # match
   set.seed(2020-06-02)
@@ -463,6 +471,7 @@ for (type in types) {
     vic_r_eff_reduction_half,
     vic_r_eff,
     vic_size,
+    vic_fraction_non_household,
     values = draws,
     nsim = nsim
   )
@@ -481,6 +490,7 @@ for (type in types) {
   vic_r_eff_reduction_half_sim <- sims$vic_r_eff_reduction_half
   vic_r_eff_sim <- sims$vic_r_eff
   vic_size_sim <- sims$vic_size
+  vic_fraction_non_household_sim <- sims$vic_fraction_non_household
   
   # save draws for postcode forecasting
   postcode_draws <- list(
@@ -488,6 +498,7 @@ for (type in types) {
     vic_r_eff_reduction_full = vic_r_eff_reduction_full_sim[, 1, 1],
     vic_r_eff_reduction_half = vic_r_eff_reduction_half_sim[, 1, 1],
     vic_r_eff = vic_r_eff_sim[, , 1],
+    vic_fraction_non_household = vic_fraction_non_household_sim[, , 1],
     dates = dates_type
   )
   
