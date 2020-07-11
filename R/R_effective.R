@@ -18,12 +18,34 @@ states <- sort(unique(linelist$state))
 earliest_date <- min(linelist$date)
 latest_date <- max(linelist$date)
 dates <- seq(earliest_date, latest_date, by = 1)
+linelist_date <- linelist$date_linelist[1]
 
 n_states <- length(states)
 n_dates <- length(dates)
 n_extra <- as.numeric(Sys.Date() - max(dates)) + 7 * 6
 date_nums <- seq_len(n_dates + n_extra)
 
+# load mobility data and get relevant dates
+google_change_data <- readRDS("outputs/google_change_trends.RDS")
+last_mobility_date <- max(google_change_data$date)
+mobility_dates <- seq(earliest_date, last_mobility_date, by = 1)
+change_date <- last_mobility_date + 1
+
+# save these dates for Freya and Rob to check
+tibble(
+  linelist_date = linelist_date,
+  latest_infection_date = latest_date,
+  latest_reff_date = last_mobility_date,
+  forecast_reff_change_date = change_date
+) %>%
+  write_csv("outputs/output_dates.csv")
+
+# get detection probabilities for dates
+latest_detection_date <- linelist_date - 2
+delays <- as.numeric(latest_detection_date - dates)
+detection_prob <- 1 - ttd_survival(delays, dates)
+
+# get date-by-state matrices of new infections
 local_cases <- linelist %>%
   infections_by_region(
     region_type = "state",
@@ -47,31 +69,22 @@ gi_mat <- gi_matrix(gi_cdf, dates, gi_bounds = c(0, 20))
 local_infectious <- gi_mat %*% local_cases
 imported_infectious <- gi_mat %*% imported_cases
 
-# last date in the mobility data (used for plotting)
-google_change_data <- readRDS("outputs/google_change_trends.RDS")
-last_mobility_date <- max(google_change_data$date)
-mobility_dates <- seq(earliest_date, last_mobility_date, by = 1)
-change_date <- last_mobility_date + 1
-linelist_date <- linelist$date_linelist[1]
-
-# save these for Freya and Rob to check
-tibble(
-  linelist_date = linelist_date,
-  latest_infection_date = latest_date,
-  latest_reff_date = last_mobility_date,
-  forecast_reff_change_date = change_date
-) %>%
-  write_csv("outputs/output_dates.csv")
-
 # save lga-level data (local and imported) for Cam & Nic
+detection_dates <- tibble(
+  date = dates,
+  detection_probability = detection_prob
+)
+
 linelist %>%
   lga_infections(dates, gi_mat, case_type = "local") %>%
+  left_join(detection_dates) %>%
   saveRDS(
     paste0("~/not_synced/lga_local_infections_", linelist_date, ".RDS")
   )
 
 linelist %>%
   lga_infections(dates, gi_mat, case_type = "imported") %>%
+  left_join(detection_dates) %>%
   saveRDS(
     paste0("~/not_synced/lga_imported_infections_", linelist_date, ".RDS")
   )
@@ -211,9 +224,6 @@ prob <- 1 / (1 + expected_infections_vec / size)
 # There is an average of one day from specimen collection to confirmation, and
 # the linelist covers the previous day, so the date by which they need to have
 # been detected two days prior to the linelist date.
-latest_detection_date <- linelist_date - 2
-delays <- as.numeric(latest_detection_date - dates)
-detection_prob <- 1 - ttd_survival(delays, dates)
 detection_prob_vec <- detection_prob[valid[, 1]]
 
 # Modify the probability to account for truncation. When detection_prob_vec = 1,

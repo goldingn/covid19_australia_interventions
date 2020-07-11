@@ -361,83 +361,69 @@ original_policy <- function(incidence_days = 7, count_threshold = 5, incidence_t
   
 }
 
-
 set.seed(2020-07-04)
 
-# load melbourne postcode geometries and populations
-# prep_melbourne_postcodes()
-melbourne <- readRDS("data/abs/melbourne_postal.rds") %>%
-  filter(POP > 0)
-n_suburbs <- nrow(melbourne)
+# load VIC LGA geometries and populations
+# prep_vic_lgas()
 
-# read in recent counts of local cases by date of infection
-local_cases <- read_csv(
-  "outputs/local_cases_input.csv",
-  col_types = cols(
-    date_onset = col_date(format = ""),
-    detection_probability = col_double(),
-    state = col_character(),
-    count = col_double()
-  )
-) %>%
+vic_lga <- readRDS("data/spatial/vic_lga.RDS")
+n_lga <- nrow(vic_lga)
+
+# read in numbers of cases by date of infection in LGAs, nd pad with 0s for
+# other LGAs
+lga_infections <- readRDS("~/not_synced/lga_local_infections_2020-07-10.RDS") %>%
   filter(state == "VIC") %>%
   mutate(
-    date = date_onset - 5,
-    expected_infections = count / detection_probability
+    expected_infections = infections / detection_probability
   ) %>%
   filter(
     detection_probability > 0.5
   ) %>%
-  tail(14)
-
-# use (active?) case distribution between lockdown suburbs as reported by the
-# Age on July 3rd to disagreggate expected number of infections by postcode
-case_distrib_old <- tibble::tribble(
-  ~postcode, ~cases,
-  3064, 52,
-  3047, 25,
-  3060, 11,
-  3046, 10,
-  3038, 4,
-  3021, 16,
-  3042, 2,
-  3055, 3,
-  3032, 9,
-  3012, 8,
-)
-
-case_distrib <- case_distrib_old %>%
-  mutate(
-    fraction = cases / sum(cases),
-    POA_CODE16 = as.character(postcode)
-  ) %>%
-  right_join(
-    st_drop_geometry(melbourne)
-  ) %>%
-  mutate(
-    fraction = replace_na(fraction, 0)
+  filter(
+    date > max(date) - 14
   ) %>%
   select(
-    postcode = POA_CODE16,
-    fraction
+    date,
+    expected_infections,
+    lga
   )
 
+dates_prior <- seq(
+  min(lga_infections$date),
+  max(lga_infections$date),
+  by = 1
+)
+
+# convert to a matrix
+initial_expected_infections <- lga_infections %>%
+  full_join(
+    expand_grid(
+      lga = setdiff(vic_lga$lga, lga_infections$lga),
+      date = dates_prior,
+      expected_infections = 0
+    )
+  ) %>%
+  pivot_wider(
+    names_from = lga,
+    values_from = expected_infections,
+    values_fill = list(expected_infections = 0)
+  ) %>%
+  select(-date) %>%
+  as.matrix()
 
 # take the last 2 weeks of case counts, and the expected fractions of cases in
 # each of these postcodes, and get expected numbers of infections by postcode
-initial_expected_infections <- local_cases$expected_infections %*% t(case_distrib$fraction)
-colnames(initial_expected_infections) <- case_distrib$postcode
-rownames(initial_expected_infections) <- as.character(local_cases$date)
+rownames(initial_expected_infections) <- as.character(dates_prior)
 
 # dates and suburbs
-dates <- max(local_cases$date) + seq_len(6 * 7)
+dates <- max(dates_prior) + seq_len(6 * 7)
 n_dates <- length(dates)
-n_dates_prior <- nrow(initial_expected_infections)
+n_dates_prior <- length(dates_prior)
 dates_all <- min(dates) + seq(-n_dates_prior, n_dates - 1)
   
 import_rate <- gravity_model(
-  geometry = melbourne,
-  population = melbourne$POP,
+  geometry = vic_lga,
+  population = vic_lga$pop,
   leaving_probability = 0.4,
   coef = c(0, -2.5, 1, 1)
 )
@@ -451,7 +437,6 @@ import_rate <- gravity_model(
 # hist(maxes, breaks = 50)
 # abline(v = 0.09)
 
-
 parameter_draws <- readRDS("outputs/projection/postcode_forecast_draws.RDS")
 
 n_samples <- 200
@@ -464,7 +449,7 @@ idx <- match(dates, parameter_draws$dates)
 r_eff_samples_mat <- parameter_draws$vic_r_eff[seq_len(n_samples), idx]
 r_eff_samples_list <- apply(r_eff_samples_mat, 1, list)
 r_eff_samples <- lapply(r_eff_samples_list, function(x) {
-  matrix(rep(x[[1]], n_suburbs), n_dates, n_suburbs)
+  matrix(rep(x[[1]], n_lga), n_dates, n_lga)
 })
 
 # prepare and run simulations in parallel
@@ -494,26 +479,25 @@ configs <- future_lapply(seq_len(n_samples),
                          delay_probs_all = delay_probs_all,
                          gi_mat = gi_mat,
                          gi_mat_all = gi_mat_all,
-                         populations = melbourne$POP,
+                         populations = vic_lga$pop,
                          lockdown_policy = original_policy())
 
 results <- future_lapply(configs, run_simulation)
 
-
-# saveRDS(results, "~/Desktop/results_check.RDS")
-results_check <- readRDS("~/Desktop/results_check.RDS")
-identical(results, results_check)
+# # saveRDS(results, "~/Desktop/results_check.RDS")
+# results_check <- readRDS("~/Desktop/results_check.RDS")
+# identical(results, results_check)
 
 # combine results
-postcode_case_list <- lapply(results, `[[`, "detections_matrix")
-postcode_case_sims <- do.call(abind, c(postcode_case_list, list(along = 0)))
+lga_case_list <- lapply(results, `[[`, "detections_matrix")
+lga_case_sims <- do.call(abind, c(lga_case_list, list(along = 0)))
 
-mn <- apply(postcode_case_sims, 2:3, mean)
-quants <- apply(postcode_case_sims, 2:3, quantile, c(0.05, 0.25, 0.5, 0.75, 0.95))
+mn <- apply(lga_case_sims, 2:3, mean)
+quants <- apply(lga_case_sims, 2:3, quantile, c(0.05, 0.25, 0.5, 0.75, 0.95))
 
 df <- tibble(
-  postcode = rep(melbourne$POA_CODE16, each = n_dates),
-  date = rep(dates, n_suburbs),
+  lga = rep(vic_lga$lga, each = n_dates),
+  date = rep(dates, n_lga),
   mean = c(mn),
   median = c(quants[3, , ]),
   ci_50_lo = c(quants[2, , ]),
@@ -521,25 +505,25 @@ df <- tibble(
   ci_90_lo = c(quants[1, , ]),
   ci_90_hi = c(quants[5, , ])
 ) %>%
-  group_by(postcode) %>%
+  group_by(lga) %>%
   mutate(max = max(ci_90_hi)) %>%
   arrange(max)
 
-top_new_suburbs <- df %>%
-  filter(!postcode %in% case_distrib_old$postcode) %>%
+top_new_lgas <- df %>%
+  filter(!lga %in% lockdown_lgas()) %>%
   summarise(peak = max(median)) %>%
   arrange(desc(peak)) %>%
   head(8) %>%
-  pull(postcode)
+  pull(lga)
 
 library(ggplot2)
 base_colour <- blue
 
 p <- df %>%
   ungroup() %>%
-  filter(postcode %in% top_new_suburbs) %>%
+  filter(lga %in% top_new_lgas) %>%
   mutate(
-    postcode = factor(postcode, levels = top_new_suburbs),
+    lga = factor(lga, levels = top_new_lgas),
     type = "Nowcast"
   ) %>%
   arrange(desc(max)) %>%
@@ -567,7 +551,7 @@ p <- df %>%
             colour = base_colour,
             alpha = 0.8) + 
   
-  facet_wrap(~ postcode, ncol = 2) +
+  facet_wrap(~lga, ncol = 2) +
   
   cowplot::theme_cowplot() +
   cowplot::panel_border(remove = TRUE) +
@@ -580,7 +564,7 @@ p <- df %>%
 
 p
 
-save_ggplot("postcode_forecast.png", multi = TRUE)
+save_ggplot("lga_forecast.png", multi = TRUE)
 
 png("~/Desktop/median_cases.png")
 image(log1p(quants[3, , ]),
@@ -589,7 +573,7 @@ dev.off()
 
 png("~/Desktop/example1.png")
 par(mfrow = c(2, 1), mar = c(2, 2, 2, 1))
-i <- 10
+i <- 3
 image(log1p(results[[i]]$detections_matrix),
       main  = "cases")
 image(results[[i]]$lockdown_matrix,
@@ -598,7 +582,7 @@ dev.off()
 
 png("~/Desktop/example2.png")
 par(mfrow = c(2, 1), mar = c(2, 2, 2, 1))
-i <- 13
+i <- 2
 image(log1p(results[[i]]$detections_matrix),
       main  = "cases")
 image(results[[i]]$lockdown_matrix,
@@ -606,7 +590,8 @@ image(results[[i]]$lockdown_matrix,
 dev.off()
 
 # to do:
-#  switch to all Victorian LGAs
+#  start with current lockdown
+#  add policy of switching to statewide lockdown 
 #  speed up detection counting
 #  account for household infections in proportion leaving
 #  define loss of control & compute probability of reaching it

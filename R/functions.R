@@ -2671,7 +2671,7 @@ postcode_to_state <- function(postcode) {
 
 lga_to_state <- function (lga) {
   
-  "data/spatial/LGA19_to_STATE16.csv" %>%
+  "data/spatial/abs/LGA19_to_STATE16.csv" %>%
     read_csv(
       col_types = cols(
         LGA_CODE_2019 = col_double(),
@@ -2936,7 +2936,7 @@ lga_infections <- function(linelist, dates, gi_mat, case_type = c("local", "impo
   
   # read in postcode-lga lookup and weights
   weights_tbl <- read_xlsx(
-    "data/spatial/CA_POSTCODE_2018_LGA_2018.xlsx",
+    "data/spatial/abs/CA_POSTCODE_2018_LGA_2018.xlsx",
     sheet = 4,
     skip = 5
   ) %>%
@@ -3242,42 +3242,16 @@ save_ggplot <- function (filename,
   
 }
 
-prep_melbourne_postcodes <- function(
-  box = c(xmin = 144.8, ymin = -38, xmax = 145.3, ymax = -37.6),
-  filepath = "data/abs/melbourne_postal.RDS"
+# prep a spatial layer with Victorian LGAs and their populations
+prep_vic_lgas <- function(
+  filepath = "data/spatial/vic_lga.RDS"
 ) {
   
   library(sf)
   
-  # crop post office areas to Melbourne region
-  # find populations for them
-  # pull out S2 point locations for them from Google data
-  poa <- st_read(
-    "data/abs/POA_2016_AUST.shp",
-    stringsAsFactors = FALSE
-  ) %>%
-    filter(
-      stringr::str_starts(POA_CODE16, "3")
-    )
-  
-  # crop postal areas to Melbourne-ish
-  melbourne_crop <- st_crop(poa, box)
-  inter <- st_intersects(poa, melbourne_crop)
-  keep <- vapply(inter, length, FUN.VALUE = numeric(1)) > 0
-  melbourne <- poa[keep, ]
-  
-  # load meshblocks and find those intersecting with these postal areas
-  mesh <- st_read(
-    "data/abs/MB_2016_VIC.shp",
-    stringsAsFactors = FALSE
-  )
-  inter <- st_intersects(mesh, melbourne)
-  keep <- vapply(inter, length, FUN.VALUE = numeric(1)) > 0
-  melbourne_mesh <- mesh[keep, ]
-  
   # load populations of all meshblocks
   mesh_pop <- read_csv(
-    "data/abs/2016 census mesh block counts.csv",
+    "data/spatial/abs/2016 census mesh block counts.csv",
     col_types = cols(
       MB_CODE_2016 = col_character(),
       MB_CATEGORY_NAME_2016 = col_character(),
@@ -3292,32 +3266,29 @@ prep_melbourne_postcodes <- function(
     )
   
   # add populations onto shapefile
-  melbourne_mesh <- melbourne_mesh %>%
-    left_join(
-      mesh_pop
-    )
+  vic_mesh <- st_read(
+    "data/spatial/abs/MB_2016_VIC.shp",
+    stringsAsFactors = FALSE
+  ) %>%
+    left_join(mesh_pop)
   
-  # get intersection with postal areas to sum populations
-  coverages <- st_covered_by(melbourne_mesh, melbourne)
-  idx <- rep(NA, length(coverages))
-  idx[lengths(coverages) > 0] <- unlist(coverages)
+  # get LGAs in VIC, join with mesh blocks, and sum populations
+  vic_lga <- st_read("data/spatial/abs/LGA_2016_AUST.shp",
+                     stringsAsFactors = FALSE) %>%
+    filter(STE_NAME16 == "Victoria") %>%
+    select(lga_code = LGA_CODE16,
+           lga = LGA_NAME16,
+           area = AREASQKM16) %>%
+    st_join(vic_mesh) %>%
+    group_by(lga_code, lga, area) %>%
+    summarise(pop = sum(Person))
   
-  postal_pop <- melbourne_mesh %>%
-    st_drop_geometry() %>%
+  vic_lga %>%
+    filter(area > 0) %>%
     mutate(
-      POA_CODE16 = melbourne$POA_CODE16[idx]
+      pop_dens = pop / area
     ) %>%
-    group_by(POA_CODE16) %>%
-    summarise(
-      POP = sum(Person)
-    )
-  
-  melbourne %>%
-    left_join(postal_pop) %>%
-    mutate(
-      POP_DENS = POP / AREASQKM16
-    ) %>%
-    st_write(filepath, delete_layer = TRUE)
+    saveRDS(filepath)
   
 }
 
