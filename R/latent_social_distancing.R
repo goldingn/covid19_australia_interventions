@@ -311,8 +311,8 @@ convergence(draws)
 
 colours <- c("pink", "green", "red", "blue")
 png("outputs/figures/latent_factors.png",
-    width = 2000, height = 1500,
-    pointsize = 50)
+    width = 1000, height = 750,
+    pointsize = 25)
 par(mfrow = c(2, 2),
     mar = c(3, 4, 3, 1),
     oma = c(0, 0, 2, 0))
@@ -347,8 +347,8 @@ plot_date_lim <- c(as.Date("2020-03-01"), last_date)
 for (j in seq_len(n_states)) {
   file <- paste0("outputs/figures/", states[j], "_datastream_model_fit.png")
   png(file,
-      width = 3000, height = 2500,
-      pointsize = 50)
+      width = 1500, height = 1250,
+      pointsize = 25)
   
   state_data <- mobility %>%
     filter(state == states[j])
@@ -429,8 +429,8 @@ state_datastreams_plot <- mobility %>%
 
 # output A4 @ 600DPI
 png("outputs/figures/multistate_model_fit.png",
-    width = 4962, height = 7014,
-    pointsize = 70)
+    width = 2481, height = 3507,
+    pointsize = 35)
 
 par(mfrow = c(8, 3),
     mar = c(2, 2, 1, 3),
@@ -613,7 +613,8 @@ loadings_plot_data %>%
 
 ggsave("outputs/figures/loadings_datastream.png",
        width = 10,
-       height = 5)
+       height = 5,
+       dpi = 150)
 
 # create a warning light panel for states and datasets on the change in
 # distancing latent factor, turning red when it seems to be pushing it in the
@@ -747,7 +748,8 @@ for(i in which(grepl("strip-t-", pg$layout$name))) {
 ggsave("outputs/figures/state_distancing_waning_warning.png",
        plot = pg,
        width = 8,
-       height = 6)
+       height = 6,
+       dpi = 150)
 
 # output posterior summaries for the different latent factors
 for(i in 1:4) {
