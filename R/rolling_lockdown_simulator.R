@@ -17,9 +17,7 @@ rtnorm <- function(n, mean = 0, sd = 1, lower = -Inf, upper = Inf) {
 
 # gravity model of mobility between suburbs - geometry must be an sf object with
 # polygons
-gravity_model <- function(geometry, population,
-                          leaving_probability = 0.25,
-                          coef = c(-10, -3, 1, 1)) {
+gravity_model <- function(geometry, population, coef = c(-10, -3, 1, 1)) {
   # distance matrix in km
   n_suburbs <- nrow(geometry)
   centroids <- st_centroid(geometry)
@@ -37,12 +35,9 @@ gravity_model <- function(geometry, population,
     coef[2] * log(distance_km) +
     coef[3] * log_pop_matrix +
     coef[4] * t(log_pop_matrix)
+  
   mobility <- exp(log_mobility)
-  
-  # convert to importation rate, with probability of leaving
-  import_rate <- set_leaving_probability(mobility, leaving_probability)
-  
-  import_rate
+  mobility
   
 }
 
@@ -377,7 +372,7 @@ set.seed(2020-07-04)
 vic_lga <- readRDS("data/spatial/vic_lga.RDS")
 n_lga <- nrow(vic_lga)
 
-# read in numbers of cases by date of infection in LGAs, nd pad with 0s for
+# read in numbers of cases by date of infection in LGAs, and pad with 0s for
 # other LGAs
 lga_infections <- readRDS("~/not_synced/lga_local_infections_2020-07-10.RDS") %>%
   filter(state == "VIC") %>%
@@ -446,12 +441,17 @@ non_household_fraction <- parameter_draws$vic_fraction_non_household
 # is around 45%
 outside_transmission_fraction <- mean(non_household_fraction) * 0.33
 
-import_rate <- gravity_model(
-  geometry = vic_lga,
-  population = vic_lga$pop,
-  leaving_probability = outside_transmission_fraction,
-  coef = c(0, -2.5, 1, 1)
-)
+# mobility <- gravity_model(
+#   geometry = vic_lga,
+#   population = vic_lga$pop,
+#   coef = c(0, -2.5, 1, 1)
+# )
+
+# gravity model fitted to facebook data
+mobility <- readRDS("data/facebook/baseline_gravity_movement.RDS")
+
+# convert to importation rate, with probability of leaving
+import_rate <- set_leaving_probability(mobility, outside_transmission_fraction)
 
 # R effective across suburbs and times
 idx <- match(dates, parameter_draws$dates)
@@ -578,7 +578,7 @@ dev.off()
 
 png("~/Desktop/example1.png")
 par(mfrow = c(2, 1), mar = c(2, 2, 2, 1))
-i <- 1
+i <- 4
 image(log1p(results[[i]]$detections_matrix),
       main  = "cases")
 image(results[[i]]$lockdown_matrix,
@@ -587,7 +587,7 @@ dev.off()
 
 png("~/Desktop/example2.png")
 par(mfrow = c(2, 1), mar = c(2, 2, 2, 1))
-i <- 7
+i <- 8
 image(log1p(results[[i]]$detections_matrix),
       main  = "cases")
 image(results[[i]]$lockdown_matrix,
@@ -596,9 +596,6 @@ dev.off()
 
 # to do:
 #  start with current lockdown
-#  use Google data to construct an LGA movement matrix
-#  use Google data to construct a gravity model (population, distance, both LGAs
-#  in lockdown, one LGA in lockdown)
 #  add more lockdown policies - including statewide lockdown trigger
 #  define loss of control & compute probability of reaching it
 #  make nicer plots
