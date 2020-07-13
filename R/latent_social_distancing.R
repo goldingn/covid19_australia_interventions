@@ -1,6 +1,6 @@
 # model overall movement changes in Australia, with parameteric latent factor
 # model on Google mobility data
-
+  
 source("R/functions.R")
 library(dplyr)
 library(lubridate)
@@ -852,8 +852,7 @@ google_change$date <- rep(dates, 8 * 6)
 saveRDS(google_change,
         file = "outputs/google_change_trends.RDS")
 
-google_change %>%
-  filter(state == "Victoria" &
-           datastream == "Google: time at residential") %>%
-  plot(change ~ date, data = ., type = "l")
-  
+# google_change %>%
+#   filter(state == "Victoria" &
+#            datastream == "Google: time at residential") %>%
+#   plot(change ~ date, data = ., type = "l")

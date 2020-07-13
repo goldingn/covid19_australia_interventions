@@ -236,7 +236,7 @@ m <- model(expected_infections_vec)
 
 draws <- mcmc(
   m,
-  sampler = hmc(Lmin = 10, Lmax = 15),
+  sampler = hmc(Lmin = 15, Lmax = 20),
   chains = 10,
   one_by_one = TRUE
 )
