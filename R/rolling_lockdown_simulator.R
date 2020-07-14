@@ -107,7 +107,7 @@ lockdown_import_rate <- function(idx, state, config) {
   # when in lockdown, the probability of an infectee being in another suburb is
   # reduced by some value
   old_leaving_probability <- 1 - diag(import_rate)
-  reduction <- 1 - lockdown_status * config$leaving_reduction
+  reduction <- 1 - lockdown_status * (1 - config$leaving_reduction)
   new_leaving_probability <- old_leaving_probability * reduction
   
   import_rate <- set_leaving_probability(
@@ -257,7 +257,8 @@ prepare_config <- function (idx,
                             populations,
                             gi_mat,
                             gi_mat_all,
-                            lockdown_policy = original_policy()) {
+                            lockdown_policy = original_policy(),
+                            lockdown_matrix = NULL) {
   
   # pull relevant samples
   nbinom_size <- nbinom_size_samples[idx]
@@ -278,10 +279,17 @@ prepare_config <- function (idx,
   initial_active_cases <- initial_cases$active_cases
   initial_detections <- initial_cases$detections
 
+  n_dates <- length(dates)
+  n_suburbs <- ncol(initial_expected_infections)
+  
+  if (is.null(lockdown_matrix)) {
+    lockdown_matrix <- matrix(0, n_dates, n_suburbs)
+  }
+  
   # return configuration for this simulation
   list(
-    n_dates = length(dates),
-    n_suburbs = ncol(initial_expected_infections),
+    n_dates = n_dates,
+    n_suburbs = n_suburbs,
     dates = dates,
     size = nbinom_size,
     r_eff_matrix = r_eff,
@@ -293,9 +301,16 @@ prepare_config <- function (idx,
     import_rate = import_rate,
     initial_active_cases = initial_active_cases,
     initial_detections = initial_detections,
+    lockdown_matrix = lockdown_matrix,
     lockdown_policy = lockdown_policy
   )
   
+}
+
+# change the policy in a config
+set <- function(config, which, new_value) {
+  config[[which]] <- new_value
+  config
 }
 
 # iterate the state for all dates
@@ -325,7 +340,7 @@ run_simulation <- function(config) {
   initial_state <- list(
     infections_matrix = zeros,
     detections_matrix = config$initial_detections,
-    lockdown_matrix = zeros
+    lockdown_matrix = config$lockdown_matrix
   )
   
   # iterate the state dynamics
@@ -339,21 +354,20 @@ run_simulation <- function(config) {
   
 }
 
-# the original lockdown policy: if a suburb has 5+ cases and an incidence of >20
-# per 100,000 over some time period (a week?), lockdown that suburb
-original_policy <- function(incidence_days = 7, count_threshold = 5, incidence_threshold = 20) {
+# reactive policy: if an LGA has a given number of new cases in a week implement
+# an LGA-wide lockdown
+reactive_policy <- function(count_threshold, count_days = 7) {
   
   lockdown_policy <- function(idx, state, config) {
     
     # count the number of cases in the last few days
-    days <- idx - seq_len(incidence_days) + 1
+    days <- idx - seq_len(count_days) + 1
     days <- unique(pmax(1, days))
     
     count <- colSums(state$detections_matrix[days, , drop = FALSE])
-    incidence <- count * 1e5 / config$populations
     
     # from here on, lock down that suburb
-    new_lockdown <- count > count_threshold & incidence > incidence_threshold
+    new_lockdown <- count > count_threshold
     old_idx <- pmax(idx - 1, 1)
     current_lockdown <- state$lockdown_matrix[old_idx, ]
     state$lockdown_matrix[idx, ] <- pmax(as.numeric(new_lockdown), current_lockdown)
@@ -431,7 +445,7 @@ parameter_draws <- readRDS("outputs/projection/postcode_forecast_draws.RDS")
 n_samples <- 1000
 size_samples <- parameter_draws$vic_size[seq_len(n_samples)]
 r_eff_reduction_samples <- parameter_draws$vic_r_eff_reduction_full[seq_len(n_samples)]
-leaving_reduction_samples <- runif(n_samples, 0.2, 0.5)
+leaving_reduction_samples <- runif(n_samples, 0.05, 0.3)
 non_household_fraction <- parameter_draws$vic_fraction_non_household
   
 # get the baseline fraction of new infections that are in another LGA
@@ -471,23 +485,57 @@ gi_mat_all <- gi_matrix(gi_cdf, dates_all)
 delay_probs <- lapply(dates, delay_prob)
 delay_probs_all <- lapply(dates_all, delay_prob)
 
-configs <- future_lapply(seq_len(n_samples),
-                         prepare_config,
-                         nbinom_size_samples = size_samples,
-                         r_eff_samples = r_eff_samples,
-                         r_eff_reduction_samples = r_eff_reduction_samples,
-                         leaving_reduction_samples = leaving_reduction_samples,
-                         initial_expected_infections = initial_expected_infections,
-                         import_rate = import_rate,
-                         dates = dates,
-                         delay_probs = delay_probs,
-                         delay_probs_all = delay_probs_all,
-                         gi_mat = gi_mat,
-                         gi_mat_all = gi_mat_all,
-                         populations = vic_lga$pop,
-                         lockdown_policy = original_policy())
+# set up current lockdown situation
+lockdown_matrix <- matrix(0, n_dates, n_lga)
+lockdown_cols <- match(lockdown_lgas(), vic_lga$lga)
+lockdown_rows <- dates >= as.Date("2020-07-02")
+lockdown_matrix[lockdown_rows, lockdown_cols] <- 1
 
-results <- future_lapply(configs, run_simulation)
+# define some policies
+no_response <- reactive_policy(count_threshold = Inf)
+react_10 <- reactive_policy(count_threshold = 10)
+react_5 <- reactive_policy(count_threshold = 5)
+
+configs_no_response <- future_lapply(
+  seq_len(n_samples),
+  prepare_config,
+  nbinom_size_samples = size_samples,
+  r_eff_samples = r_eff_samples,
+  r_eff_reduction_samples = r_eff_reduction_samples,
+  leaving_reduction_samples = leaving_reduction_samples,
+  initial_expected_infections = initial_expected_infections,
+  import_rate = import_rate,
+  dates = dates,
+  delay_probs = delay_probs,
+  delay_probs_all = delay_probs_all,
+  gi_mat = gi_mat,
+  gi_mat_all = gi_mat_all,
+  populations = vic_lga$pop,
+  lockdown_matrix = lockdown_matrix, 
+  lockdown_policy = no_response
+)
+
+configs_react_5 <- lapply(configs_no_response,
+                          set,
+                          "lockdown_policy",
+                          react_5)
+configs_react_10 <- lapply(configs_no_response,
+                           set,
+                           "lockdown_policy",
+                           react_10)
+
+configs_statewide <- lapply(configs_no_response,
+                           set,
+                           "lockdown_matrix",
+                           lockdown_matrix * 0 + 1)
+
+results_no_response <- future_lapply(configs_no_response, run_simulation)
+results_statewide <- future_lapply(configs_statewide, run_simulation)
+results_react_5 <- future_lapply(configs_react_5, run_simulation)
+results_react_10 <- future_lapply(configs_react_10, run_simulation)
+
+
+results <- results_statewide
 
 # combine results
 lga_case_list <- lapply(results, `[[`, "detections_matrix")
@@ -567,28 +615,11 @@ p
 
 save_ggplot("lga_forecast.png", multi = TRUE)
 
-png("~/Desktop/median_cases.png")
 image(log1p(quants[3, , ]),
       main = "cases (median)")
-dev.off()
 
-png("~/Desktop/example1.png")
-par(mfrow = c(2, 1), mar = c(2, 2, 2, 1))
-i <- 4
-image(log1p(results[[i]]$detections_matrix),
-      main  = "cases")
-image(results[[i]]$lockdown_matrix,
-      main = "lockdown")
-dev.off()
-
-png("~/Desktop/example2.png")
-par(mfrow = c(2, 1), mar = c(2, 2, 2, 1))
-i <- 8
-image(log1p(results[[i]]$detections_matrix),
-      main  = "cases")
-image(results[[i]]$lockdown_matrix,
-      main = "lockdown")
-dev.off()
+image(log1p(quants[4, , ]),
+      main = "cases (upper 50%)")
 
 # to do:
 #  start with current lockdown
