@@ -133,9 +133,11 @@ update_infections <- function(idx, state, config) {
   expected_infections <- active_cases[idx, ] * r_eff
   reallocated_infections <- expected_infections %*% import_rate
   n_suburbs <- ncol(active_cases)
-  new_infections <- rnbinom(n_suburbs,
-                            config$size,
+  new_infections <- rnbinom(n = n_suburbs,
+                            size = config$size,
                             mu = reallocated_infections)
+  # cap infections at a ludicrously high level to avoid numerical issues
+  new_infections <- pmin(new_infections, 1e4)
   state$infections_matrix[idx, ] <- new_infections
   
   state$infections_matrix
@@ -162,14 +164,14 @@ increment_detections <- function(idx,
 
   if (!is.null(delays)) {
    
-    # numbers of new detections  
-    new_detections <- delays[, 3]
-    
-    # where to assign them  
+    # where to assign detections
     elements <- delays[, 1:2, drop = FALSE]
     elements[, 1] <- elements[, 1] + idx
     valid <- elements[, 1] <= n_dates
     elements <- elements[valid, , drop = FALSE] 
+
+    # numbers of new detections  
+    new_detections <- delays[valid, 3]
     
     # update counts
     old_detections <- detections_matrix[elements]
@@ -440,12 +442,6 @@ non_household_fraction <- parameter_draws$vic_fraction_non_household
 # from Reff model the fraction of transmisions that are to non-household members
 # is around 45%
 outside_transmission_fraction <- mean(non_household_fraction) * 0.33
-
-# mobility <- gravity_model(
-#   geometry = vic_lga,
-#   population = vic_lga$pop,
-#   coef = c(0, -2.5, 1, 1)
-# )
 
 # gravity model fitted to facebook data
 mobility <- readRDS("data/facebook/baseline_gravity_movement.RDS")
