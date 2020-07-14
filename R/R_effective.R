@@ -327,7 +327,7 @@ if (staging) {
 }
 
 # types <- seq_along(output_directories)
-types <- 5:6
+types <- 1:2
 
 for (type in types) {
   

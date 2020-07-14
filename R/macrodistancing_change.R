@@ -4,6 +4,9 @@
 source("R/functions.R")
 library(greta)
 
+# make sure we have the latest survey data
+format_raw_survey_data()
+
 # modelled change (after/before ratio) in time at types of locations from Google
 location_change_trends <- location_change() %>%
   mutate_at(

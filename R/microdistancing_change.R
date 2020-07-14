@@ -2,6 +2,9 @@
 # from the BETA barometer
 source("R/functions.R")
 
+# make sure we have the latest survey data
+format_raw_survey_data()
+
 data <- microdistancing_data()
 barometer_distance <- data$barometer_data
 pred_data <- data$prediction_data
