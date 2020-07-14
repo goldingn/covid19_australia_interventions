@@ -16,14 +16,18 @@ n_locations <- max(barometer_distance$state_id)
 params <- microdistancing_params(n_locations)
 
 peak <- params$peak
+inflections <- params$inflections
 distancing_effects <- params$distancing_effects
 waning_effects <- params$waning_effects
+inflection_effects <- params$inflection_effects
 
 prob <- microdistancing_model(
   data = barometer_distance,
   peak = peak,
+  inflections = inflections,
   distancing_effects = distancing_effects,
-  waning_effects = waning_effects
+  waning_effects = waning_effects,
+  inflection_effects = inflection_effects
 )
 
 distribution(barometer_distance$count) <- binomial(
@@ -35,13 +39,16 @@ m <- model(waning_effects, distancing_effects, peak)
 
 set.seed(2020-05-30)
 draws <- mcmc(m, chains = 10)
+draws <- extra_samples(draws, 1000)
 convergence(draws)
 
 prob_pred <- microdistancing_model(
   data = pred_data,
   peak = peak,
+  inflections = inflections,
   distancing_effects = distancing_effects,
-  waning_effects = waning_effects
+  waning_effects = waning_effects,
+  inflection_effects = inflection_effects
 )
 
 prob_pred_sim <- calculate(prob_pred, values = draws, nsim = 5000)[[1]][, , 1]

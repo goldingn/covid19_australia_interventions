@@ -1837,16 +1837,21 @@ distancing_effect_model <- function(dates, gi_cdf) {
   
   params <- microdistancing_params()
   peak <- params$peak
+  inflections <- params$inflections
   distancing_effects <- params$distancing_effects
   waning_effects <- params$waning_effects
+  inflection_effects <- params$inflection_effects
 
   # define likelihood  
   prob <- microdistancing_model(
     data = barometer_distance,
     peak = peak,
+    inflections = inflections,
     distancing_effects = distancing_effects,
-    waning_effects = waning_effects
+    waning_effects = waning_effects,
+    inflection_effects = inflection_effects
   )
+  
   distribution(barometer_distance$count) <- binomial(
     barometer_distance$respondents,
     prob
@@ -1856,8 +1861,10 @@ distancing_effect_model <- function(dates, gi_cdf) {
   prob_pred <- microdistancing_model(
     data = pred_data,
     peak = peak,
+    inflections = inflections,
     distancing_effects = distancing_effects,
-    waning_effects = waning_effects
+    waning_effects = waning_effects,
+    inflection_effects = inflection_effects
   )
   
   pred_data_wide <- pred_data %>%
@@ -2075,20 +2082,33 @@ barometer_results <- function() {
 # microdistancing and therefore different waning shape
 microdistancing_model <- function(data,
                                   peak,
+                                  inflections,
                                   distancing_effects,
-                                  waning_effects) {
+                                  waning_effects,
+                                  inflection_effects) {
   
   # shape of unscaled waning effect (0 at/before peak, to 1 at latest date)
   waning_shape <- (data$time - peak) / (1 - peak)
   nullify <- (sign(waning_shape) + 1) / 2
   waning_shape <- waning_shape * nullify
   
-  # multiply by coefficients to get trends for each state
-  waning <- waning_shape * waning_effects[data$state_id]  
-  distancing <- data$distancing * distancing_effects[data$state_id]
+  # convert inflections to be after peak
+  inflections <- peak + inflections * (1 - peak)
   
-  # combine the two
-  distancing + waning
+  # shapes of inflection effects
+  inflections_vec <- inflections[data$state_id]
+  inflection_shape <- (data$time - inflections_vec) / (1 - inflections_vec)
+  
+  nullify <- (sign(inflection_shape) + 1) / 2
+  inflection_shape <- inflection_shape * nullify
+  
+  # multiply by coefficients to get trends for each state
+  distancing <- data$distancing * distancing_effects[data$state_id]
+  waning <- waning_shape * waning_effects[data$state_id]  
+  inflection <- inflection_shape * inflection_effects[data$state_id]  
+  
+  # combine them all
+  distancing + waning + inflection
   
 }
 
@@ -2517,18 +2537,27 @@ microdistancing_params <- function(n_locations = 8) {
   # timing of peak microdistancing between the date of the last intervention and
   # today's date
   peak <- normal(0, 1, truncation = c(0, 1))
+
+  # timing of inflections between peak and now
+  inflections <- normal(0, 1, truncation = c(0, 1), dim = n_locations)
   
   # hierarchical structure on state-level waning
   logit_waning_effects <- hierarchical_normal(n_locations)
   waning_effects <- -ilogit(logit_waning_effects)
   
   # hierarchical structure on state-level peak effect (proportion adhering) 
+  logit_inflection_effects <- hierarchical_normal(n_locations)
+  inflection_effects <- ilogit(logit_inflection_effects)
+  
+  # hierarchical structure on state-level peak effect (proportion adhering) 
   logit_distancing_effects <- hierarchical_normal(n_locations)
   distancing_effects <- ilogit(logit_distancing_effects)
   
   list(peak = peak,
+       inflections = inflections,
        distancing_effects = distancing_effects,
-       waning_effects = waning_effects)
+       waning_effects = waning_effects,
+       inflection_effects = inflection_effects)
 }
 
 # get data for fitting and predicting from microdistancing model
