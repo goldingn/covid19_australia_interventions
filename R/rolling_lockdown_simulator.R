@@ -257,7 +257,7 @@ prepare_config <- function (idx,
                             populations,
                             gi_mat,
                             gi_mat_all,
-                            lockdown_policy = original_policy(),
+                            lockdown_policy = no_policy,
                             lockdown_matrix = NULL) {
   
   # pull relevant samples
@@ -375,8 +375,33 @@ reactive_policy <- function(count_threshold, count_days = 7) {
     state$lockdown_matrix
     
   }
-      
+  
   lockdown_policy
+  
+}
+
+no_policy <- function(idx, state, config) {
+  state$lockdown_matrix
+}
+  
+
+# return a tibble summarisinng statewode case counts over time
+summarise_statewide <- function(results, scenario = NULL) {
+  lga_case_list <- lapply(results, `[[`, "detections_matrix")
+  lga_case_sims <- do.call(abind, c(lga_case_list, list(along = 0)))
+  vic_case_sims <- apply(lga_case_sims, 1:2, sum)
+  
+  quants <- apply(vic_case_sims, 2, quantile, c(0.05, 0.25, 0.5, 0.75, 0.95))
+  
+  tibble(
+    scenario = scenario,
+    date = dates,
+    median = quants[3, ],
+    ci_50_lo = quants[2, ],
+    ci_50_hi = quants[4, ],
+    ci_90_lo = quants[1, ],
+    ci_90_hi = quants[5, ]
+  )
   
 }
 
@@ -390,7 +415,7 @@ n_lga <- nrow(vic_lga)
 
 # read in numbers of cases by date of infection in LGAs, and pad with 0s for
 # other LGAs
-lga_infections <- readRDS("~/not_synced/lga_local_infections_2020-07-10.RDS") %>%
+lga_infections <- readRDS("~/not_synced/lga_local_infections_2020-07-14.RDS") %>%
   filter(state == "VIC") %>%
   mutate(
     expected_infections = infections / detection_probability
@@ -491,12 +516,7 @@ lockdown_cols <- match(lockdown_lgas(), vic_lga$lga)
 lockdown_rows <- dates >= as.Date("2020-07-02")
 lockdown_matrix[lockdown_rows, lockdown_cols] <- 1
 
-# define some policies
-no_response <- reactive_policy(count_threshold = Inf)
-react_10 <- reactive_policy(count_threshold = 10)
-react_5 <- reactive_policy(count_threshold = 5)
-
-configs_no_response <- future_lapply(
+configs_base <- future_lapply(
   seq_len(n_samples),
   prepare_config,
   nbinom_size_samples = size_samples,
@@ -511,79 +531,62 @@ configs_no_response <- future_lapply(
   gi_mat = gi_mat,
   gi_mat_all = gi_mat_all,
   populations = vic_lga$pop,
-  lockdown_matrix = lockdown_matrix, 
-  lockdown_policy = no_response
+  lockdown_matrix = lockdown_matrix
 )
 
-configs_react_5 <- lapply(configs_no_response,
+configs_no_response <- configs_base
+
+configs_react_50 <- lapply(configs_base,
                           set,
                           "lockdown_policy",
-                          react_5)
-configs_react_10 <- lapply(configs_no_response,
+                          reactive_policy(50))
+
+configs_react_10 <- lapply(configs_base,
                            set,
                            "lockdown_policy",
-                           react_10)
+                           reactive_policy(20))
 
-configs_statewide <- lapply(configs_no_response,
-                           set,
-                           "lockdown_matrix",
-                           lockdown_matrix * 0 + 1)
+statewide_lockdown_matrix <- lockdown_matrix
+statewide_lockdown_matrix[dates > Sys.Date(), ] <- 1
+
+configs_statewide <- lapply(configs_base,
+                            set,
+                            "lockdown_matrix",
+                            statewide_lockdown_matrix)
 
 results_no_response <- future_lapply(configs_no_response, run_simulation)
-results_statewide <- future_lapply(configs_statewide, run_simulation)
-results_react_5 <- future_lapply(configs_react_5, run_simulation)
+results_statewide <- lapply(configs_statewide, run_simulation)
+results_react_50 <- future_lapply(configs_react_50, run_simulation)
 results_react_10 <- future_lapply(configs_react_10, run_simulation)
 
-
-results <- results_statewide
-
-# combine results
-lga_case_list <- lapply(results, `[[`, "detections_matrix")
-lga_case_sims <- do.call(abind, c(lga_case_list, list(along = 0)))
-
-mn <- apply(lga_case_sims, 2:3, mean)
-quants <- apply(lga_case_sims, 2:3, quantile, c(0.05, 0.25, 0.5, 0.75, 0.95))
-
-df <- tibble(
-  lga = rep(vic_lga$lga, each = n_dates),
-  date = rep(dates, n_lga),
-  mean = c(mn),
-  median = c(quants[3, , ]),
-  ci_50_lo = c(quants[2, , ]),
-  ci_50_hi = c(quants[4, , ]),
-  ci_90_lo = c(quants[1, , ]),
-  ci_90_hi = c(quants[5, , ])
-) %>%
-  group_by(lga) %>%
-  mutate(max = max(ci_90_hi)) %>%
-  arrange(max)
-
-top_new_lgas <- df %>%
-  filter(!lga %in% lockdown_lgas()) %>%
-  summarise(peak = max(median)) %>%
-  arrange(desc(peak)) %>%
-  head(8) %>%
-  pull(lga)
+df <- bind_rows(
+  summarise_statewide(results_react_50, "New LGAs after 50 cases"),
+  summarise_statewide(results_react_10, "New LGAs after 10 cases"),
+  summarise_statewide(results_statewide, "All Victoria from July 14"),
+  summarise_statewide(results_no_response, "Melbourne & Mitchell only")
+)
 
 library(ggplot2)
 base_colour <- blue
 
 p <- df %>%
+  group_by(scenario) %>%
+  mutate(max = max(ci_90_hi)) %>%
+  arrange(max) %>%
   ungroup() %>%
-  filter(lga %in% top_new_lgas) %>%
   mutate(
-    lga = factor(lga, levels = top_new_lgas),
+    scenario = factor(scenario),
     type = "Nowcast"
   ) %>%
   arrange(desc(max)) %>%
   ggplot() + 
   
-  aes(date, mean, fill = type) +
+  aes(date, median, fill = type) +
   
   xlab(element_blank()) +
   
   scale_y_continuous(position = "right") +
-  scale_x_date(date_breaks = "1 months", date_labels = "%b %d") +
+  scale_x_date(date_breaks = "2 weeks", date_labels = "%b %d") +
   scale_alpha(range = c(0, 0.5)) +
   scale_fill_manual(values = c("Nowcast" = base_colour)) +
   
@@ -599,8 +602,10 @@ p <- df %>%
   geom_line(aes(y = ci_90_hi),
             colour = base_colour,
             alpha = 0.8) + 
+  coord_cartesian(ylim = c(0, 600),
+                  xlim = c(Sys.Date(), max(dates))) +
   
-  facet_wrap(~lga, ncol = 2) +
+  facet_wrap(~scenario, ncol = 2) +
   
   cowplot::theme_cowplot() +
   cowplot::panel_border(remove = TRUE) +
@@ -609,17 +614,12 @@ p <- df %>%
         strip.text = element_text(hjust = 0, face = "bold"),
         axis.title.y.right = element_text(vjust = 0.5, angle = 90),
         panel.spacing = unit(1.2, "lines")) +
-  ylab("confirmed cases per day")
+  ylab("confirmed cases per day") +
+  ggtitle("Forecast under different restriction policies")
 
 p
 
-save_ggplot("lga_forecast.png", multi = TRUE)
-
-image(log1p(quants[3, , ]),
-      main = "cases (median)")
-
-image(log1p(quants[4, , ]),
-      main = "cases (upper 50%)")
+save_ggplot("scenario_forecast.png", multi = TRUE)
 
 # to do:
 #  start with current lockdown
