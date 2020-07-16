@@ -4,6 +4,7 @@
 source("R/functions.R")
 
 library(sf)
+library(ggplot2)
 
 # random truncated normal samples
 rtnorm <- function(n, mean = 0, sd = 1, lower = -Inf, upper = Inf) {
@@ -405,17 +406,234 @@ summarise_statewide <- function(results, scenario = NULL) {
   
 }
 
+# plot an LGA-level risk map, with overlaid lockdown border
+lga_map <- function (object, fill, lockdown_geometry, lockdown_fill = NA) {
+  object %>%
+    select(!!fill) %>%
+    ggplot() +
+    aes(fill = !!as.name(fill)) +
+    geom_sf(
+      size = 0.1
+    ) +
+    scale_fill_gradient(
+      low = grey(0.9),
+      high = "red",
+      trans = "sqrt"
+    ) +
+    geom_sf(
+      aes(fill = 1),
+      data = lockdown_geometry,
+      col = "white",
+      size = 1.5,
+      fill = lockdown_fill
+    ) +
+    geom_sf(
+      aes(fill = 1),
+      data = lockdown_geometry,
+      col = "black",
+      size = 0.2,
+      fill = NA
+    ) +
+    theme_minimal()
+}
+
+# load the expected number of infections by LGA
+latest_lga_cases <- function(which = c("local", "imported")) {
+  which <- match.arg(which)
+  pattern <- paste0("lga_", which, "_infections_")
+  files <- list.files("~/not_synced/", pattern = pattern, full.names = TRUE)
+  lengths <- nchar(files)
+  dates <- files %>%
+    substr(nchar(.) - 13, nchar(.) - 4) %>%
+    as.Date()
+  keep <- which.max(dates)
+  readRDS(files[keep])
+}
+
+
 set.seed(2020-07-04)
+
 
 # load VIC LGA geometries and populations
 # prep_vic_lgas()
-
 vic_lga <- readRDS("data/spatial/vic_lga.RDS")
 n_lga <- nrow(vic_lga)
 
+# get geometry for lockdown region (for plotting)
+vic_lockdown <- vic_lga %>%
+  filter(lga %in% lockdown_lgas()) %>%
+  st_geometry() %>%
+  st_union() %>%
+  st_simplify(dTolerance = 0.001)
+
+
+# locally-acquired cases by LGA
+local_cases <- latest_lga_cases()
+
+# gravity model fitted to facebook data
+mobility <- readRDS("data/facebook/baseline_gravity_movement.RDS")
+
+# Reff model parameter samples
+parameter_draws <- readRDS("outputs/projection/postcode_forecast_draws.RDS")
+n_samples <- 1000
+size_samples <- parameter_draws$vic_size[seq_len(n_samples)]
+r_eff_reduction_samples <- parameter_draws$vic_r_eff_reduction_full[seq_len(n_samples)]
+leaving_reduction_samples <- runif(n_samples, 0.05, 0.3)
+non_household_fraction <- parameter_draws$vic_fraction_non_household
+
+# get the baseline fraction of new infections that are in another LGA
+# from contact questions, 33% of trips by cases in the time prior to symptom
+# onset were not within the same LGA
+# from Reff model the fraction of transmisions that are to non-household members
+# is around 45%
+outside_transmission_fraction <- mean(non_household_fraction) * 0.33
+
+# convert to importation rate, with probability of leaving
+import_rate <- set_leaving_probability(mobility, outside_transmission_fraction)
+
+# compute the remaining total future infectious potential in each LGA at the latest date
+gi_vec <- gi_vector(nishiura_cdf(), max(local_cases$date))
+potential_remaining <- 1 - cumsum(gi_vec)
+
+infectious <- local_cases %>%
+  filter(
+    state == "VIC"
+  ) %>%
+  mutate(
+    days_ago = as.numeric(max(date) - date)
+  ) %>%
+  left_join(
+    tibble(
+      days_ago = seq_along(potential_remaining),
+      potential = potential_remaining
+    )
+  ) %>%
+  mutate(
+    potential = replace_na(potential, 0),
+    lga_code = as.character(lga_code)
+  ) %>%
+  group_by(lga, lga_code) %>%
+  summarise(
+    infectious_potential = sum(potential * infections)
+  ) %>%
+  ungroup() %>%
+  # add on missing lgas and infectious import potential
+  right_join(
+    tibble(
+      lga = colnames(import_rate)
+    )
+  ) %>%
+  mutate(
+    infectious_potential = replace_na(infectious_potential, 0),
+    import_potential = (infectious_potential %*% import_rate)[1, ]
+  ) %>%
+  # compute the risk of non-lockdown areas bing infected *by lockdown areas*
+  mutate(
+    in_lockdown = lga %in% lockdown_lgas(),
+    lockdown_export_potential = ifelse(in_lockdown, infectious_potential, 0),
+    non_lockdown_import_potential = (lockdown_export_potential %*% import_rate)[1, ],
+    non_lockdown_import_potential = ifelse(in_lockdown, 0, non_lockdown_import_potential),
+  )
+  
+# plot the infectious potential and imort potential by LGA
+
+pal <- colorRampPalette(brewer.pal(9, "YlOrRd"))
+
+vic_lga_infectious <- vic_lga %>%
+  st_simplify(dTolerance = 0.001) %>%
+  left_join(infectious) %>%
+  mutate_at(
+    vars(
+      infectious_potential,
+      import_potential,
+      non_lockdown_import_potential
+    ),
+    ~replace_na(., 0)
+  ) %>%
+  mutate(
+    infectious_potential_area = infectious_potential / area,
+    import_potential_area = import_potential / area,
+    non_lockdown_import_potential_area = non_lockdown_import_potential / area
+  )
+
+# plots of maps, by LGA optionally scaled by area
+p_inf <- vic_lga_infectious %>%
+  lga_map("infectious_potential", vic_lockdown) +
+  labs(
+    fill = "Infectious potential"
+  ) +
+  ggtitle(
+    "Infectious potential of LGAs in Victoria",
+    "Active cases weighted by their remaining potential to infect others"
+  )
+
+p_inf_area <- vic_lga_infectious %>%
+  lga_map("infectious_potential_area", vic_lockdown) +
+  labs(
+    fill = "Infectious potential\nper unit area"
+  ) +
+  ggtitle(
+    "Infectious potential of LGAs in Victoria",
+    "Active cases weighted by their remaining potential to infect others"
+  )
+
+p_nl_imp <- vic_lga_infectious %>%
+  lga_map("non_lockdown_import_potential",
+          vic_lockdown,
+          lockdown_fill = grey(0.8)) +
+  labs(
+    fill = "Importation risk"
+  ) +
+  ggtitle(
+    "Relative risk of case importations from restricted LGAs",
+    "Estimated number of infectious contacts with cases in restricted LGAs"
+  )
+
+p_nl_imp_area <- vic_lga_infectious %>%
+  lga_map("non_lockdown_import_potential_area",
+          vic_lockdown,
+          lockdown_fill = grey(0.8)) +
+  labs(
+    fill = "Importation risk\nper unit area"
+  ) +
+  ggtitle(
+    "Relative risk of case importation from restricted LGAs",
+    "Estimated number of infectious contacts with cases in restricted LGAs"
+  )
+
+ggsave(
+  plot = p_inf,
+  filename = "outputs/figures/infectious_potential_map.png",
+  width = 8, height = 6,
+  dpi = 250
+)
+
+ggsave(
+  plot = p_inf_area,
+  filename = "outputs/figures/infectious_potential_area_map.png",
+  width = 8, height = 6,
+  dpi = 250
+)
+
+ggsave(
+  plot = p_nl_imp,
+  filename = "outputs/figures/importation_potential_map.png",
+  width = 8, height = 6,
+  dpi = 250
+)
+
+ggsave(
+  plot = p_nl_imp_area,
+  filename = "outputs/figures/importation_potential_area_map.png",
+  width = 8, height = 6,
+  dpi = 250
+)
+
+
+
 # read in numbers of cases by date of infection in LGAs, and pad with 0s for
 # other LGAs
-lga_infections <- readRDS("~/not_synced/lga_local_infections_2020-07-14.RDS") %>%
+lga_infections <- local_cases %>%
   filter(state == "VIC") %>%
   mutate(
     expected_infections = infections / detection_probability
@@ -464,29 +682,6 @@ dates <- max(dates_prior) + seq_len(6 * 7)
 n_dates <- length(dates)
 n_dates_prior <- length(dates_prior)
 dates_all <- min(dates) + seq(-n_dates_prior, n_dates - 1)
-
-parameter_draws <- readRDS("outputs/projection/postcode_forecast_draws.RDS")
-
-n_samples <- 1000
-size_samples <- parameter_draws$vic_size[seq_len(n_samples)]
-r_eff_reduction_samples <- parameter_draws$vic_r_eff_reduction_full[seq_len(n_samples)]
-leaving_reduction_samples <- runif(n_samples, 0.05, 0.3)
-non_household_fraction <- parameter_draws$vic_fraction_non_household
-  
-# get the baseline fraction of new infections that are in another LGA
-
-# from contact questions, 33% of trips by cases in the time prior to symptom
-# onset were not within the same LGA
-
-# from Reff model the fraction of transmisions that are to non-household members
-# is around 45%
-outside_transmission_fraction <- mean(non_household_fraction) * 0.33
-
-# gravity model fitted to facebook data
-mobility <- readRDS("data/facebook/baseline_gravity_movement.RDS")
-
-# convert to importation rate, with probability of leaving
-import_rate <- set_leaving_probability(mobility, outside_transmission_fraction)
 
 # R effective across suburbs and times
 idx <- match(dates, parameter_draws$dates)
