@@ -407,10 +407,12 @@ summarise_statewide <- function(results, scenario = NULL) {
 }
 
 # plot an LGA-level risk map, with overlaid lockdown border
-lga_map <- function (object, fill, lockdown_geometry,
-                     lockdown_fill = NA,
+lga_map <- function (object, fill,
+                     source_geometry = NA,
+                     source_lockdown = FALSE,
+                     source_fill = NA,
                      trans = "identity") {
-  object %>%
+  p <- object %>%
     select(!!fill) %>%
     ggplot() +
     aes(fill = !!as.name(fill)) +
@@ -422,21 +424,34 @@ lga_map <- function (object, fill, lockdown_geometry,
       high = "red",
       trans = trans
     ) +
-    geom_sf(
-      aes(fill = 1),
-      data = lockdown_geometry,
-      col = "white",
-      size = 1.5,
-      fill = lockdown_fill
-    ) +
-    geom_sf(
-      aes(fill = 1),
-      data = lockdown_geometry,
-      col = "black",
-      size = 0.2,
-      fill = NA
-    ) +
     theme_minimal()
+  
+  if (!is.na(source_geometry)) {
+    
+    p <- p +
+      geom_sf(
+        aes(fill = 1),
+        data = source_geometry,
+        col = ifelse(source_lockdown, "white", NA),
+        size = 1.5,
+        fill = source_fill
+      )
+    
+    if (source_lockdown) {
+      p <- p +
+        geom_sf(
+          aes(fill = 1),
+          data = source_geometry,
+          col = "black",
+          size = 0.2,
+          fill = NA
+        )
+    }
+
+  }
+  
+  p
+  
 }
 
 # load the expected number of infections by LGA
@@ -452,27 +467,88 @@ latest_lga_cases <- function(which = c("local", "imported")) {
   readRDS(files[keep])
 }
 
+compute_infectious <- function(state_cases, lga, import_rate,
+                               sources = NULL) {
+  
+  # compute the remaining total future infectious potential in each LGA at the latest date
+  gi_vec <- gi_vector(nishiura_cdf(), max(state_cases$date))
+  potential_remaining <- 1 - cumsum(gi_vec)
+  
+  infectious <- state_cases %>%
+    mutate(
+      days_ago = as.numeric(max(date) - date)
+    ) %>%
+    left_join(
+      tibble(
+        days_ago = seq_along(potential_remaining),
+        potential = potential_remaining
+      )
+    ) %>%
+    mutate(
+      potential = replace_na(potential, 0),
+      lga_code = as.character(lga_code)
+    ) %>%
+    group_by(lga, lga_code) %>%
+    summarise(
+      infectious_potential = sum(potential * infections)
+    ) %>%
+    ungroup() %>%
+    # add on missing lgas and infectious import potential
+    right_join(
+      tibble(
+        lga = colnames(import_rate)
+      )
+    ) %>%
+    mutate(
+      infectious_potential = replace_na(infectious_potential, 0),
+      import_potential = (infectious_potential %*% import_rate)[1, ]
+    )
+  
+  # define the source lgas if not provided
+  if (is.null(sources)) {
+    sources <- infectious %>%
+      filter(infectious_potential > 0) %>%
+      pull(lga)
+  }
+  
+  infectious <- infectious %>%
+    # compute the risk of non-lockdown areas bing infected *by lockdown areas*
+    mutate(
+      is_source = lga %in% sources,
+      lockdown_export_potential = ifelse(is_source, infectious_potential, 0),
+      sink_import_potential = (lockdown_export_potential %*% import_rate)[1, ],
+      sink_import_potential = ifelse(is_source, 0, sink_import_potential),
+      sink_import_potential = sink_import_potential / max(sink_import_potential),
+    )
+  
+  lga %>%
+    st_simplify(dTolerance = 0.001) %>%
+    left_join(infectious) %>%
+    mutate_at(
+      vars(
+        infectious_potential,
+        import_potential,
+        sink_import_potential
+      ),
+      ~replace_na(., 0)
+    ) %>%
+    mutate(
+      infectious_potential_area = infectious_potential / area,
+    )
+}
+
+simple_border <- function(object, tol= 0.001) {
+  object %>%
+    st_geometry() %>%
+    st_union() %>%
+    st_simplify(dTolerance = tol)
+}
+
 
 set.seed(2020-07-04)
 
-
-# load VIC LGA geometries and populations
-# prep_vic_lgas()
-vic_lga <- readRDS("data/spatial/vic_lga.RDS")
-n_lga <- nrow(vic_lga)
-
-# get geometry for lockdown region (for plotting)
-vic_lockdown <- vic_lga %>%
-  filter(lga %in% lockdown_lgas()) %>%
-  st_geometry() %>%
-  st_union() %>%
-  st_simplify(dTolerance = 0.001)
-
 # locally-acquired cases by LGA
 local_cases <- latest_lga_cases()
-
-# gravity model fitted to facebook data
-mobility <- readRDS("data/facebook/baseline_gravity_movement.RDS")
 
 # Reff model parameter samples
 parameter_draws <- readRDS("outputs/projection/postcode_forecast_draws.RDS")
@@ -489,99 +565,91 @@ non_household_fraction <- parameter_draws$vic_fraction_non_household
 # is around 45%
 outside_transmission_fraction <- mean(non_household_fraction) * 0.33
 
-# convert to importation rate, with probability of leaving
-import_rate <- set_leaving_probability(mobility, outside_transmission_fraction)
+# load LGA geometries and populations
+# prep_lgas("Victoria")
+# prep_state_lgas("New South Wales")
+# prep_state_lgas("Australian Capital Territory")
+vic_lga <- readRDS("data/spatial/vic_lga.RDS")
+act_lga <- readRDS("data/spatial/act_lga.RDS")
+nsw_lga <- readRDS("data/spatial/nsw_lga.RDS")
 
-# compute the remaining total future infectious potential in each LGA at the latest date
-gi_vec <- gi_vector(nishiura_cdf(), max(local_cases$date))
-potential_remaining <- 1 - cumsum(gi_vec)
-
-infectious <- local_cases %>%
-  filter(
-    state == "VIC"
-  ) %>%
-  mutate(
-    days_ago = as.numeric(max(date) - date)
-  ) %>%
-  left_join(
-    tibble(
-      days_ago = seq_along(potential_remaining),
-      potential = potential_remaining
-    )
-  ) %>%
-  mutate(
-    potential = replace_na(potential, 0),
-    lga_code = as.character(lga_code)
-  ) %>%
-  group_by(lga, lga_code) %>%
-  summarise(
-    infectious_potential = sum(potential * infections)
-  ) %>%
-  ungroup() %>%
-  # add on missing lgas and infectious import potential
-  right_join(
-    tibble(
-      lga = colnames(import_rate)
-    )
-  ) %>%
-  mutate(
-    infectious_potential = replace_na(infectious_potential, 0),
-    import_potential = (infectious_potential %*% import_rate)[1, ]
-  ) %>%
-  # compute the risk of non-lockdown areas bing infected *by lockdown areas*
-  mutate(
-    in_lockdown = lga %in% lockdown_lgas(),
-    lockdown_export_potential = ifelse(in_lockdown, infectious_potential, 0),
-    non_lockdown_import_potential = (lockdown_export_potential %*% import_rate)[1, ],
-    non_lockdown_import_potential = ifelse(in_lockdown, 0, non_lockdown_import_potential),
-    non_lockdown_import_potential = non_lockdown_import_potential / max(non_lockdown_import_potential),
+# crop out Norflok Island
+nsw_lga <- st_crop(
+  nsw_lga,
+  c(
+    xmin = 140,
+    ymin = -38.5,
+    xmax = 154,
+    ymax = -27
   )
-  
-# plot the infectious potential and imort potential by LGA
+)
 
+nsw_act_lga <- st_union(
+  nsw_lga,
+  act_lga
+)
+
+vic_border <- simple_border(vic_lga)
+act_border <- simple_border(act_lga)
+nsw_border <- simple_border(nsw_lga)
+
+# get geometry for Melbourne & Mitchell lockdown region (for plotting)
+vic_lockdown <- vic_lga %>%
+  filter(lga %in% lockdown_lgas()) %>%
+  simple_border()
+
+# importation rates from gravity models fitted to facebook data
+vic_import_rate <- "data/facebook/vic_baseline_gravity_movement.RDS" %>%
+  readRDS() %>%
+  set_leaving_probability(outside_transmission_fraction)
+
+nsw_act_import_rate <- "data/facebook/nsw_act_baseline_gravity_movement.RDS" %>%
+  readRDS() %>%
+  set_leaving_probability(outside_transmission_fraction)
+
+vic_lga_infectious <- local_cases %>%
+  filter(
+    state == "VIC",
+  ) %>%
+  compute_infectious(
+    lga = vic_lga,
+    import_rate = vic_import_rate,
+    sources = lockdown_lgas()
+  )
+
+# plot the infectious potential and imort potential by LGA
 pal <- colorRampPalette(brewer.pal(9, "YlOrRd"))
 
-vic_lga_infectious <- vic_lga %>%
-  st_simplify(dTolerance = 0.001) %>%
-  left_join(infectious) %>%
-  mutate_at(
-    vars(
-      infectious_potential,
-      import_potential,
-      non_lockdown_import_potential
-    ),
-    ~replace_na(., 0)
-  ) %>%
-  mutate(
-    infectious_potential_area = infectious_potential / area,
-  )
-
-latest_date <- max(local_cases$date)
-p_inf_area <- vic_lga_infectious %>%
+p_vic_inf_area <- vic_lga_infectious %>%
   lga_map("infectious_potential_area",
-          vic_lockdown,
+          source_geometry = vic_lockdown,
+          source_lockdown = TRUE,
           trans = "sqrt") +
   labs(
     fill = "Infectious potential\nper sq. km"
   ) +
   ggtitle(
-    "Infectious potential across Victoria",
+    "Infectious potential across VIC",
     paste(
       "Locally-acquired cases weighted by remaining",
       "potential to infect, as at",
-      format(latest_date, format = "%d %B")
+      format(
+        max(local_cases$date),
+        format = "%d %B"
+      )
     )
   )
 
-p_nl_imp <- vic_lga_infectious %>%
-  lga_map("non_lockdown_import_potential",
-          vic_lockdown,
-          lockdown_fill = grey(0.8)) +
+p_vic_nl_imp <- vic_lga_infectious %>%
+  lga_map("sink_import_potential",
+          source_geometry = vic_lockdown,
+          source_lockdown = TRUE,
+          source_fill = grey(0.8)) +
   labs(
     fill = "Relative risk"
   ) +
   ggtitle(
-    "Case importation risk from restricted to non-restricted LGAs",
+    "Case importation risk from restricted to non-restricted VIC LGAs",
     paste(
       "Risk relative to the most at-risk non-restricted LGA",
       "(Greater Geelong)"
@@ -589,18 +657,84 @@ p_nl_imp <- vic_lga_infectious %>%
   )
 
 ggsave(
-  plot = p_inf_area,
-  filename = "outputs/figures/infectious_potential_area_map.png",
+  plot = p_vic_inf_area,
+  filename = "outputs/figures/vic_infectious_potential_area_map.png",
   width = 8, height = 6,
   dpi = 250
 )
 
 ggsave(
-  plot = p_nl_imp,
-  filename = "outputs/figures/importation_potential_map.png",
+  plot = p_vic_nl_imp,
+  filename = "outputs/figures/vic_importation_potential_map.png",
   width = 8, height = 6,
   dpi = 250
 )
+
+# and to plot state boundaries
+
+nsw_act_lga_infectious <- local_cases %>%
+  filter(
+    state %in% c("NSW", "ACT"),
+  ) %>%
+  compute_infectious(
+    lga = nsw_act_lga,
+    import_rate = nsw_act_import_rate,
+  )
+
+# get source lga shapefile
+nsw_act_sources <- nsw_act_lga_infectious %>%
+  filter(infectious_potential > 0) %>%
+  st_geometry() %>%
+  st_union() %>%
+  st_simplify(dTolerance = 0.001)
+
+
+nsw_act_lga_infectious %>%
+  lga_map("infectious_potential_area",
+          trans = "sqrt") +
+  labs(
+    fill = "Infectious potential\nper sq. km"
+  ) +
+  ggtitle(
+    "Infectious potential across NSW and ACT",
+    paste(
+      "Locally-acquired cases weighted by remaining",
+      "potential to infect, as at",
+      format(
+        max(local_cases$date),
+        format = "%d %B"
+      )
+    )
+  )
+
+nsw_act_lga_infectious %>%
+  lga_map("sink_import_potential",
+          source_geometry = nsw_act_sources,
+          source_fill = "orchid1") +
+  labs(
+    fill = "Relative risk"
+  ) +
+  ggtitle(
+    "Case importation risk from restricted to non-restricted NSW and VIC LGAs",
+    paste(
+      "Risk relative to the most at-risk non-restricted LGA",
+      "(Northern Beaches)"
+    )
+  )
+
+
+
+
+
+
+
+
+
+
+
+
+# convert to importation rate, with probability of leaving
+import_rate <- vic_import_rate
 
 # read in numbers of cases by date of infection in LGAs, and pad with 0s for
 # other LGAs
@@ -655,6 +789,7 @@ n_dates_prior <- length(dates_prior)
 dates_all <- min(dates) + seq(-n_dates_prior, n_dates - 1)
 
 # R effective across suburbs and times
+n_lga <- nrow(vic_lga)
 idx <- match(dates, parameter_draws$dates)
 r_eff_samples_mat <- parameter_draws$vic_r_eff[seq_len(n_samples), idx]
 r_eff_samples_list <- apply(r_eff_samples_mat, 1, list)

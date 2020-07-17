@@ -3364,10 +3364,17 @@ save_ggplot <- function (filename,
 }
 
 # prep a spatial layer with Victorian LGAs and their populations
-prep_vic_lgas <- function(
-  filepath = "data/spatial/vic_lga.RDS"
+prep_state_lgas <- function(
+  state = "Victoria",
+  out_dir = "data/spatial"
 ) {
   
+  state_short <- abbreviate_states(state)
+  filepath <- file.path(out_dir,
+                        paste0(
+                          tolower(state_short),
+                          "_lga.RDS"
+                        ))
   library(sf)
   
   # load populations of all meshblocks
@@ -3387,24 +3394,26 @@ prep_vic_lgas <- function(
     )
   
   # add populations onto shapefile
-  vic_mesh <- st_read(
-    "data/spatial/abs/MB_2016_VIC.shp",
-    stringsAsFactors = FALSE
+  state_mesh <- paste0(
+    "data/spatial/abs/MB_2016_",
+    state_short,
+    ".shp"
   ) %>%
+    st_read(
+      stringsAsFactors = FALSE
+    ) %>%
     left_join(mesh_pop)
   
   # get LGAs in VIC, join with mesh blocks, and sum populations
-  vic_lga <- st_read("data/spatial/abs/LGA_2016_AUST.shp",
+  st_read("data/spatial/abs/LGA_2016_AUST.shp",
                      stringsAsFactors = FALSE) %>%
-    filter(STE_NAME16 == "Victoria") %>%
+    filter(STE_NAME16 == state) %>%
     select(lga_code = LGA_CODE16,
            lga = LGA_NAME16,
            area = AREASQKM16) %>%
-    st_join(vic_mesh) %>%
+    st_join(state_mesh) %>%
     group_by(lga_code, lga, area) %>%
-    summarise(pop = sum(Person))
-  
-  vic_lga %>%
+    summarise(pop = sum(Person)) %>%
     filter(area > 0) %>%
     mutate(
       pop_dens = pop / area
