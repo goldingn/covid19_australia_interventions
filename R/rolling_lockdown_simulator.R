@@ -407,7 +407,9 @@ summarise_statewide <- function(results, scenario = NULL) {
 }
 
 # plot an LGA-level risk map, with overlaid lockdown border
-lga_map <- function (object, fill, lockdown_geometry, lockdown_fill = NA) {
+lga_map <- function (object, fill, lockdown_geometry,
+                     lockdown_fill = NA,
+                     trans = "identity") {
   object %>%
     select(!!fill) %>%
     ggplot() +
@@ -418,7 +420,7 @@ lga_map <- function (object, fill, lockdown_geometry, lockdown_fill = NA) {
     scale_fill_gradient(
       low = grey(0.9),
       high = "red",
-      trans = "sqrt"
+      trans = trans
     ) +
     geom_sf(
       aes(fill = 1),
@@ -465,7 +467,6 @@ vic_lockdown <- vic_lga %>%
   st_geometry() %>%
   st_union() %>%
   st_simplify(dTolerance = 0.001)
-
 
 # locally-acquired cases by LGA
 local_cases <- latest_lga_cases()
@@ -533,6 +534,7 @@ infectious <- local_cases %>%
     lockdown_export_potential = ifelse(in_lockdown, infectious_potential, 0),
     non_lockdown_import_potential = (lockdown_export_potential %*% import_rate)[1, ],
     non_lockdown_import_potential = ifelse(in_lockdown, 0, non_lockdown_import_potential),
+    non_lockdown_import_potential = non_lockdown_import_potential / max(non_lockdown_import_potential),
   )
   
 # plot the infectious potential and imort potential by LGA
@@ -552,29 +554,23 @@ vic_lga_infectious <- vic_lga %>%
   ) %>%
   mutate(
     infectious_potential_area = infectious_potential / area,
-    import_potential_area = import_potential / area,
-    non_lockdown_import_potential_area = non_lockdown_import_potential / area
   )
 
-# plots of maps, by LGA optionally scaled by area
-p_inf <- vic_lga_infectious %>%
-  lga_map("infectious_potential", vic_lockdown) +
-  labs(
-    fill = "Infectious potential"
-  ) +
-  ggtitle(
-    "Infectious potential of LGAs in Victoria",
-    "Active cases weighted by their remaining potential to infect others"
-  )
-
+latest_date <- max(local_cases$date)
 p_inf_area <- vic_lga_infectious %>%
-  lga_map("infectious_potential_area", vic_lockdown) +
+  lga_map("infectious_potential_area",
+          vic_lockdown,
+          trans = "sqrt") +
   labs(
-    fill = "Infectious potential\nper unit area"
+    fill = "Infectious potential\nper sq. km"
   ) +
   ggtitle(
-    "Infectious potential of LGAs in Victoria",
-    "Active cases weighted by their remaining potential to infect others"
+    "Infectious potential across Victoria",
+    paste(
+      "Locally-acquired cases weighted by remaining",
+      "potential to infect, as at",
+      format(latest_date, format = "%d %B")
+    )
   )
 
 p_nl_imp <- vic_lga_infectious %>%
@@ -582,31 +578,15 @@ p_nl_imp <- vic_lga_infectious %>%
           vic_lockdown,
           lockdown_fill = grey(0.8)) +
   labs(
-    fill = "Importation risk"
+    fill = "Relative risk"
   ) +
   ggtitle(
-    "Relative risk of case importations from restricted LGAs",
-    "Estimated number of infectious contacts with cases in restricted LGAs"
+    "Case importation risk from restricted to non-restricted LGAs",
+    paste(
+      "Risk relative to the most at-risk non-restricted LGA",
+      "(Greater Geelong)"
+    )
   )
-
-p_nl_imp_area <- vic_lga_infectious %>%
-  lga_map("non_lockdown_import_potential_area",
-          vic_lockdown,
-          lockdown_fill = grey(0.8)) +
-  labs(
-    fill = "Importation risk\nper unit area"
-  ) +
-  ggtitle(
-    "Relative risk of case importation from restricted LGAs",
-    "Estimated number of infectious contacts with cases in restricted LGAs"
-  )
-
-ggsave(
-  plot = p_inf,
-  filename = "outputs/figures/infectious_potential_map.png",
-  width = 8, height = 6,
-  dpi = 250
-)
 
 ggsave(
   plot = p_inf_area,
@@ -621,15 +601,6 @@ ggsave(
   width = 8, height = 6,
   dpi = 250
 )
-
-ggsave(
-  plot = p_nl_imp_area,
-  filename = "outputs/figures/importation_potential_area_map.png",
-  width = 8, height = 6,
-  dpi = 250
-)
-
-
 
 # read in numbers of cases by date of infection in LGAs, and pad with 0s for
 # other LGAs
