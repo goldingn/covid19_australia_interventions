@@ -280,7 +280,7 @@ m <- model(tau_back_to_work, kappa_back_to_work,
            sigma_obs)
 
 draws <- mcmc(m,
-              sampler = hmc(Lmin = 25, Lmax = 30),
+              sampler = hmc(Lmin = 35, Lmax = 40),
               chains = 10)
 
 draws <- extra_samples(draws, 2000)
