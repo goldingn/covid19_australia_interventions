@@ -2435,6 +2435,11 @@ contact_survey_data <- function() {
     load_contacts_by_state(
       "data/contacts/barometer/contact numbers wave 15.csv",
       as.Date("2020-07-08")
+    ),
+    
+    load_contacts_by_state(
+      "data/contacts/barometer/contact numbers wave 16.csv",
+      as.Date("2020-07-15")
     )
     
   )

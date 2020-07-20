@@ -240,7 +240,7 @@ draws <- mcmc(
   chains = 10,
   one_by_one = TRUE
 )
-# draws <- extra_samples(draws, 1000, one_by_one = TRUE)
+draws <- extra_samples(draws, 1000, one_by_one = TRUE)
 
 convergence(draws)
 

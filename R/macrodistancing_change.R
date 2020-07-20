@@ -65,7 +65,6 @@ pred_sim <- calculate(c(OC_t_state), values = draws, nsim = nsim)[[1]][, , 1]
 quants <- t(apply(pred_sim, 2, quantile, c(0.05, 0.25, 0.75, 0.95)))
 colnames(quants) <- c("ci_90_lo", "ci_50_lo", "ci_50_hi", "ci_90_hi")
 
-
 # get point estimates for plotting
 gi_cdf <- nishiura_cdf()
 baseline_contact_params <- baseline_contact_parameters(gi_cdf)
@@ -79,7 +78,7 @@ baseline_point <- tibble::tribble(
   mutate(lower = estimate - sd * 1.96,
          upper = estimate + sd * 1.96)
 
-# slim down dataframe to get indeopendent estimates for surveys
+# slim down dataframe to get independent estimates for surveys
 survey_points <- contacts %>%
   group_by(state, date) %>%
   summarise(n = n())  %>%
@@ -123,8 +122,6 @@ holiday_lines <- survey_points %>%
       mutate(state = abbreviate_states(state))
   ) %>%
   filter(date < date_end & date > date_start)
-
-
 
 type <- 1
 states <- unique(location_change_trends$state)
