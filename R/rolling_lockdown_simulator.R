@@ -411,6 +411,7 @@ lga_map <- function (object, fill,
                      source_geometry = NA,
                      source_lockdown = FALSE,
                      source_fill = NA,
+                     risk_col = grey(0.4),
                      trans = "identity") {
   p <- object %>%
     select(!!fill) %>%
@@ -421,7 +422,7 @@ lga_map <- function (object, fill,
     ) +
     scale_fill_gradient(
       low = grey(0.9),
-      high = "red",
+      high = risk_col,
       trans = trans
     ) +
     theme_minimal()
@@ -432,8 +433,8 @@ lga_map <- function (object, fill,
       geom_sf(
         aes(fill = 1),
         data = source_geometry,
-        col = ifelse(source_lockdown, "white", NA),
-        size = 1.5,
+        col = "white",
+        size = ifelse(source_lockdown, 1.5, 0.5),
         fill = source_fill
       )
     
@@ -544,6 +545,32 @@ simple_border <- function(object, tol= 0.001) {
     st_simplify(dTolerance = tol)
 }
 
+border_line <- function(border) {
+  geom_sf(
+    aes(fill = 1),
+    data = border,
+    col = grey(0.4),
+    linetype = "dashed",
+    size = 0.4,
+    fill = NA
+  )
+}
+
+# strip the parenthetical nonsense from LGA names
+lga_name <- function(lga) {
+  strsplit(lga, " \\(") %>%
+    lapply(`[`, 1) %>%
+    unlist()
+}
+
+# which lga is highest risk?
+max_risk_lga <- function(lga_infectious) {
+  lga_infectious %>%
+    arrange(desc(sink_import_potential)) %>%
+    filter(row_number() == 1) %>%
+    pull(lga) %>%
+    lga_name()
+}
 
 set.seed(2020-07-04)
 
@@ -617,16 +644,16 @@ vic_lga_infectious <- local_cases %>%
     sources = lockdown_lgas()
   )
 
-# plot the infectious potential and imort potential by LGA
-pal <- colorRampPalette(brewer.pal(9, "YlOrRd"))
-
+# plot the infectious potential and import potential by LGA
 p_vic_inf_area <- vic_lga_infectious %>%
   lga_map("infectious_potential_area",
           source_geometry = vic_lockdown,
           source_lockdown = TRUE,
-          trans = "sqrt") +
+          trans = "sqrt",
+          risk_col = "blue") +
+  border_line(vic_border) +
   labs(
-    fill = "Infectious potential\nper sq. km"
+    fill = "Infectious\npotential\nper sq. km"
   ) +
   ggtitle(
     "Infectious potential across VIC",
@@ -644,15 +671,18 @@ p_vic_nl_imp <- vic_lga_infectious %>%
   lga_map("sink_import_potential",
           source_geometry = vic_lockdown,
           source_lockdown = TRUE,
-          source_fill = grey(0.8)) +
+          source_fill = grey(0.8),
+          risk_col = "red") +
+  border_line(vic_border) +
   labs(
     fill = "Relative risk"
   ) +
   ggtitle(
     "Case importation risk from restricted to non-restricted VIC LGAs",
-    paste(
-      "Risk relative to the most at-risk non-restricted LGA",
-      "(Greater Geelong)"
+    paste0(
+      "Relative to the most at-risk non-restricted LGA (",
+      max_risk_lga(vic_lga_infectious),
+      ")"
     )
   )
 
@@ -688,12 +718,13 @@ nsw_act_sources <- nsw_act_lga_infectious %>%
   st_union() %>%
   st_simplify(dTolerance = 0.001)
 
-
-nsw_act_lga_infectious %>%
+p_nsw_inf_area <- nsw_act_lga_infectious %>%
   lga_map("infectious_potential_area",
-          trans = "sqrt") +
+          trans = "sqrt",
+          risk_col = "blue") +
+  border_line(nsw_border) +
   labs(
-    fill = "Infectious potential\nper sq. km"
+    fill = "Infectious\npotential\nper sq. km"
   ) +
   ggtitle(
     "Infectious potential across NSW and ACT",
@@ -707,29 +738,38 @@ nsw_act_lga_infectious %>%
     )
   )
 
-nsw_act_lga_infectious %>%
+p_nsw_nl_imp <- nsw_act_lga_infectious %>%
   lga_map("sink_import_potential",
           source_geometry = nsw_act_sources,
-          source_fill = "orchid1") +
+          source_fill = grey(0.8),
+          risk_col = "red") +
+  border_line(nsw_border) +
   labs(
     fill = "Relative risk"
   ) +
   ggtitle(
-    "Case importation risk from restricted to non-restricted NSW and VIC LGAs",
-    paste(
-      "Risk relative to the most at-risk non-restricted LGA",
-      "(Northern Beaches)"
+    "Case importation risk to case-free NSW LGAs",
+    paste0(
+      "Relative to the most at-risk case-free LGA (",
+      max_risk_lga(nsw_act_lga_infectious),
+      ")"
     )
   )
 
 
+ggsave(
+  plot = p_nsw_inf_area,
+  filename = "outputs/figures/nsw_infectious_potential_area_map.png",
+  width = 8, height = 6,
+  dpi = 250
+)
 
-
-
-
-
-
-
+ggsave(
+  plot = p_nsw_nl_imp,
+  filename = "outputs/figures/nsw_importation_potential_map.png",
+  width = 8, height = 6,
+  dpi = 250
+)
 
 
 
