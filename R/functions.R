@@ -2812,7 +2812,7 @@ microdistancing_data <- function(dates = NULL) {
     replace_na(list(distancing = 0)) %>%
     mutate(
       state_id = match(state, unique(state)),
-      time = as.numeric(date - max(intervention_dates()$date)),
+      time = as.numeric(date - intervention_dates()$date[3]),
       time = time / max(time)
     ) %>%
     arrange(state, date)

@@ -19,6 +19,8 @@ interventions <- intervention_dates()
 holidays <- holiday_dates()
 populations <- state_populations()
 
+vic_second_intervention_dates <- as.Date(c("2020-07-01", "2020-07-08"))
+
 # get vectors of date ranges and datastreams to model
 first_date <- min(mobility$date)
 last_date <- max(mobility$date)
@@ -53,7 +55,7 @@ state_index <- state_datastream_lookup %>%
 # social distancing latent factor as a function of behavioural switches
 # triggered by the major interventions
 date_num <- as.numeric(dates - first_date)
-trigger_date_num <- as.numeric(interventions$date - first_date)
+trigger_date_num <- as.numeric(interventions$date[1:3] - first_date)
 distancing <- latent_behaviour_switch(date_num, trigger_date_num)
 
 # add term for recent change to social distancing (some proportion either
@@ -61,7 +63,7 @@ distancing <- latent_behaviour_switch(date_num, trigger_date_num)
 # make this a linear increase since a peak (with prior mean one week after the
 # last intervention, 95% interval in the week around that)
 last_date_num <- n_dates - 1
-last_intervention_date_num <- as.numeric(max(interventions$date) - first_date)
+last_intervention_date_num <- as.numeric(interventions$date[3] - first_date)
 peak_range <- last_date_num - last_intervention_date_num
 
 # when was the peak of distancing?
@@ -266,6 +268,7 @@ log_sigma_obs_sd <- normal(0, 0.5, truncation = c(0, Inf))
 log_sigma_obs_raw <- normal(0, 20, dim = n_state_datastreams)
 log_sigma_obs <- log_sigma_obs_mean + log_sigma_obs_sd * log_sigma_obs_raw / 20
 sigma_obs <- exp(log_sigma_obs)
+# sigma_obs <- normal(0, 0.5, truncation = c(0, Inf), dim = n_state_datastreams)
 
 distribution(mobility$trend) <- normal(mean = trends[idx],
                                        sd = sigma_obs[cols])
@@ -286,7 +289,7 @@ draws <- mcmc(m,
 draws <- extra_samples(draws, 2000)
 
 convergence(draws)
-
+# 
 # # dig into posterior correlations
 # mi <- attr(draws, "model_info")
 # free <- as.matrix(mi$raw_draws)
@@ -390,7 +393,16 @@ for (j in seq_len(n_states)) {
          xlab = "",
          yaxt = "n")
     axis(4)
-    add_gridlines(interventions$date)
+    
+    # add extra intervention lines for VIC
+    if (states[j] == "Victoria") {
+      add_gridlines(
+        c(interventions$date, vic_second_intervention_dates)
+      )
+    } else {
+      add_gridlines(interventions$date)
+    }
+    
     add_mean_ci(est, dates_plot,
                 col = grey(0.9),
                 border_col = grey(0.8),
@@ -480,6 +492,15 @@ for(this_state in states) {
            xlab = "",
            yaxt = "n")
       axis(4)
+      # add extra intervention lines for VIC
+      if (this_state == "Victoria") {
+        add_gridlines(
+          c(interventions$date, vic_second_intervention_dates)
+        )
+      } else {
+        add_gridlines(interventions$date)
+      }
+      
       add_gridlines(interventions$date)
       add_mean_ci(est, dates_plot,
                   col = grey(0.9),
