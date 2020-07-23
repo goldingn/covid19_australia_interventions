@@ -112,12 +112,19 @@ google_mobility <- function() {
   data
 }
 
-# download and format Apple's mobility data - will need to update the url regularly
+# scrape out the URL to apple mobility data
+apple_url <- function() {
+  base_url <- "https://covid19-static.cdn-apple.com"
+  json_data <- base_url %>%
+    file.path("covid19-mobility-data/current/v3/index.json") %>%
+    jsonlite::fromJSON()
+  paste0(base_url, json_data$basePath, json_data$regions$`en-us`$csvPath)
+}
+
+# download and format Apple's mobility data
 apple_mobility <- function() {
-  # get link from: https://www.apple.com/covid19/mobility
-  url <- "https://covid19-static.cdn-apple.com/covid19-mobility-data/2012HotfixDev17/v3/en-us/applemobilitytrends-2020-07-17.csv"
-  data <- readr::read_csv(
-    url,
+  data <- apple_url() %>%
+    readr::read_csv(
     col_types = cols(
       .default = col_double(),
       geo_type = col_character(),
@@ -182,19 +189,46 @@ apple_mobility <- function() {
    
 }
 
-# load the Citymapper index (direction requests) for a couple of cities
+# try a bunch of previous days to find the most recent citymapper dataset
+citymapper_url <- function(min_delay = 0, max_delay = 14) {
+  date <- Sys.Date()
+  delay <- min_delay
+  while(delay < max_delay) {
+    # try various dates to find the citymapper URL
+    datestring <- format(date - delay, format = "%Y%m%d")
+    url <- paste0(
+      "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_",
+      datestring,
+      ".csv"
+    )
+    # return if successful, or increment
+    if (RCurl::url.exists(url)) {
+      return(url)
+    } else {
+      delay <- delay + 1
+    }
+    
+  }
+  
+  # error if we hit the timeout
+  if (delay == max_delay) {
+    stop ("could not find a valid citymapper URL")
+  }
+
+}
+
+# load the Citymapper index (urban direction requests, mostly public transport)
+# for a couple of cities
 citymapper_mobility <- function() {
   
-  # get link from: https://citymapper.com/cmi/about
-  url <- "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20200718.csv"
-  data <- readr::read_csv(
-    url,
-    skip = 3,
-    col_types = cols(
-      .default = col_double(),
-      Date = col_date(format = "")
-    )
-  ) %>%
+  data <- citymapper_url() %>%
+    readr::read_csv(
+      skip = 3,
+      col_types = cols(
+        .default = col_double(),
+        Date = col_date(format = "")
+      )
+    ) %>%
     tidyr::pivot_longer(
       cols = -Date,
       names_to = "region",
@@ -511,7 +545,6 @@ latent_behaviour_switch <- function(date_num,
   result
   
 }
-
 
 # define a latent factor for a single symmetric distribution of behavioural events
 latent_behavioural_event <- function(date_num, tau, kappa = normal(3, 1, truncation = c(0, Inf)), lambda = 1) {
@@ -2393,7 +2426,8 @@ load_contacts_by_state <- function(csv, date) {
 # load in data from the contact surveys
 contact_survey_data <- function() {
   
-  bind_rows(
+  # load the first set of awkward datasets and their dates
+  contact_data_list <- list(
     
     # Freya's survey waves
     load_contacts_by_state(
@@ -2406,43 +2440,46 @@ contact_survey_data <- function() {
       as.Date("2020-05-02")
     ),
     
-    # barometer waves
+    # first barometer wave
     load_contacts_by_state(
       "data/contacts/barometer/contacts_by_state.csv",
       as.Date("2020-05-27")
-    ),
-    
-    load_contacts_by_state(
-      "data/contacts/barometer/contact_numbers_wave_11.csv",
-      as.Date("2020-06-03")
-    ),
-    
-    load_contacts_by_state(
-      "data/contacts/barometer/contact numbers wave 12.csv",
-      as.Date("2020-06-10")
-    ),
-    
-    load_contacts_by_state(
-      "data/contacts/barometer/contact numbers wave 13.csv",
-      as.Date("2020-06-17")
-    ),
-    
-    load_contacts_by_state(
-      "data/contacts/barometer/contact numbers wave 14.csv",
-      as.Date("2020-06-24")
-    ),
-    
-    load_contacts_by_state(
-      "data/contacts/barometer/contact numbers wave 15.csv",
-      as.Date("2020-07-08")
-    ),
-    
-    load_contacts_by_state(
-      "data/contacts/barometer/contact numbers wave 16.csv",
-      as.Date("2020-07-15")
     )
     
   )
+   
+  # add on barometer survey data that comes in waves
+  contact_wave_files <- list.files("data/contacts/barometer",
+                                   pattern = "\\d.csv",
+                                   full.names = TRUE)
+  
+  # find survey dates from corresponding microdistancing data
+  wave_dates <- contact_wave_files %>%
+    # pull out wave number
+    basename() %>%
+    strsplit(" ") %>%
+    vapply(`[`, 4, FUN.VALUE = character(1)) %>%
+    gsub(".csv", "", x = .) %>%
+    # pull in file
+    paste("Barometer wave", ., "compliance.csv") %>%
+    file.path("data/microdistancing/", .) %>%
+    lapply(read_csv) %>%
+    lapply(pull, "date") %>%
+    lapply(first) %>%
+    do.call(c, .)
+  
+  barometer_data_list <- mapply(
+    load_contacts_by_state,
+    csv = contact_wave_files,
+    date = wave_dates,
+    SIMPLIFY = FALSE
+  )
+
+  # combine these
+  bind_rows(
+    contact_data_list,
+    barometer_data_list
+  )  
   
 }
 
