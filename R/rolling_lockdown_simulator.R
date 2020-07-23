@@ -625,6 +625,32 @@ vic_lockdown <- vic_lga %>%
   filter(lga %in% lockdown_lgas()) %>%
   simple_border()
 
+# get list of NSW and ACT active case LGAs
+nsw_act_source_lgas <- nsw_lga_active_cases() %>%
+  select(
+    lga_short = Local.Government.Area,
+    cases = Cases
+  ) %>%
+  filter(
+    cases > 0
+  ) %>%
+  left_join(
+    tibble(lga = nsw_lga$lga) %>%
+      mutate(
+        lga_short = lga_name(lga)
+      ) %>%
+      # need to deal with the new Bayside LGA (Botany bay and Rockdale combined)
+      mutate(
+        lga_short = case_when(
+          lga %in% c("Botany Bay (C)", "Rockdale (C)") ~ "Bayside",
+          TRUE ~ lga_short
+        )
+      )
+  ) %>%
+  pull(lga) %>%
+  # add on all ACT
+  c(act_lga$lga)
+
 # importation rates from gravity models fitted to facebook data
 vic_import_rate <- "data/facebook/vic_baseline_gravity_movement.RDS" %>%
   readRDS() %>%
@@ -643,6 +669,17 @@ vic_lga_infectious <- local_cases %>%
     import_rate = vic_import_rate,
     sources = lockdown_lgas()
   )
+
+nsw_act_lga_infectious <- local_cases %>%
+  filter(
+    state %in% c("NSW", "ACT"),
+  ) %>%
+  compute_infectious(
+    lga = nsw_act_lga,
+    import_rate = nsw_act_import_rate,
+    sources = nsw_act_source_lgas
+  )
+
 
 # plot the infectious potential and import potential by LGA
 p_vic_inf_area <- vic_lga_infectious %>%
@@ -702,18 +739,9 @@ ggsave(
 
 # and to plot state boundaries
 
-nsw_act_lga_infectious <- local_cases %>%
-  filter(
-    state %in% c("NSW", "ACT"),
-  ) %>%
-  compute_infectious(
-    lga = nsw_act_lga,
-    import_rate = nsw_act_import_rate,
-  )
-
 # get source lga shapefile
 nsw_act_sources <- nsw_act_lga_infectious %>%
-  filter(infectious_potential > 0) %>%
+  filter(lga %in% nsw_act_source_lgas) %>%
   st_geometry() %>%
   st_union() %>%
   st_simplify(dTolerance = 0.001)
@@ -771,7 +799,48 @@ ggsave(
   dpi = 250
 )
 
+# plot versions clipped to Sydney
+sydney_coord <- coord_sf(
+  xlim = c(149.7, 152.5),
+  ylim = c(-34.5, -32.7)
+)
 
+p_sydney_inf_area <- p_nsw_inf_area + sydney_coord
+p_sydney_nl_imp <- p_nsw_nl_imp + sydney_coord
+
+ggsave(
+  plot = p_sydney_inf_area,
+  filename = "outputs/figures/sydney_infectious_potential_area_map.png",
+  width = 6, height = 6,
+  dpi = 250
+)
+
+ggsave(
+  plot = p_sydney_nl_imp,
+  filename = "outputs/figures/sydney_importation_potential_map.png",
+  width = 6, height = 6,
+  dpi = 250
+)
+
+p_sydney_pop <- nsw_act_lga %>%
+  lga_map(fill = "pop",
+          source_geometry = nsw_act_sources,
+          source_fill = "light blue") +
+  sydney_coord +
+  labs(
+    fill = "Population"
+  ) +
+  ggtitle(
+    "Population size of case-free NSW LGAs",
+    "Light blue region indicates LGAs with active cases"
+  )
+
+ggsave(
+  plot = p_sydney_pop,
+  filename = "outputs/figures/sydney_population_map.png",
+  width = 6, height = 6,
+  dpi = 250
+)
 
 # convert to importation rate, with probability of leaving
 import_rate <- vic_import_rate
