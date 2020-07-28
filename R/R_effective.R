@@ -187,7 +187,7 @@ epsilon_L <- epsilon_gp(
 # imported_infectious_sim <- calculate(imported_infectious, nsim = 1)[[1]][1, , ]
 local_valid <- is.finite(local_infectious) & local_infectious > 0
 import_valid <- is.finite(imported_infectious) & imported_infectious > 0
-valid <- which(local_valid & import_valid, arr.ind = TRUE)
+valid <- which(local_valid | import_valid, arr.ind = TRUE)
 
 # log Reff for locals and imports
 log_R_eff_loc <- log_R_eff_loc_1 + epsilon_L
@@ -201,9 +201,11 @@ log_R_eff_imp <- sweep(
 
 # combine everything as vectors, excluding invalid datapoints (remove invalid
 # elements here, otherwise it causes a gradient issue)
-log_new_from_loc_vec <- log(local_infectious[valid]) + log_R_eff_loc[1:n_dates, ][valid]
-log_new_from_imp_vec <- log(imported_infectious[valid]) + log_R_eff_imp[1:n_dates, ][valid]
-expected_infections_vec <- exp(log_new_from_loc_vec) + exp(log_new_from_imp_vec)
+R_eff_loc <- exp(log_R_eff_loc[1:n_dates, ])
+R_eff_imp <- exp(log_R_eff_imp[1:n_dates, ])
+new_from_loc_vec <- local_infectious[valid] * R_eff_loc[valid]
+new_from_imp_vec <- imported_infectious[valid] * R_eff_imp[valid]
+expected_infections_vec <- new_from_loc_vec + new_from_imp_vec
 
 # negative binomial likelihood for number of cases
 sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf), dim = n_states)
@@ -240,7 +242,7 @@ draws <- mcmc(
   chains = 10,
   one_by_one = TRUE
 )
-draws <- extra_samples(draws, 1000, one_by_one = TRUE)
+# draws <- extra_samples(draws, 1000, one_by_one = TRUE)
 
 convergence(draws)
 
@@ -987,7 +989,7 @@ save_ggplot("number_of_import_local_infections.png")
 # head(mn, 50)
 
 
-# when was the minnimum of the posterior mean of component 1 and of component 2 in VIC?
+# when was the minimum of the posterior mean of component 1 and of component 2 in VIC?
 minimum_dates_vic <- read_csv("outputs/r_eff_1_local_samples.csv") %>%
   mutate(reff = "1") %>%
   bind_rows(
@@ -1006,7 +1008,7 @@ minimum_dates_vic <- read_csv("outputs/r_eff_1_local_samples.csv") %>%
 
 minimum_dates_vic
 # component 1 minimum = 2020-04-13
-# component 2 minimum = 2020-03-29
+# component 12 minimum = 2020-03-28
 
 
 
