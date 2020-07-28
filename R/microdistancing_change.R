@@ -177,19 +177,6 @@ p <- ggplot(line_df) +
 
 p
 
-# get required aspect ratio
-panel_width <- 11.69 / 2
-panel_height <- 8.27 / 3
-panel_ratio <- panel_height / panel_width
-
-# work out dimensions for 4x2 panels for reports
-multi_mfrow <- c(4, 2)
-multi_width <- 8.27
-multi_height <- (multi_width / multi_mfrow[2]) * panel_ratio * multi_mfrow[1]
-
-# add a bit of space for the title
-multi_height <- multi_height * 1.2
-
 save_ggplot("microdistancing_effect.png")
 
 # save the model fit

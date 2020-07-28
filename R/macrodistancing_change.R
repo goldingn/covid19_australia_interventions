@@ -105,7 +105,7 @@ idx <- contacts_inla %>%
 sry <- glm$summary.fitted.values[idx, ]
 survey_points <- survey_points %>%
   mutate(
-    date = date + 3,
+    date = date + 2,
     estimate = sry$mean,
     lower = sry$`0.025quant`,
     upper = sry$`0.975quant`

@@ -312,9 +312,6 @@ p <- p + geom_point(
 
 p
 
-panel_width <- 11.69 / 2
-panel_height <- 8.27 / 3
-
 save_ggplot("surveillance_effect.png", multi = FALSE)
 
 # save the cdf matrix and dates for use in Reff model
