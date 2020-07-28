@@ -1,6 +1,6 @@
 # model overall movement changes in Australia, with parameteric latent factor
 # model on Google mobility data
-  
+
 source("R/functions.R")
 library(dplyr)
 library(lubridate)
@@ -263,12 +263,12 @@ idx <- cbind(rows, cols)
 
 # hierarchical model on log observation error across state-datastreams; rescaled
 # to help the sampler
-log_sigma_obs_mean <- normal(0, 10)
-log_sigma_obs_sd <- normal(0, 0.5, truncation = c(0, Inf))
-log_sigma_obs_raw <- normal(0, 20, dim = n_state_datastreams)
-log_sigma_obs <- log_sigma_obs_mean + log_sigma_obs_sd * log_sigma_obs_raw / 20
-sigma_obs <- exp(log_sigma_obs)
-# sigma_obs <- normal(0, 0.5, truncation = c(0, Inf), dim = n_state_datastreams)
+# log_sigma_obs_mean <- normal(0, 10)
+# log_sigma_obs_sd <- normal(0, 0.5, truncation = c(0, Inf))
+# log_sigma_obs_raw <- normal(0, 20, dim = n_state_datastreams)
+# log_sigma_obs <- log_sigma_obs_mean + log_sigma_obs_sd * log_sigma_obs_raw / 20
+# sigma_obs <- exp(log_sigma_obs)
+sigma_obs <- normal(0, 0.5, truncation = c(0, Inf), dim = n_state_datastreams)
 
 distribution(mobility$trend) <- normal(mean = trends[idx],
                                        sd = sigma_obs[cols])
@@ -289,7 +289,7 @@ draws <- mcmc(m,
 draws <- extra_samples(draws, 2000)
 
 convergence(draws)
-# 
+
 # # dig into posterior correlations
 # mi <- attr(draws, "model_info")
 # free <- as.matrix(mi$raw_draws)
