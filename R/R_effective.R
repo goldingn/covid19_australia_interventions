@@ -60,7 +60,7 @@ imported_cases <- linelist %>%
 
 # Circulant matrix of generation interval discrete probabilities
 # use Nishiura's serial interval as a generation interval
-gi_cdf <- nishiura_cdf()
+# gi_cdf <- nishiura_cdf()
 gi_mat <- gi_matrix(gi_cdf, dates, gi_bounds = c(0, 20))
 
 # disaggregate imported and local cases according to the generation interval

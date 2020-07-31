@@ -22,7 +22,7 @@ location_change_trends <- location_change() %>%
 contacts <- contact_survey_data() %>%
   filter(contacts < 999)
 
-gi_cdf <- nishiura_cdf()
+# gi_cdf <- nishiura_cdf()
 
 params <- macrodistancing_params(location_change_trends, gi_cdf)
 OC_0 <- params$OC_0
@@ -66,7 +66,7 @@ quants <- t(apply(pred_sim, 2, quantile, c(0.05, 0.25, 0.75, 0.95)))
 colnames(quants) <- c("ci_90_lo", "ci_50_lo", "ci_50_hi", "ci_90_hi")
 
 # get point estimates for plotting
-gi_cdf <- nishiura_cdf()
+# gi_cdf <- nishiura_cdf()
 baseline_contact_params <- baseline_contact_parameters(gi_cdf)
 baseline_point <- tibble::tribble(
   ~date, ~estimate, ~sd,
@@ -192,19 +192,6 @@ p <- plot_trend(pred_sim,
 
 
 p
-
-# get required aspect ratio
-panel_width <- 11.69 / 2
-panel_height <- 8.27 / 3
-panel_ratio <- panel_height / panel_width
-
-# work out dimensions for 4x2 panels for reports
-multi_mfrow <- c(4, 2)
-multi_width <- 8.27
-multi_height <- (multi_width / multi_mfrow[2]) * panel_ratio * multi_mfrow[1]
-
-# add a bit of space for the title
-multi_height <- multi_height * 1.2
 
 save_ggplot("macrodistancing_effect.png")
 

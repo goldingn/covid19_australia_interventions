@@ -472,7 +472,7 @@ compute_infectious <- function(state_cases, lga, import_rate,
                                sources = NULL) {
   
   # compute the remaining total future infectious potential in each LGA at the latest date
-  gi_vec <- gi_vector(nishiura_cdf(), max(state_cases$date))
+  gi_vec <- gi_vector(gi_cdf(), max(state_cases$date))
   potential_remaining <- 1 - cumsum(gi_vec)
   
   infectious <- state_cases %>%
@@ -912,7 +912,7 @@ plan(multisession)
 
 # generation interval convolution matrix for dynamic part and for dynamic &
 # pre-dynamic part
-gi_cdf <- nishiura_cdf()
+# gi_cdf <- nishiura_cdf()
 gi_mat <- gi_matrix(gi_cdf, dates)
 gi_mat_all <- gi_matrix(gi_cdf, dates_all)
 

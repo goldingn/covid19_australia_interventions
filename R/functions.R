@@ -1000,6 +1000,18 @@ ganyani_cdf <- function(which) {
   
 }
 
+# the pre-intervention serial interval of Taslim Ali et al.
+taslim_ali_cdf <- function() {
+  
+  params <- lognormal_prior(mean = 7.8, sd = 5.2)
+  
+  gi_cdf <- function(days) {
+    plnorm(days, meanlog = params$mean, sdlog = params$sd)
+  }
+  
+  gi_cdf
+}
+
 # the serial interval of Nishiura et al.
 nishiura_cdf <- function() {
   
@@ -1181,7 +1193,7 @@ apply_serial_interval <- function(cdf, cases) {
   
 }
 
-# given the eman and standard deviation of a lognormal distribution, compute the
+# given the mean and standard deviation of a lognormal distribution, compute the
 # parameters (mean and standard deviation of the normal distribution over the
 # variable's log)
 lognormal_prior <- function(mean, sd) {
@@ -3613,3 +3625,6 @@ blue_green <- colorRampPalette(c("blue", green))(10)[8]
 yellow_green <- colorRampPalette(c("yellow", green))(10)[8]
 orange <- brewer.pal(8, "Set2")[2]
 pink <- brewer.pal(8, "Set2")[4]
+
+# default cdf
+gi_cdf <- nishiura_cdf()
