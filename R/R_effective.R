@@ -11,7 +11,63 @@ staging <- FALSE
 set.seed(2020-04-29)
 
 # load the linelist
-linelist <- load_linelist()
+# linelist <- load_linelist()
+nndss_linelist <- load_linelist()
+
+# replace VIC elements with VIC linelist
+vic_linelist <- read_csv(
+  "~/not_synced/vic/20200731_linelist_reff.csv",
+  col_types = cols(
+    PHESSID = col_double(),
+    diagnosis_date = col_datetime(format = ""),
+    ss_onset = col_datetime(format = ""),
+    Localgovernmentarea = col_character(),
+    acquired = col_character(),
+    SPECIMEN_DATE = col_date(format = "%d/%m/%Y")
+  ),
+  na = "NULL"
+) %>%
+  mutate(
+    date_onset = as.Date(ss_onset),
+    date_confirmation = as.Date(diagnosis_date),
+    date_detection = clean_date(SPECIMEN_DATE),
+    region = "VIC",
+    import_status = case_when(
+      acquired == "Travel overseas" ~ "imported",
+      TRUE ~ "local"
+    ),
+    postcode_of_acquisition = "8888",
+    postcode_of_residence = "8888",
+    state_of_acquisition = NA,
+    state_of_residence = NA,
+    report_delay = NA,
+    date_linelist = as.Date("2020-07-31")
+  ) %>%
+  # the mode and mean of the delay from testing to confirmation in VIC is around 3 days at the moment
+  mutate(
+    date_detection = case_when(
+      is.na(date_detection) ~ date_confirmation - 3,
+      TRUE ~ date_detection
+    )
+  ) %>%
+  select(
+    date_onset,
+    date_detection,
+    date_confirmation,
+    region,
+    import_status,
+    postcode_of_acquisition,
+    postcode_of_residence,
+    state_of_acquisition,
+    state_of_residence,
+    report_delay,
+    date_linelist
+  ) %>%
+  impute_linelist
+
+linelist <- nndss_linelist %>%
+  filter(state != "VIC") %>%
+  bind_rows(vic_linelist)
 
 # get date and state information
 states <- sort(unique(linelist$state))
@@ -69,20 +125,20 @@ gi_mat <- gi_matrix(gi_cdf, dates, gi_bounds = c(0, 20))
 local_infectious <- gi_mat %*% local_cases
 imported_infectious <- gi_mat %*% imported_cases
 
-# save lga-level data (local and imported) for Cam & Nic
+# save lga-level data (local and imported) for Cam & Nic - using nndss linelist since it has postcodes
 detection_dates <- tibble(
   date = dates,
   detection_probability = detection_prob
 )
 
-linelist %>%
+nndss_linelist %>%
   lga_infections(dates, gi_mat, case_type = "local") %>%
   left_join(detection_dates) %>%
   saveRDS(
     paste0("~/not_synced/lga_local_infections_", linelist_date, ".RDS")
   )
 
-linelist %>%
+nndss_linelist %>%
   lga_infections(dates, gi_mat, case_type = "imported") %>%
   left_join(detection_dates) %>%
   saveRDS(
@@ -242,7 +298,7 @@ draws <- mcmc(
   chains = 10,
   one_by_one = TRUE
 )
-# draws <- extra_samples(draws, 1000, one_by_one = TRUE)
+draws <- extra_samples(draws, 1000, one_by_one = TRUE)
 
 convergence(draws)
 

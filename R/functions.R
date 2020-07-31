@@ -2936,7 +2936,7 @@ impute_onsets <- function(detection_dates,
 }
 
 # clean up some weird date encoding in the linelist
-clean_date <- function (original_date, min_date = as.Date("2020-01-01")) {
+clean_date <- function (original_date, min_date = as.Date("2020-01-01"), max_date = Sys.Date()) {
   weird <- !grepl("2020", original_date)
   corrected_date <- gsub("^\\d\\d\\d\\d", "2020", original_date)
   # don't use ifelse as it converts to a numeric
@@ -2945,7 +2945,8 @@ clean_date <- function (original_date, min_date = as.Date("2020-01-01")) {
   
   # remove any that are out of bounds
   early <- as.Date(date) < min_date
-  date[early] <- NA
+  late <- as.Date(date) > max_date
+  date[early | late] <- NA
   
   date
 }
