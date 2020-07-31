@@ -3009,28 +3009,47 @@ lga_to_state <- function (lga) {
   
 }
 
+linelist_date_times <- function(dir) {
+  # find the files
+  files <- list.files(dir, pattern = ".xlsx$", full.names = TRUE)
+  # pull out the date time stamp
+  date_time_text <- gsub("^COVID-19 UoM ", "", basename(files)) 
+  date_time_text <- gsub(".xlsx$", "", date_time_text)
+  date_times <- as.POSIXct(date_time_text, format = "%d%b%Y %H%M")
+  # return as a dataframe
+  tibble::tibble(
+    file = files,
+    date_time = date_times
+  )
+}
+
+# copy over all new NNDSS linelist files from the shared drive to an unsynced local store
+sync_nndss <- function(mount_dir = "~/Mounts/nndss", storage_dir = "~/not_synced/nndss") {
+  from_files <- list.files(mount_dir, full.names = TRUE)
+  existing_files <- list.files(storage_dir)
+  new <- !(basename(from_files) %in% existing_files)
+  files_to_read <- from_files[new]
+  for (new_file in files_to_read) {
+    file.copy(new_file, file.path(storage_dir, basename(new_file)), )
+  }
+}
+
 # read in the latest linelist and format for analysis
-get_linelist <- function (file = NULL, dir = "~/not_synced/nndss") {
+get_linelist <- function(use_file = NULL, dir = "~/not_synced/nndss", strict = TRUE) {
   
-  if (is.null(file)) {
-    # find the latest file
-    files <- list.files(dir, pattern = ".xlsx$", full.names = TRUE)
-    date_time_text <- gsub("^COVID-19 UoM ", "", basename(files)) 
-    date_time_text <- gsub(".xlsx$", "", date_time_text)
-    date_times <- as.POSIXct(date_time_text, format = "%d%b%Y %H%M")
-    latest <- which.max(date_times)
-    ll_date <- date_times[latest]
-    file <- files[latest]
+  data <- linelist_date_times(dir)
+  
+  if (is.null(use_file)) {
+    data <- data %>%
+      filter(date_time == max(date_time))
   } else {
-    file <- file.path(dir, file)
-    date_time_text <- gsub("^COVID-19 UoM ", "", basename(file)) 
-    date_time_text <- gsub(".xlsx$", "", date_time_text)
-    ll_date <- as.POSIXct(date_time_text, format = "%d%b%Y %H%M")
+    data <- data %>%
+      filter(basename(file) == use_file)
   }
   
-  dat <- readxl::read_xlsx(
-    file,
-    col_types = c(
+  col_types <- NULL
+  if (strict) {
+    col_types <- c(
       STATE = "text",
       POSTCODE = "numeric",
       CONFIRMATION_STATUS = "numeric",
@@ -3054,7 +3073,14 @@ get_linelist <- function (file = NULL, dir = "~/not_synced/nndss") {
       CV_OTHER_COMORBIDITIES = "text",
       CV_GESTATION = "numeric",
       CV_CLOSE_CONTACT = "numeric"
-    ))
+    )
+  }
+
+  
+  dat <- readxl::read_xlsx(
+    data$file,
+    col_types = col_types
+  )
   
   if (is.numeric(dat$POSTCODE)) {
     dat <- dat %>%
@@ -3062,6 +3088,9 @@ get_linelist <- function (file = NULL, dir = "~/not_synced/nndss") {
         POSTCODE = sprintf("%04d", dat$POSTCODE),
         POSTCODE = ifelse(POSTCODE == "00NA", NA, POSTCODE) 
       )
+  } else {
+    dat <- dat %>%
+      mutate(POSTCODE = NA)
   }
   
   # Remove cases without a state
@@ -3124,7 +3153,7 @@ get_linelist <- function (file = NULL, dir = "~/not_synced/nndss") {
     ) %>%
     mutate(
       report_delay = as.numeric(date_confirmation - date_onset),
-      date_linelist = as.Date(ll_date),
+      date_linelist = as.Date(data$date_time),
       region = as.factor(region)
     ) %>%
     
@@ -3151,12 +3180,6 @@ get_linelist <- function (file = NULL, dir = "~/not_synced/nndss") {
         TRUE ~ date_detection
       )
     )
-  
-  # save a formatted copy, and return
-  saveRDS(
-    linelist, 
-    file.path(dir, "linelist_formatted.RDS")
-  )
   
   linelist
   
