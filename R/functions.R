@@ -3036,7 +3036,7 @@ sync_nndss <- function(mount_dir = "~/Mounts/nndss", storage_dir = "~/not_synced
 }
 
 # read in the latest linelist and format for analysis
-get_linelist <- function(use_file = NULL, dir = "~/not_synced/nndss", strict = TRUE) {
+get_nndss_linelist <- function(use_file = NULL, dir = "~/not_synced/nndss", strict = TRUE) {
   
   data <- linelist_date_times(dir)
   
@@ -3186,6 +3186,60 @@ get_linelist <- function(use_file = NULL, dir = "~/not_synced/nndss", strict = T
   
 }
 
+# replace VIC elements with VIC linelist
+get_vic_linelist <- function(file) {
+  
+  file %>%
+    read_csv(
+      col_types = cols(
+        PHESSID = col_double(),
+        diagnosis_date = col_datetime(format = ""),
+        ss_onset = col_datetime(format = ""),
+        Localgovernmentarea = col_character(),
+        acquired = col_character(),
+        SPECIMEN_DATE = col_date(format = "%d/%m/%Y")
+      ),
+      na = "NULL"
+    ) %>%
+    mutate(
+      date_onset = as.Date(ss_onset),
+      date_confirmation = as.Date(diagnosis_date),
+      date_detection = clean_date(SPECIMEN_DATE),
+      region = "VIC",
+      import_status = case_when(
+        acquired == "Travel overseas" ~ "imported",
+        TRUE ~ "local"
+      ),
+      postcode_of_acquisition = "8888",
+      postcode_of_residence = "8888",
+      state_of_acquisition = NA,
+      state_of_residence = NA,
+      report_delay = NA,
+      date_linelist = as.Date("2020-07-31")
+    ) %>%
+    # the mode and mean of the delay from testing to confirmation in VIC is around 3 days at the moment
+    mutate(
+      date_detection = case_when(
+        is.na(date_detection) ~ date_confirmation - 3,
+        TRUE ~ date_detection
+      )
+    ) %>%
+    select(
+      date_onset,
+      date_detection,
+      date_confirmation,
+      region,
+      import_status,
+      postcode_of_acquisition,
+      postcode_of_residence,
+      state_of_acquisition,
+      state_of_residence,
+      report_delay,
+      date_linelist
+    )
+  
+}
+
 impute_linelist <- function(linelist) {
   
   # impute the onset dates (only 0.6% of cases) using expected value from time to
@@ -3209,8 +3263,13 @@ impute_linelist <- function(linelist) {
   
 }
 
-load_linelist <- function () {
-  get_linelist() %>%
+load_nndss <- function () {
+  get_nndss_linelist() %>%
+    impute_linelist()
+}
+
+load_vic <- function (file) {
+  get_vic_linelist(file) %>%
     impute_linelist()
 }
 
