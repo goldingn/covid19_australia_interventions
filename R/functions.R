@@ -3042,7 +3042,7 @@ get_linelist <- function(use_file = NULL, dir = "~/not_synced/nndss", strict = T
   
   if (is.null(use_file)) {
     data <- data %>%
-      filter(date_time == max(date_time))
+      filter(date_time == max(date_time, na.rm = TRUE))
   } else {
     data <- data %>%
       filter(basename(file) == use_file)
