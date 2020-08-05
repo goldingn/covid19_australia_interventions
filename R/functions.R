@@ -1309,7 +1309,7 @@ plot_trend <- function(simulations,
     
     coord_cartesian(ylim = ylim) +
     scale_y_continuous(position = "right") +
-    scale_x_date(date_breaks = "1 months", date_labels = "%b %d") +
+    scale_x_date(date_breaks = "1 month", date_labels = "%d/%m") +
     scale_alpha(range = c(0, 0.5)) +
     scale_fill_manual(values = c("Nowcast" = base_colour)) +
     
@@ -3132,7 +3132,8 @@ get_nndss_linelist <- function(use_file = NULL, dir = "~/not_synced/nndss", stri
   
   # Generate linelist data
   linelist <- dat %>%
-    # notification receive date seems buggy, and is sometimes before the notification date and speecimen collection
+    # notification receive date seems buggy, and is sometimes before the
+    # notification date and specimen collection date
     mutate(
       date_confirmation = pmax(NOTIFICATION_RECEIVE_DATE,
                                NOTIFICATION_DATE,
@@ -3623,7 +3624,7 @@ save_ggplot <- function (filename,
     mfrow <- c(4, 2)
     width <- height * 3
     height <- (width / mfrow[2]) * ratio * mfrow[1] * 1.2
-    scale <- 0.8
+    scale <- 0.95 * scale
     
   } else {
     

@@ -66,7 +66,7 @@ last_date_num <- n_dates - 1
 last_intervention_date_num <- as.numeric(interventions$date[3] - first_date)
 peak_range <- last_date_num - last_intervention_date_num
 
-# when was the peak of distancing?
+  # when was the peak of distancing?
 peak <- normal(last_intervention_date_num + 7,
                3.5 / 1.96,
                truncation = c(last_intervention_date_num, last_date_num))
