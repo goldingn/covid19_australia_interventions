@@ -28,17 +28,39 @@ if (!is.null(vic_linelist_file)) {
   linelist <- nndss_linelist
 }
 
-# get date and state information
-states <- sort(unique(linelist$state))
-earliest_date <- min(linelist$date)
-latest_date <- max(linelist$date)
-dates <- seq(earliest_date, latest_date, by = 1)
 linelist_date <- linelist$date_linelist[1]
 
+# get date and state information
+states <- sort(unique(linelist$state))
+dates <- seq(
+  min(linelist$date),
+  max(linelist$date),
+  by = 1
+)
+
+# get detection probabilities for these dates
+latest_detection_date <- linelist_date - 2
+delays <- as.numeric(latest_detection_date - dates)
+detection_prob <- 1 - ttd_survival(delays, dates)
+
+# subset to dates with reasonably high detection probabilities
+keep <- detection_prob >= 0.5
+detection_prob <- detection_prob[keep]
+dates <- dates[keep]
+earliest_date <- min(dates)
+latest_date <- max(dates)
+
+linelist <- linelist %>%
+  filter(date %in% dates)
+
+nndss_linelist <- nndss_linelist %>%
+  filter(date %in% dates)
+  
 n_states <- length(states)
 n_dates <- length(dates)
 n_extra <- as.numeric(Sys.Date() - max(dates)) + 7 * 6
 date_nums <- seq_len(n_dates + n_extra)
+
 
 # load mobility data and get relevant dates
 google_change_data <- readRDS("outputs/google_change_trends.RDS")
@@ -54,11 +76,6 @@ tibble(
   forecast_reff_change_date = change_date
 ) %>%
   write_csv("outputs/output_dates.csv")
-
-# get detection probabilities for dates
-latest_detection_date <- linelist_date - 2
-delays <- as.numeric(latest_detection_date - dates)
-detection_prob <- 1 - ttd_survival(delays, dates)
 
 # get date-by-state matrices of new infections
 local_cases <- linelist %>%
