@@ -14,7 +14,7 @@ set.seed(2020-04-29)
 
 # load the linelist
 nndss_linelist <- load_nndss()
-  
+
 # optionally replace VIC data with DHHS direct upload
 if (!is.null(vic_linelist_file)) {
   vic_linelist <- vic_linelist_file %>%
@@ -28,6 +28,16 @@ if (!is.null(vic_linelist_file)) {
   linelist <- nndss_linelist
 }
 
+# flag whether each case is an interstate import
+linelist <- linelist %>%
+  mutate(
+    interstate_import = case_when(
+      state != state_of_acquisition ~ TRUE,
+      TRUE ~ FALSE
+    )
+  )
+
+# get and check the linelist date
 linelist_date <- linelist$date_linelist[1]
 
 # get date and state information
@@ -77,13 +87,24 @@ tibble(
 ) %>%
   write_csv("outputs/output_dates.csv")
 
-# get date-by-state matrices of new infections
+# get date-by-state matrices of new infections in each state
+
+# those infected in the state
 local_cases <- linelist %>%
+  filter(!interstate_import) %>%
   infections_by_region(
     region_type = "state",
     case_type = "local"
   )
 
+# and those infected in some other state, but infectious in this one
+local_cases_infectious <- linelist %>%
+  infections_by_region(
+    region_type = "state",
+    case_type = "local"
+  )
+
+# those imported (only considered infectious, but with a different Reff)
 imported_cases <- linelist %>%
   infections_by_region(
     region_type = "state",
@@ -98,7 +119,7 @@ gi_mat <- gi_matrix(gi_cdf, dates, gi_bounds = c(0, 20))
 # disaggregate imported and local cases according to the generation interval
 # probabilities to get the expected number of infectious people in each state
 # and time
-local_infectious <- gi_mat %*% local_cases
+local_infectious <- gi_mat %*% local_cases_infectious
 imported_infectious <- gi_mat %*% imported_cases
 
 # save lga-level data (local and imported) for Cam & Nic - using nndss linelist since it has postcodes
