@@ -39,6 +39,10 @@ linelist <- linelist %>%
 
 # get and check the linelist date
 linelist_date <- linelist$date_linelist[1]
+if (!all(linelist$date_linelist == linelist_date)) {
+  rm(linelist)
+  stop("mismatching linelists")
+}
 
 # get date and state information
 states <- sort(unique(linelist$state))

@@ -3190,6 +3190,11 @@ get_nndss_linelist <- function(use_file = NULL, dir = "~/not_synced/nndss", stri
 # replace VIC elements with VIC linelist
 get_vic_linelist <- function(file) {
   
+  linelist_date <- file %>%
+    basename() %>%
+    substr(1, 8) %>%
+    as.Date(format = "%Y%m%d")
+  
   file %>%
     read_csv(
       col_types = cols(
@@ -3216,7 +3221,7 @@ get_vic_linelist <- function(file) {
       state_of_acquisition = NA,
       state_of_residence = NA,
       report_delay = NA,
-      date_linelist = as.Date("2020-07-31")
+      date_linelist = linelist_date
     ) %>%
     # the mode and mean of the delay from testing to confirmation in VIC is around 3 days at the moment
     mutate(
