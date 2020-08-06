@@ -9,6 +9,7 @@ source("R/functions.R")
 staging <- FALSE
 # vic_linelist_file <- NULL
 vic_linelist_file <- "~/not_synced/vic/20200804_linelist_reff.csv"
+sa_partial_linelist_file <- "~/not_synced/sa/20200804_recent_linelist_only.csv"
 
 set.seed(2020-04-29)
 
@@ -28,6 +29,7 @@ if (!is.null(vic_linelist_file)) {
   linelist <- nndss_linelist
 }
 
+
 # flag whether each case is an interstate import
 linelist <- linelist %>%
   mutate(
@@ -36,6 +38,34 @@ linelist <- linelist %>%
       TRUE ~ FALSE
     )
   )
+
+# prepare SA partial linelist (cases detected from June onwards)
+sa_partial_linelist <- read_csv(
+  sa_partial_linelist_file,
+  col_types = cols(
+    date_onset = col_character(),
+    import_status = col_character(),
+    interstate_import = col_logical()
+  )
+) %>%
+  mutate(
+    date_onset = as.Date(date_onset, format = "%d/%m/%y"),
+    date = date_onset - 5,
+    date_detection = NA,
+    state = "SA",
+    postcode_of_acquisition = "8888",
+    postcode_of_residence = "8888",
+    state_of_acquisition = NA,
+    state_of_residence = NA,
+    report_delay = NA,
+    date_linelist = as.Date("2020-08-04")
+  ) %>%
+  select(-date_onset)
+
+# splice on SA partial linelist to NNDSS, after removing incomplete data from June onwards
+linelist <- linelist %>%
+  filter(!(state == "SA" & date_detection > as.Date("2020-06-01"))) %>%
+  bind_rows(sa_partial_linelist)
 
 # get and check the linelist date
 linelist_date <- linelist$date_linelist[1]
@@ -74,7 +104,6 @@ n_states <- length(states)
 n_dates <- length(dates)
 n_extra <- as.numeric(Sys.Date() - max(dates)) + 7 * 6
 date_nums <- seq_len(n_dates + n_extra)
-
 
 # load mobility data and get relevant dates
 google_change_data <- readRDS("outputs/google_change_trends.RDS")
@@ -299,7 +328,7 @@ draws <- mcmc(
   chains = 10,
   one_by_one = TRUE
 )
-# draws <- extra_samples(draws, 1000, one_by_one = TRUE)
+draws <- extra_samples(draws, 1000, one_by_one = TRUE)
 
 convergence(draws)
 
@@ -379,7 +408,7 @@ output_directories <- c("",
                         "scenario_2_15pc_reduction",
                         "scenario_3_30pc_reduction")
 
-# start scenarios on the start of stagee 4 lockdown
+# start scenarios on the start of stage 4 lockdown
 scenario_date <- as.Date("2020-08-03")
 
 # put in a separate directory if testing something
