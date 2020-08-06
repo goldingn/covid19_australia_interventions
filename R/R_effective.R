@@ -403,7 +403,7 @@ for (type in types) {
       date_onset = dates + 5,
       detection_probability = detection_prob
     ),
-    local_cases
+    local_cases_infectious
   ) %>%
     pivot_longer(
       cols = c(-date_onset, -detection_probability),
