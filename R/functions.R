@@ -2630,13 +2630,11 @@ contact_survey_data <- function() {
     SIMPLIFY = FALSE
   )
   
-  names(barometer_data_list) <- NULL
-  
   # combine these
-  bind_rows(
-    contact_data_list,
-    barometer_data_list
-  )  
+  do.call(
+    bind_rows,
+    c(contact_data_list, barometer_data_list)
+  )
   
 }
 
