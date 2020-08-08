@@ -7,6 +7,7 @@
 source("R/functions.R")
 
 staging <- FALSE
+# indicate whether line list should be used
 # vic_linelist_file <- NULL
 vic_linelist_file <- "~/not_synced/vic/20200804_linelist_reff.csv"
 sa_partial_linelist_file <- "~/not_synced/sa/20200804_recent_linelist_only.csv"
@@ -40,32 +41,32 @@ linelist <- linelist %>%
   )
 
 # prepare SA partial linelist (cases detected from June onwards)
-sa_partial_linelist <- read_csv(
-  sa_partial_linelist_file,
-  col_types = cols(
-    date_onset = col_character(),
-    import_status = col_character(),
-    interstate_import = col_logical()
-  )
-) %>%
-  mutate(
-    date_onset = as.Date(date_onset, format = "%d/%m/%y"),
-    date = date_onset - 5,
-    date_detection = NA,
-    state = "SA",
-    postcode_of_acquisition = "8888",
-    postcode_of_residence = "8888",
-    state_of_acquisition = NA,
-    state_of_residence = NA,
-    report_delay = NA,
-    date_linelist = as.Date("2020-08-04")
-  ) %>%
-  select(-date_onset)
+# sa_partial_linelist <- read_csv(
+#   sa_partial_linelist_file,
+#   col_types = cols(
+#     date_onset = col_character(),
+#     import_status = col_character(),
+#     interstate_import = col_logical()
+#   )
+# ) %>%
+#   mutate(
+#     date_onset = as.Date(date_onset, format = "%d/%m/%y"),
+#     date = date_onset - 5,
+#     date_detection = NA,
+#     state = "SA",
+#     postcode_of_acquisition = "8888",
+#     postcode_of_residence = "8888",
+#     state_of_acquisition = NA,
+#     state_of_residence = NA,
+#     report_delay = NA,
+#     date_linelist = as.Date("2020-08-04")
+#   ) %>%
+#   select(-date_onset)
 
 # splice on SA partial linelist to NNDSS, after removing incomplete data from June onwards
-linelist <- linelist %>%
-  filter(!(state == "SA" & date_detection > as.Date("2020-06-01"))) %>%
-  bind_rows(sa_partial_linelist)
+# linelist <- linelist %>%
+#   filter(!(state == "SA" & date_detection > as.Date("2020-06-01"))) %>%
+#   bind_rows(sa_partial_linelist)
 
 # get and check the linelist date
 linelist_date <- linelist$date_linelist[1]
@@ -156,24 +157,24 @@ local_infectious <- gi_mat %*% local_cases_infectious
 imported_infectious <- gi_mat %*% imported_cases
 
 # save lga-level data (local and imported) for Cam & Nic - using nndss linelist since it has postcodes
-detection_dates <- tibble(
-  date = dates,
-  detection_probability = detection_prob
-)
-
-nndss_linelist %>%
-  lga_infections(dates, gi_mat, case_type = "local") %>%
-  left_join(detection_dates) %>%
-  saveRDS(
-    paste0("~/not_synced/lga_local_infections_", linelist_date, ".RDS")
-  )
-
-nndss_linelist %>%
-  lga_infections(dates, gi_mat, case_type = "imported") %>%
-  left_join(detection_dates) %>%
-  saveRDS(
-    paste0("~/not_synced/lga_imported_infections_", linelist_date, ".RDS")
-  )
+# detection_dates <- tibble(
+#   date = dates,
+#   detection_probability = detection_prob
+# )
+# 
+# nndss_linelist %>%
+#   lga_infections(dates, gi_mat, case_type = "local") %>%
+#   left_join(detection_dates) %>%
+#   saveRDS(
+#     paste0("~/not_synced/lga_local_infections_", linelist_date, ".RDS")
+#   )
+# 
+# nndss_linelist %>%
+#   lga_infections(dates, gi_mat, case_type = "imported") %>%
+#   left_join(detection_dates) %>%
+#   saveRDS(
+#     paste0("~/not_synced/lga_imported_infections_", linelist_date, ".RDS")
+#   )
 
 library(greta.gp)
 
@@ -322,14 +323,22 @@ distribution(local_cases[valid]) <- negative_binomial(size, prob_trunc)
 
 m <- model(expected_infections_vec)
 
+# 10% bad is okay, probably no higher
+# ideally less than 1%
 draws <- mcmc(
   m,
   sampler = hmc(Lmin = 25, Lmax = 30),
   chains = 10,
   one_by_one = TRUE
 )
+
+# if r_hat is a bit high - do extra samples
+# only if r_hat is super high i.e. > 2 - increase Lmin and Lmax - but probably have a problem!!
 draws <- extra_samples(draws, 1000, one_by_one = TRUE)
 
+# quality control for r effective
+# r_hat < 1.1
+# n_eff > 1000
 convergence(draws)
 
 # check fit of observation model against data 

@@ -8,6 +8,7 @@ library(greta)
 library(RColorBrewer)
 library(ggplot2)
 library(ggforce)
+library(RCurl)
 
 # load mobility datastreams, keeping only state-level data
 mobility <- all_mobility() %>%

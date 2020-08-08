@@ -2626,7 +2626,9 @@ contact_survey_data <- function() {
     date = wave_dates,
     SIMPLIFY = FALSE
   )
-
+  
+  names(barometer_data_list) <- NULL
+  
   # combine these
   bind_rows(
     contact_data_list,
@@ -3155,7 +3157,7 @@ get_nndss_linelist <- function(use_file = NULL, dir = "~/not_synced/nndss", stri
     ) %>%
     mutate(
       report_delay = as.numeric(date_confirmation - date_onset),
-      date_linelist = as.Date(data$date_time),
+      date_linelist = as.Date(data$date_time, tz = "Australia/Canberra"),
       region = as.factor(region)
     ) %>%
     
