@@ -20,7 +20,7 @@ interventions <- intervention_dates()
 holidays <- holiday_dates()
 populations <- state_populations()
 
-vic_second_intervention_dates <- as.Date(c("2020-07-01", "2020-07-08"))
+vic_second_intervention_dates <- as.Date(c("2020-07-01", "2020-07-08", "2020-08-02"))
 
 # get vectors of date ranges and datastreams to model
 first_date <- min(mobility$date)
