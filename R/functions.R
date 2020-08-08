@@ -1838,7 +1838,7 @@ location_change <- function(dates = NULL) {
   if (!is.null(dates)) {
     location_change_trends <- location_change_trends %>%
       group_by_all() %>%
-      right_join(
+      old_right_join(
         expand_grid(
           state = unique(.$state),
           date = dates
@@ -1892,7 +1892,7 @@ microdistancing_state <- function (dates, states) {
     readRDS() %>%
     # expand to all required dates and states
     select(state, date, mean) %>%
-    right_join(
+    old_right_join(
       expand_grid(
         state = states,
         date = dates
@@ -1921,7 +1921,7 @@ macrodistancing_state <- function (dates, states) {
     readRDS() %>%
     # expand to all required dates and states
     select(state, date, mean) %>%
-    right_join(
+    old_right_join(
       expand_grid(
         state = states,
         date = dates
@@ -1947,7 +1947,7 @@ social_distancing_national <- function(dates, n_extra = 0) {
   distancing_index <- distancing_file %>%
     readRDS() %>%
     select(mean, date) %>%
-    right_join(tibble(date = dates)) %>%
+    old_right_join(tibble(date = dates)) %>%
     replace_na(list(mean = 0)) %>%
     pull(mean)
   
@@ -2818,7 +2818,7 @@ microdistancing_data <- function(dates = NULL) {
   pred_data <- distancing %>%
     rename(distancing = mean) %>%
     select(date, distancing) %>%
-    right_join(
+    old_right_join(
       expand_grid(
         date = dates,
         state = unique(barometer$state)
@@ -3006,7 +3006,7 @@ lga_to_state <- function (lga) {
     mutate(
       state = abbreviate_states(state)
     ) %>%
-    right_join(
+    old_right_join(
       tibble(lga = lga)
     ) %>%
     pull(state)
@@ -3313,7 +3313,7 @@ infections_by_region <- function(linelist,
   new_infections <- linelist %>%
     mutate(cases = 1) %>%
     rename(region = !!region_type) %>%
-    right_join(grid) %>%
+    old_right_join(grid) %>%
     group_by(region, date) %>%
     summarise(cases = sum(cases, na.rm = TRUE)) %>%
     ungroup() %>%
@@ -3358,7 +3358,7 @@ lga_infections <- function(linelist, dates, gi_mat, case_type = c("local", "impo
       weight = RATIO
     ) %>%
     # subset to observed postcodes
-    right_join(
+    old_right_join(
       tibble(
         postcode = postcodes,
       )
@@ -3706,6 +3706,13 @@ prep_state_lgas <- function(
     ) %>%
     saveRDS(filepath)
   
+}
+
+# dplyr introduced a breaking change whereby the order of entries returned by a
+# right_join was changed from the order of y to the order of x. This may work to
+# reverse it.
+old_right_join <- function(x, y, ...) {
+  left_join(y, x, ...)
 }
 
 # colours for plotting

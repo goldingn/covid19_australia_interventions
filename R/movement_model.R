@@ -55,10 +55,10 @@ build_gravity_matrix <- function(
     lga_from = lga$lga,
     lga_to = lga$lga
   ) %>%
-    right_join(
+    old_right_join(
       rename_all(base, paste0, "_from")
     ) %>%
-    right_join(
+    old_right_join(
       rename_all(base, paste0, "_to")
     ) %>%
     mutate(
@@ -102,7 +102,7 @@ build_gravity_matrix <- function(
                     ODs,
                     OD_files) %>%
     bind_rows() %>%
-    right_join(pairs) %>%
+    old_right_join(pairs) %>%
     tibble() %>%
     mutate(
       days = as.numeric(end_date - start_date) + 1,

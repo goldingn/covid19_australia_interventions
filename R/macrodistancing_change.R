@@ -95,13 +95,11 @@ glm <- inla(contacts ~ f(date_state, model = "iid"),
             control.predictor = list(link = 1))
 
 # pull out fitted values for each date/state combination
-survey_indices <- contacts_inla %>%
+idx <- contacts_inla %>%
   mutate(id = row_number()) %>%
   distinct(date, state, .keep_all = TRUE) %>%
-  mutate(date = as.Date(date))
-
-idx <- survey_points %>%
-  left_join(survey_indices) %>%
+  mutate(date = as.Date(date)) %>%
+  old_right_join(survey_points) %>%
   pull(id)
 
 sry <- glm$summary.fitted.values[idx, ]

@@ -495,7 +495,7 @@ compute_infectious <- function(state_cases, lga, import_rate,
     ) %>%
     ungroup() %>%
     # add on missing lgas and infectious import potential
-    right_join(
+    old_right_join(
       tibble(
         lga = colnames(import_rate)
       )

@@ -165,7 +165,7 @@ trends_ntnl <- latents_ntnl %*% loadings_ntnl
 
 # IID effect on each state-holiday, 0s elsewhere
 holiday_matrix <- holidays %>%
-  right_join(
+  old_right_join(
     tidyr::expand_grid(date = dates,
                        state = states)
   ) %>%
