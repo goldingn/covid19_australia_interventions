@@ -92,8 +92,11 @@ google_mobility <- function() {
       workplaces_percent_change_from_baseline = col_double(),
       residential_percent_change_from_baseline = col_double(),
       census_fips_code = col_character()
-    )) %>%
-    filter(country_region == "Australia") %>%
+    )
+  ) %>%
+    filter(
+      country_region == "Australia" & is.na(sub_region_2)
+    ) %>%
     tidyr::pivot_longer(
       ends_with("_percent_change_from_baseline"),
       names_to = "category",

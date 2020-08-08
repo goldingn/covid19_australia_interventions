@@ -39,33 +39,33 @@ linelist <- linelist %>%
     )
   )
 
-# prepare SA partial linelist (cases detected from June onwards)
-sa_partial_linelist <- read_csv(
-  sa_partial_linelist_file,
-  col_types = cols(
-    date_onset = col_character(),
-    import_status = col_character(),
-    interstate_import = col_logical()
-  )
-) %>%
-  mutate(
-    date_onset = as.Date(date_onset, format = "%d/%m/%y"),
-    date = date_onset - 5,
-    date_detection = NA,
-    state = "SA",
-    postcode_of_acquisition = "8888",
-    postcode_of_residence = "8888",
-    state_of_acquisition = NA,
-    state_of_residence = NA,
-    report_delay = NA,
-    date_linelist = as.Date("2020-08-04")
-  ) %>%
-  select(-date_onset)
-
-# splice on SA partial linelist to NNDSS, after removing incomplete data from June onwards
-linelist <- linelist %>%
-  filter(!(state == "SA" & date_detection > as.Date("2020-06-01"))) %>%
-  bind_rows(sa_partial_linelist)
+# # prepare SA partial linelist (cases detected from June onwards)
+# sa_partial_linelist <- read_csv(
+#   sa_partial_linelist_file,
+#   col_types = cols(
+#     date_onset = col_character(),
+#     import_status = col_character(),
+#     interstate_import = col_logical()
+#   )
+# ) %>%
+#   mutate(
+#     date_onset = as.Date(date_onset, format = "%d/%m/%y"),
+#     date = date_onset - 5,
+#     date_detection = NA,
+#     state = "SA",
+#     postcode_of_acquisition = "8888",
+#     postcode_of_residence = "8888",
+#     state_of_acquisition = NA,
+#     state_of_residence = NA,
+#     report_delay = NA,
+#     date_linelist = as.Date("2020-08-04")
+#   ) %>%
+#   select(-date_onset)
+# 
+# # splice on SA partial linelist to NNDSS, after removing incomplete data from June onwards
+# linelist <- linelist %>%
+#   filter(!(state == "SA" & date_detection > as.Date("2020-06-01"))) %>%
+#   bind_rows(sa_partial_linelist)
 
 # get and check the linelist date
 linelist_date <- linelist$date_linelist[1]
