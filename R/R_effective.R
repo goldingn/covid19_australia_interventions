@@ -7,66 +7,46 @@
 source("R/functions.R")
 
 staging <- FALSE
+
 # indicate whether line list should be used
-# vic_linelist_file <- NULL
-vic_linelist_file <- "~/not_synced/vic/20200804_linelist_reff.csv"
-sa_partial_linelist_file <- "~/not_synced/sa/20200804_recent_linelist_only.csv"
+sa_partial_linelist_file <- NULL
+# sa_partial_linelist_file <- "~/not_synced/sa/20200804_recent_linelist_only.csv"
 
 set.seed(2020-04-29)
 
 # load the linelist
-nndss_linelist <- load_nndss()
+linelist <- load_linelist()
 
-# optionally replace VIC data with DHHS direct upload
-if (!is.null(vic_linelist_file)) {
-  vic_linelist <- vic_linelist_file %>%
-    get_vic_linelist() %>%
-    # mutate(date_detection = date_confirmation - 3) %>%
-    impute_linelist()
-  linelist <- nndss_linelist %>%
-    filter(state != "VIC") %>%
-    bind_rows(vic_linelist)
-} else {
-  linelist <- nndss_linelist
-}
-
-
-# flag whether each case is an interstate import
-linelist <- linelist %>%
-  mutate(
-    interstate_import = case_when(
-      state != state_of_acquisition ~ TRUE,
-      TRUE ~ FALSE
+# optionally add on partial linelist for SA
+if (!is.null(sa_partial_linelist_file)) {
+  # prepare SA partial linelist (cases detected from June onwards)
+  sa_partial_linelist <- read_csv(
+    sa_partial_linelist_file,
+    col_types = cols(
+      date_onset = col_character(),
+      import_status = col_character(),
+      interstate_import = col_logical()
     )
-  )
-
-# prepare SA partial linelist (cases detected from June onwards)
-# sa_partial_linelist <- read_csv(
-#   sa_partial_linelist_file,
-#   col_types = cols(
-#     date_onset = col_character(),
-#     import_status = col_character(),
-#     interstate_import = col_logical()
-#   )
-# ) %>%
-#   mutate(
-#     date_onset = as.Date(date_onset, format = "%d/%m/%y"),
-#     date = date_onset - 5,
-#     date_detection = NA,
-#     state = "SA",
-#     postcode_of_acquisition = "8888",
-#     postcode_of_residence = "8888",
-#     state_of_acquisition = NA,
-#     state_of_residence = NA,
-#     report_delay = NA,
-#     date_linelist = as.Date("2020-08-04")
-#   ) %>%
-#   select(-date_onset)
-
-# splice on SA partial linelist to NNDSS, after removing incomplete data from June onwards
-# linelist <- linelist %>%
-#   filter(!(state == "SA" & date_detection > as.Date("2020-06-01"))) %>%
-#   bind_rows(sa_partial_linelist)
+  ) %>%
+    mutate(
+      date_onset = as.Date(date_onset, format = "%d/%m/%y"),
+      date = date_onset - 5,
+      date_detection = NA,
+      state = "SA",
+      postcode_of_acquisition = "8888",
+      postcode_of_residence = "8888",
+      state_of_acquisition = NA,
+      state_of_residence = NA,
+      report_delay = NA,
+      date_linelist = as.Date("2020-08-04")
+    ) %>%
+    select(-date_onset)
+  
+  # splice on SA partial linelist to NNDSS, after removing incomplete data from June onwards
+  linelist <- linelist %>%
+    filter(!(state == "SA" & date_detection > as.Date("2020-06-01"))) %>%
+    bind_rows(sa_partial_linelist)
+}
 
 # get and check the linelist date
 linelist_date <- linelist$date_linelist[1]
@@ -83,15 +63,35 @@ dates <- seq(
   by = 1
 )
 
-# get detection probabilities for these dates
+# get detection probabilities for these dates and states
 latest_detection_date <- linelist_date - 2
-delays <- as.numeric(latest_detection_date - dates)
-detection_prob <- 1 - ttd_survival(delays, dates)
+delays_mat <- as.numeric(latest_detection_date - dates) %>%
+  matrix(
+    nrow = length(dates),
+    ncol = length(states)
+  )
 
-# subset to dates with reasonably high detection probabilities
-keep <- detection_prob >= 0.5
-detection_prob <- detection_prob[keep]
-dates <- dates[keep]
+dates_mat <- matrix(
+  dates, 
+  nrow = length(dates),
+  ncol = length(states)
+)
+
+# subtract from delays for VIC in recent period to account for increased time
+# from testing to confirmation
+vic_idx <- states == "VIC"
+delays_mat[, vic_idx] <- delays_mat[, vic_idx] - 2
+
+detection_prob_mat <- delays_mat * 0
+detection_prob_mat[] <- 1 - ttd_survival(as.vector(delays_mat),
+                                         as.vector(dates_mat))
+
+# subset to dates with reasonably high detection probabilities in some states
+detectable <- detection_prob_mat >= 0.5
+# keep <- apply(detectable, 1, any)
+# detection_prob_mat <- detection_prob_mat[keep, ]
+# detectable <- detectable[keep, ]
+# dates <- dates[keep]
 earliest_date <- min(dates)
 latest_date <- max(dates)
 
@@ -274,7 +274,8 @@ epsilon_L <- epsilon_gp(
 # imported_infectious_sim <- calculate(imported_infectious, nsim = 1)[[1]][1, , ]
 local_valid <- is.finite(local_infectious) & local_infectious > 0
 import_valid <- is.finite(imported_infectious) & imported_infectious > 0
-valid <- which(local_valid | import_valid, arr.ind = TRUE)
+valid_mat <- (local_valid | import_valid) & detectable 
+valid <- which(valid_mat, arr.ind = TRUE)
 
 # log Reff for locals and imports
 log_R_eff_loc <- log_R_eff_loc_1 + epsilon_L
@@ -313,7 +314,7 @@ prob <- 1 / (1 + expected_infections_vec / size)
 # There is an average of one day from specimen collection to confirmation, and
 # the linelist covers the previous day, so the date by which they need to have
 # been detected two days prior to the linelist date.
-detection_prob_vec <- detection_prob[valid[, 1]]
+detection_prob_vec <- detection_prob_mat[valid]
 
 # Modify the probability to account for truncation. When detection_prob_vec = 1,
 # this collapses to prob
@@ -401,7 +402,7 @@ non_household_infections_macro <- de$OC_t_state * infectious_days * (1 - de$p ^ 
 hourly_infections_macro <- household_infections_macro + non_household_infections_macro
 R_eff_loc_1_macro <- hourly_infections_macro[extend_idx, ] * baseline_surveillance_effect
 
-# Reff for locals compnent under only surveillance improvements
+# Reff for locals component under only surveillance improvements
 R_eff_loc_1_surv <- exp(log_R0 + log(surveillance_reff_local_reduction))
 
 # make 5 different versions of the plots and outputs:
@@ -436,18 +437,13 @@ for (type in types) {
              showWarnings = FALSE)
   
   # save local case data, dates, and detection probabilities for Rob
-  cbind(
-    data.frame(
-      date_onset = dates + 5,
-      detection_probability = detection_prob
-    ),
-    local_cases_infectious
+  tibble::tibble(
+      date_onset = rep(dates + 5, n_states),
+      detection_probability = as.vector(detection_prob_mat),
+      state = rep(states, each = n_dates),
+      count = as.vector(local_cases_infectious),
+      acquired_in_state = as.vector(local_cases)
   ) %>%
-    pivot_longer(
-      cols = c(-date_onset, -detection_probability),
-      names_to = "state",
-      values_to = "count"
-    ) %>%
     write.csv(file.path(dir, "local_cases_input.csv"), row.names = FALSE)
   
   # subset or extend projections based on type of projection

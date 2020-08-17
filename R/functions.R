@@ -2844,7 +2844,8 @@ microdistancing_data <- function(dates = NULL) {
   
 }
 
-# given vectors of dates and numbers of days post infection, return the fraction of cases not being detected by that point
+# given vectors of dates and numbers of days post infection, return the fraction
+# of cases not being detected by that point
 ttd_survival <- function(days, dates) {
   
   # load fitted CDFs over time
@@ -3280,6 +3281,38 @@ load_nndss <- function () {
 load_vic <- function (file) {
   get_vic_linelist(file) %>%
     impute_linelist()
+}
+
+load_linelist <- function(use_vic = TRUE) {
+  
+  # load the latest NNDSS linelist and impute
+  linelist <- load_nndss()
+  
+  # optionally replace VIC data with DHHS direct upload
+  if (use_vic) {
+    
+    vic_linelist <- linelist$date_linelist[1] %>%
+      format(format = "%Y%m%d") %>%
+      paste0("~/not_synced/vic/", ., "_linelist_reff.csv") %>%
+      get_vic_linelist() %>%
+      impute_linelist()
+    
+    linelist <- linelist %>%
+      filter(state != "VIC") %>%
+      bind_rows(vic_linelist)
+  }
+  
+  
+  # flag whether each case is an interstate import
+  linelist <- linelist %>%
+    mutate(
+      interstate_import = case_when(
+        state != state_of_acquisition ~ TRUE,
+        TRUE ~ FALSE
+      )
+    )
+  
+  
 }
 
 # convert imputed linelist into matrix of new infections by date and state

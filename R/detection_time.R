@@ -3,7 +3,6 @@
 source("R/functions.R")
 set.seed(2020-06-10)
 
-# make the detection date the earliest of peciment conllection or notification
 detection <- get_linelist() %>%
   # remove any cases where first specimen collection is being reported as after
   # case confirmation (data entry error with dates, so detection date could be
