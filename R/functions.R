@@ -3142,15 +3142,12 @@ get_nndss_linelist <- function(use_file = NULL, dir = "~/not_synced/nndss", stri
       date_confirmation = pmax(NOTIFICATION_RECEIVE_DATE,
                                NOTIFICATION_DATE,
                                na.rm = TRUE),
-      # # when the above is mixed with NAs, the return value is a numeric :/
-      # date_confirmation = as.POSIXct(date_confirmation,
-      #                             origin = as.Date("1970-01-01"))
     ) %>%
     select(
       date_onset = TRUE_ONSET_DATE,
       date_detection = SPECIMEN_DATE,
       date_confirmation,
-      region = STATE,
+      state = STATE,
       import_status,
       postcode_of_acquisition,
       postcode_of_residence,
@@ -3160,7 +3157,7 @@ get_nndss_linelist <- function(use_file = NULL, dir = "~/not_synced/nndss", stri
     mutate(
       report_delay = as.numeric(date_confirmation - date_onset),
       date_linelist = as.Date(data$date_time, tz = "Australia/Canberra"),
-      region = as.factor(region)
+      state = as.factor(state)
     ) %>%
     
     # Remove those with onset date after confirmation date
@@ -3215,7 +3212,7 @@ get_vic_linelist <- function(file) {
       date_onset = as.Date(ss_onset),
       date_confirmation = as.Date(diagnosis_date),
       date_detection = clean_date(SPECIMEN_DATE),
-      region = "VIC",
+      state = "VIC",
       import_status = case_when(
         acquired == "Travel overseas" ~ "imported",
         TRUE ~ "local"
@@ -3238,7 +3235,7 @@ get_vic_linelist <- function(file) {
       date_onset,
       date_detection,
       date_confirmation,
-      region,
+      state,
       import_status,
       postcode_of_acquisition,
       postcode_of_residence,
@@ -3261,15 +3258,8 @@ impute_linelist <- function(linelist) {
   )
   linelist$date_onset[missing_onset] <- imputed_onsets
   
-  # build date-by-state matrices of the counts of new local and imported cases and
-  # imports by assumed date of infection (with an incubation period of 5 days)
-  linelist <- linelist %>%
-    rename(state = region,
-           date = date_onset) %>%
-    mutate(date = date - 5) %>%
-    select(-date_confirmation)
-  
-  linelist
+  linelist %>%
+    mutate(date = date_onset - 5)
   
 }
 
@@ -3286,7 +3276,7 @@ load_vic <- function (file) {
 load_linelist <- function(use_vic = TRUE) {
   
   # load the latest NNDSS linelist and impute
-  linelist <- load_nndss()
+  linelist <- get_nndss_linelist()
   
   # optionally replace VIC data with DHHS direct upload
   if (use_vic) {
@@ -3294,14 +3284,13 @@ load_linelist <- function(use_vic = TRUE) {
     vic_linelist <- linelist$date_linelist[1] %>%
       format(format = "%Y%m%d") %>%
       paste0("~/not_synced/vic/", ., "_linelist_reff.csv") %>%
-      get_vic_linelist() %>%
-      impute_linelist()
+      get_vic_linelist()
     
     linelist <- linelist %>%
       filter(state != "VIC") %>%
       bind_rows(vic_linelist)
+    
   }
-  
   
   # flag whether each case is an interstate import
   linelist <- linelist %>%
@@ -3312,6 +3301,7 @@ load_linelist <- function(use_vic = TRUE) {
       )
     )
   
+  linelist
   
 }
 

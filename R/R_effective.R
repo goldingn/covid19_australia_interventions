@@ -15,7 +15,10 @@ sa_partial_linelist_file <- NULL
 set.seed(2020-04-29)
 
 # load the linelist
-linelist <- load_linelist()
+linelist_raw <- load_linelist()
+
+linelist <- linelist_raw %>%
+  impute_linelist()
 
 # optionally add on partial linelist for SA
 if (!is.null(sa_partial_linelist_file)) {
