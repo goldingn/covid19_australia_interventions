@@ -2897,44 +2897,59 @@ surveillance_effect <- function(dates, cdf, gi_bounds = c(0, 20)) {
 
 # get the mean date of symptom onset give a date of detection (using the
 # time-varying time to detection distribution)
-impute_one_onset <- function(detection_date, method = c("expected", "random"), max_days = 40) {
+impute_one_onset <- function(confirmation_date,
+                             state,
+                             notification_delay_cdf,
+                             method = c("expected", "random"),
+                             min_days = -10,
+                             max_days = 40) {
   
   method <- match.arg(method)
   
-  # get possible dates of infection (cannot be within two days of infection)
-  delays <- seq_len(max_days - 2) + 2 
-  possible_infection_dates <- detection_date - delays
+  # get possible dates of onset
+  delays <- seq(min_days, max_days) 
+  possible_onset_dates <- confirmation_date - delays
   
   # probability of being detected this many days later (probability of detection
   # by this day, minus probability of detection by the previous day)
-  surv_from <- ttd_survival(delays, possible_infection_dates)
-  surv_to <- ttd_survival(delays + 1, possible_infection_dates)
+  surv_from <- notification_delay_cdf(delays, possible_onset_dates, state)
+  surv_to <- notification_delay_cdf(delays + 1, possible_onset_dates, state)
   prob <- surv_from - surv_to
 
   # normalise to get probabilities of different delays
   prob <- prob / sum(prob)
 
-  # compute either the expected time since infection, or draw a random one
-  TSI <- switch(method,
-                expected = round(sum(delays * prob)),
-                random = sample(delays, 1, prob = prob))
+  # compute either the expected time since onset, or draw a random one
+  delay <- switch(method,
+                  expected = round(sum(delays * prob)),
+                  random = sample(delays, 1, prob = prob))
   
-  # subtract 5 to get expected time since symptom onset, round, and convert to
-  # the date
-  onset_date <- detection_date - (TSI - 5)
+  # subtract to get expected date of symptom onset
+  onset_date <- confirmation_date - delay
   onset_date
   
 }
 
-impute_onsets <- function(detection_dates,
+impute_onsets <- function(confirmation_dates,
+                          states,
+                          notification_delay_cdf,
                           method = c("expected", "random"),
+                          min_days = -10,
                           max_days = 40) {
   
   method <- match.arg(method)
-  onset_dates <- lapply(detection_dates,
-                        impute_one_onset,
-                        method  = method,
-                        max_days = max_days)
+  onset_dates <- mapply(
+    impute_one_onset,
+    confirmation_date = confirmation_dates,
+    state = states,
+    MoreArgs = list(
+      notification_delay_cdf = notification_delay_cdf,
+      method = method,
+      min_days = min_days,
+      max_days = max_days
+    ),
+    SIMPLIFY = FALSE
+  )
   do.call(c, onset_dates)
   
 }
@@ -3165,9 +3180,9 @@ get_nndss_linelist <- function(use_file = NULL, dir = "~/not_synced/nndss", stri
     # we assume some individuals tested via contact tracing will test positive before symptom onset and therefore plausible
     # (noting that reporting delay distribution only calculated from positive differences)
     # also remove any individuals with NA for both notification and symptom onset dates
-    filter(
-      date_confirmation >= (date_onset - 2) | is.na(date_confirmation) | is.na(date_onset)
-    ) %>%
+    # filter(
+    #   date_confirmation >= (date_onset - 2) | is.na(date_confirmation) | is.na(date_onset)
+    # ) %>%
     filter(
       !(is.na(date_confirmation) & is.na(date_onset))
     ) %>%
@@ -3247,13 +3262,135 @@ get_vic_linelist <- function(file) {
   
 }
 
-impute_linelist <- function(linelist) {
+# split the dates and states into periods  with similar notification delay distributions
+notification_delay_group <- function(date_confirmation, state) {
   
+  stage <- case_when(
+    date_confirmation < as.Date("2020-06-14") ~ 1,
+    TRUE ~ 2,
+  )
+  
+  group <- case_when(
+    stage == 1 ~ "first_outbreak",
+    stage == 2 & state == "VIC" ~ "vic_outbreak",
+    TRUE ~ "other"
+  )
+  
+  group
+}
+
+# return a function to get the CDf of the notification delay distribution for a
+# given date and state
+get_notification_delay_cdf <- function(linelist) {
+  
+  delay_data <- linelist %>%
+    filter(
+      !is.na(date_onset),
+      date_confirmation <= (date_linelist - 3)
+    ) %>%
+    select(
+      date_onset,
+      date_confirmation,
+      state,
+      import_status
+    ) %>%
+    mutate(
+      delay = as.numeric(date_confirmation - date_onset),
+      group = notification_delay_group(date_confirmation, state)
+    ) %>%
+    filter(
+      delay <= 6 * 7
+    ) %>%
+    group_by(group) %>%
+    mutate(
+      lower = quantile(delay, 0.005),
+      upper = quantile(delay, 0.995)
+    ) %>%
+    filter(
+      delay >= lower,
+      delay <= upper
+    )
+
+  # get an ecdf for each group
+  ecdfs <- delay_data %>%
+    mutate(
+      ecdf = list(ecdf(delay)),
+      id = row_number()
+    ) %>%
+    filter(id == 1) %>%
+    select(group, ecdf)
+  
+  # return a function to compute the CDF of the delay distribution for that
+  # state and those delays and dates
+  function(delays, possible_onset_dates, states) {
+    
+    group <- notification_delay_group(possible_onset_dates, states)
+    idx <- match(group, ecdfs$group)
+    idx <- replace_na(idx, 1)
+    
+    cdfs <- ecdfs$ecdf[idx]
+    probs <- rep(0, length(group))
+    
+    for(i in seq_along(group)) {
+      probs[i] <- cdfs[[i]](delays[i])
+    }
+    
+    probs
+    
+  }
+  
+}
+
+# return a date-by-state matrix of detection probabilities
+detection_probability_matrix <- function(latest_date, infection_dates, states) {
+  
+  n_dates <- length(infection_dates)
+  n_states <- length(states)
+  onset_dates <- infection_dates + 5
+  delays <- latest_date - onset_dates
+  
+  onset_dates_mat <- matrix(
+    onset_dates, 
+    nrow = n_dates,
+    ncol = n_states
+  )
+
+  delays_mat <- matrix(
+    delays, 
+    nrow = n_dates,
+    ncol = n_states
+  )
+  
+  states_mat <- matrix(
+    states,
+    nrow = n_dates,
+    ncol = n_states,
+    byrow = TRUE
+  )
+  
+  
+  # get the detection probability matrix
+  detection_prob_mat <- delays_mat * 0
+  detection_prob_mat[] <- notification_delay_cdf(
+    delays = delays_mat,
+    possible_onset_dates = onset_dates_mat,
+    states = states_mat
+  )
+  
+  detection_prob_mat
+  
+}
+
+
+impute_linelist <- function(linelist, notification_delay_cdf) {
+
   # impute the onset dates (only 0.6% of cases) using expected value from time to
   # detection distribution. Do this outside dplyr to avoid duplicating slow computations
   missing_onset <- is.na(linelist$date_onset)
   imputed_onsets <- impute_onsets(
-    linelist$date_detection[missing_onset],
+    linelist$date_confirmation[missing_onset],
+    linelist$state[missing_onset],
+    notification_delay_cdf,
     method = "random"
   )
   linelist$date_onset[missing_onset] <- imputed_onsets

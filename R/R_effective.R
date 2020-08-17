@@ -17,8 +17,11 @@ set.seed(2020-04-29)
 # load the linelist
 linelist_raw <- load_linelist()
 
+# compute delays from symptom onset to detection for each state over time
+notification_delay_cdf <- get_notification_delay_cdf(linelist_raw)
+
 linelist <- linelist_raw %>%
-  impute_linelist()
+  impute_linelist(notification_delay_cdf = notification_delay_cdf)
 
 # optionally add on partial linelist for SA
 if (!is.null(sa_partial_linelist_file)) {
@@ -60,54 +63,28 @@ if (!all(linelist$date_linelist == linelist_date)) {
 
 # get date and state information
 states <- sort(unique(linelist$state))
+earliest_date <- min(linelist$date)
+latest_date <- max(linelist$date)
 dates <- seq(
-  min(linelist$date),
-  max(linelist$date),
+  earliest_date,
+  latest_date,
   by = 1
 )
 
-# get detection probabilities for these dates and states
-latest_detection_date <- linelist_date - 2
-delays_mat <- as.numeric(latest_detection_date - dates) %>%
-  matrix(
-    nrow = length(dates),
-    ncol = length(states)
-  )
-
-dates_mat <- matrix(
-  dates, 
-  nrow = length(dates),
-  ncol = length(states)
-)
-
-# subtract from delays for VIC in recent period to account for increased time
-# from testing to confirmation
-vic_idx <- states == "VIC"
-delays_mat[, vic_idx] <- delays_mat[, vic_idx] - 2
-
-detection_prob_mat <- delays_mat * 0
-detection_prob_mat[] <- 1 - ttd_survival(as.vector(delays_mat),
-                                         as.vector(dates_mat))
-
-# subset to dates with reasonably high detection probabilities in some states
-detectable <- detection_prob_mat >= 0.5
-# keep <- apply(detectable, 1, any)
-# detection_prob_mat <- detection_prob_mat[keep, ]
-# detectable <- detectable[keep, ]
-# dates <- dates[keep]
-earliest_date <- min(dates)
-latest_date <- max(dates)
-
-linelist <- linelist %>%
-  filter(date %in% dates)
-
-nndss_linelist <- nndss_linelist %>%
-  filter(date %in% dates)
-  
 n_states <- length(states)
 n_dates <- length(dates)
 n_extra <- as.numeric(Sys.Date() - max(dates)) + 7 * 6
 date_nums <- seq_len(n_dates + n_extra)
+
+# get detection probabilities for these dates and states
+detection_prob_mat <- detection_probability_matrix(
+  latest_date = linelist_date - 1,
+  infection_dates = dates,
+  states = states
+)
+
+# subset to dates with reasonably high detection probabilities in some states
+detectable <- detection_prob_mat >= 0.5
 
 # load mobility data and get relevant dates
 google_change_data <- readRDS("outputs/google_change_trends.RDS")
@@ -338,7 +315,7 @@ draws <- mcmc(
 
 # if r_hat is a bit high - do extra samples
 # only if r_hat is super high i.e. > 2 - increase Lmin and Lmax - but probably have a problem!!
-draws <- extra_samples(draws, 1000, one_by_one = TRUE)
+# draws <- extra_samples(draws, 1000, one_by_one = TRUE)
 
 # quality control for r effective
 # r_hat < 1.1
@@ -529,7 +506,7 @@ for (type in types) {
     infectious_days * (1 - de$p ^ de$OD_0)
   R_t <- household_infections + non_household_infections
   fraction_non_household <- non_household_infections / R_t
-  vic_fraction_non_household <- fraction_non_household[n_dates, vic_idx]
+  vic_fraction_non_household <- fraction_non_household[n_dates-1, vic_idx]
   
   # make sure the seeds are the same for each type of prediction, so the samples
   # match
