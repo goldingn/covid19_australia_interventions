@@ -86,6 +86,10 @@ detection_prob_mat <- detection_probability_matrix(
 # subset to dates with reasonably high detection probabilities in some states
 detectable <- detection_prob_mat >= 0.5
 
+# the last date with infection data we include
+last_detectable_idx <- which(!apply(detectable, 1, any))[1]
+latest_infection_date <- dates[last_detectable_idx]
+
 # load mobility data and get relevant dates
 google_change_data <- readRDS("outputs/google_change_trends.RDS")
 last_mobility_date <- max(google_change_data$date)
@@ -95,7 +99,7 @@ change_date <- last_mobility_date + 1
 # save these dates for Freya and Rob to check
 tibble(
   linelist_date = linelist_date,
-  latest_infection_date = latest_date,
+  latest_infection_date = latest_infection_date,
   latest_reff_date = last_mobility_date,
   forecast_reff_change_date = change_date
 ) %>%
@@ -642,7 +646,7 @@ for (type in types) {
   
   if (type == 1) {
     p <- p + annotate("rect",
-                      xmin = latest_date,
+                      xmin = latest_infection_date,
                       xmax = last_mobility_date,
                       ymin = -Inf,
                       ymax = Inf,
@@ -682,7 +686,7 @@ for (type in types) {
   
   if (type == 1) {
     p <- p + annotate("rect",
-                      xmin = latest_date,
+                      xmin = latest_infection_date,
                       xmax = last_mobility_date,
                       ymin = -Inf,
                       ymax = Inf,
@@ -806,7 +810,7 @@ for (type in types) {
                                      Reff_imports = R_eff_imp_12,
                                      dates = dates_type,
                                      gi_cdf = gi_cdf,
-                                     simulation_start = latest_date,
+                                     simulation_start = latest_infection_date,
                                      gi_bounds = c(0, 20))
     
     forecast <- forecast_list$local_cases
