@@ -15,7 +15,7 @@ sa_partial_linelist_file <- NULL
 set.seed(2020-04-29)
 
 # load the linelist
-linelist_raw <- load_linelist()
+linelist_raw <- load_linelist(use_vic = TRUE)
 
 # compute delays from symptom onset to detection for each state over time
 notification_delay_cdf <- get_notification_delay_cdf(linelist_raw)
@@ -319,7 +319,7 @@ draws <- mcmc(
 
 # if r_hat is a bit high - do extra samples
 # only if r_hat is super high i.e. > 2 - increase Lmin and Lmax - but probably have a problem!!
-# draws <- extra_samples(draws, 1000, one_by_one = TRUE)
+draws <- extra_samples(draws, 1000, one_by_one = TRUE)
 
 # quality control for r effective
 # r_hat < 1.1

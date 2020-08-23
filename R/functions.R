@@ -3267,16 +3267,19 @@ notification_delay_group <- function(date_confirmation, state) {
   
   stage <- case_when(
     date_confirmation < as.Date("2020-06-14") ~ 1,
-    TRUE ~ 2,
+    date_confirmation < as.Date("2020-08-01") ~ 2,
+    TRUE ~ 3,
   )
   
   group <- case_when(
     stage == 1 ~ "first_outbreak",
-    stage == 2 & state == "VIC" ~ "vic_outbreak",
+    stage == 2 & state == "VIC" ~ "vic_outbreak_1",
+    stage == 3 & state == "VIC" ~ "vic_outbreak_2",
     TRUE ~ "other"
   )
   
   group
+  
 }
 
 # return a function to get the CDf of the notification delay distribution for a
