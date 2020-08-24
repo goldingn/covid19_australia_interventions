@@ -4,18 +4,45 @@
 # see the manuscript for an explanation of the model that may or may not be out
 # of date.
 
+
+set.seed(2020-04-29)
 source("R/functions.R")
 
-staging <- FALSE
+# run with linelist as of this date, instead of the latest
+ll_date <- NULL
+# ll_date <- as.Date("2020-08-17")
+
+# scenario_date <- as.Date("2020-08-03")
+output_directories <- c("outputs", "outputs/projection")
+
+# put in a separate directory if testing something
+staging <- TRUE
+if (staging) {
+  # output_directories <- file.path(output_directories, "staging")
+  output_directories <- file.path(
+    output_directories,
+    paste0(
+      "as_of_",
+      format(ll_date, format = "%Y-%m-%d")
+    )
+  )
+}
+
+. <- output_directories %>%
+  file.path("figures") %>%
+  lapply(
+    FUN = dir.create,
+    recursive = TRUE,
+    showWarnings = FALSE
+  )
+
 
 # indicate whether line list should be used
 sa_partial_linelist_file <- NULL
 # sa_partial_linelist_file <- "~/not_synced/sa/20200804_recent_linelist_only.csv"
 
-set.seed(2020-04-29)
-
 # load the linelist
-linelist_raw <- load_linelist(use_vic = TRUE)
+linelist_raw <- load_linelist(use_vic = TRUE, date = ll_date)
 
 # compute delays from symptom onset to detection for each state over time
 notification_delay_cdf <- get_notification_delay_cdf(linelist_raw)
@@ -90,8 +117,10 @@ detectable <- detection_prob_mat >= 0.5
 last_detectable_idx <- which(!apply(detectable, 1, any))[1]
 latest_infection_date <- dates[last_detectable_idx]
 
-# load mobility data and get relevant dates
-google_change_data <- readRDS("outputs/google_change_trends.RDS")
+# load mobility data and truncate to no later than the day before the linelist
+google_change_data <- readRDS("outputs/google_change_trends.RDS") %>%
+  filter(date < linelist_date)
+
 last_mobility_date <- max(google_change_data$date)
 mobility_dates <- seq(earliest_date, last_mobility_date, by = 1)
 change_date <- last_mobility_date + 1
@@ -103,7 +132,9 @@ tibble(
   latest_reff_date = last_mobility_date,
   forecast_reff_change_date = change_date
 ) %>%
-  write_csv("outputs/output_dates.csv")
+  write_csv(
+    file.path(output_directories[1], "output_dates.csv")
+  )
 
 # get date-by-state matrices of new infections in each state
 
@@ -402,29 +433,12 @@ R_eff_loc_1_surv <- exp(log_R0 + log(surveillance_reff_local_reduction))
 # 4. 6 weeks into the future, with increase in mean Reff to 1.2
 # 5. 6 weeks into the future, with increase in mean Reff to 1.5
 
-output_directories <- c("",
-                        "projection",
-                        "scenario_1_reff_fixed",
-                        "scenario_2_15pc_reduction",
-                        "scenario_3_30pc_reduction")
-
-# start scenarios on the start of stage 4 lockdown
-scenario_date <- as.Date("2020-08-03")
-
-# put in a separate directory if testing something
-if (staging) {
-  output_directories <- file.path(output_directories, "staging")
-}
-
 # types <- seq_along(output_directories)
 types <- 1:2
 
 for (type in types) {
   
-  dir <- file.path("outputs", output_directories[type])
-  dir.create(file.path(dir, "figures"),
-             recursive = TRUE,
-             showWarnings = FALSE)
+  dir <- output_directories[type]
   
   # save local case data, dates, and detection probabilities for Rob
   tibble::tibble(

@@ -2672,6 +2672,10 @@ macrodistancing_params <- function(location_change_trends, gi_cdf) {
 # define the likelihood for the macrodistancing model
 macrodistancing_likelihood <- function(OC_t_state, contacts, location_change_trends) {
   
+  # keep only contact data where there is mobility data
+  contacts <- contacts %>%
+    filter(date %in% location_change_trends$date)
+  
   # pull out the expected number of non-household contacts by state and date
   dates <- unique(location_change_trends$date)
   states <- unique(location_change_trends$state)
@@ -2813,6 +2817,9 @@ microdistancing_data <- function(dates = NULL) {
   if (is.null(dates)) {
     dates <- distancing$date
   }
+  
+  barometer <- barometer %>%
+    filter(date %in% dates)
   
   # get data to predict to
   pred_data <- distancing %>%
@@ -3055,17 +3062,19 @@ sync_nndss <- function(mount_dir = "~/Mounts/nndss", storage_dir = "~/not_synced
 }
 
 # read in the latest linelist and format for analysis
-get_nndss_linelist <- function(use_file = NULL, dir = "~/not_synced/nndss", strict = TRUE) {
+get_nndss_linelist <- function(date = NULL, dir = "~/not_synced/nndss", strict = TRUE) {
   
   data <- linelist_date_times(dir)
   
-  if (is.null(use_file)) {
+  # subset to this date
+  if (!is.null(date)) {
     data <- data %>%
-      filter(date_time == max(date_time, na.rm = TRUE))
-  } else {
-    data <- data %>%
-      filter(basename(file) == use_file)
+      filter(as.Date(date_time) == date)
   }
+  
+  # get the latest linelist
+  data <- data %>%
+    filter(date_time == max(date_time, na.rm = TRUE))
   
   col_types <- NULL
   if (strict) {
@@ -3413,10 +3422,10 @@ load_vic <- function (file) {
     impute_linelist()
 }
 
-load_linelist <- function(use_vic = TRUE) {
+load_linelist <- function(use_vic = TRUE, date = NULL) {
   
-  # load the latest NNDSS linelist and impute
-  linelist <- get_nndss_linelist()
+  # load the latest NNDSS linelist (either the latest or specified file)
+  linelist <- get_nndss_linelist(date = date)
   
   # optionally replace VIC data with DHHS direct upload
   if (use_vic) {
