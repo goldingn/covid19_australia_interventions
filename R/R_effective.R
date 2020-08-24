@@ -134,11 +134,17 @@ imported_cases <- linelist %>%
 # gi_cdf <- nishiura_cdf()
 gi_mat <- gi_matrix(gi_cdf, dates, gi_bounds = c(0, 20))
 
+# correct Reff denominator for right-truncation (infectors not yet detected) by
+# expectation (resolving divide-by-zero error)
+detection_prob_mat[] <- pmax(detection_prob_mat, 1e-6)
+local_cases_infectious_corrected <- local_cases_infectious /  detection_prob_mat
+imported_cases_corrected <- imported_cases / detection_prob_mat
+
 # disaggregate imported and local cases according to the generation interval
 # probabilities to get the expected number of infectious people in each state
 # and time
-local_infectious <- gi_mat %*% local_cases_infectious
-imported_infectious <- gi_mat %*% imported_cases
+local_infectious <- gi_mat %*% local_cases_infectious_corrected
+imported_infectious <- gi_mat %*% imported_cases_corrected
 
 # save lga-level data (local and imported) for Cam & Nic - using nndss linelist since it has postcodes
 # detection_dates <- tibble(

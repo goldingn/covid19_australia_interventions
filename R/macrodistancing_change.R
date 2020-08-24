@@ -45,7 +45,7 @@ draws <- mcmc(m,
               sampler = hmc(Lmin = 10, Lmax = 15),
               chains = 10)
 
-draws <- extra_samples(draws, 1000)
+draws <- extra_samples(draws, 2000)
 convergence(draws)
 
 nsim <- coda::niter(draws) * coda::nchain(draws)
