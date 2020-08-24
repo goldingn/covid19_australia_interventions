@@ -2912,8 +2912,8 @@ impute_one_onset <- function(confirmation_date,
   
   # probability of being detected this many days later (probability of detection
   # by this day, minus probability of detection by the previous day)
-  surv_from <- notification_delay_cdf(delays, possible_onset_dates, state)
-  surv_to <- notification_delay_cdf(delays + 1, possible_onset_dates, state)
+  surv_from <- notification_delay_cdf(delays - 1, possible_onset_dates, state)
+  surv_to <- notification_delay_cdf(delays, possible_onset_dates, state)
   prob <- surv_from - surv_to
 
   # normalise to get probabilities of different delays
