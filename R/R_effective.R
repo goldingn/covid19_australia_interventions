@@ -10,31 +10,31 @@ source("R/functions.R")
 
 # run with linelist as of this date, instead of the latest
 ll_date <- NULL
-# ll_date <- as.Date("2020-08-17")
+# ll_date <- as.Date("2020-07-31")
 
 # scenario_date <- as.Date("2020-08-03")
 output_directories <- c("outputs", "outputs/projection")
 
 # put in a separate directory if testing something
-staging <- TRUE
+staging <- FALSE
 if (staging) {
-  # output_directories <- file.path(output_directories, "staging")
-  output_directories <- file.path(
-    output_directories,
-    paste0(
-      "as_of_",
-      format(ll_date, format = "%Y-%m-%d")
-    )
-  )
+  output_directories <- file.path(output_directories, "staging")
+  # output_directories <- file.path(
+  #   output_directories,
+  #   paste0(
+  #     "as_of_",
+  #     format(ll_date, format = "%Y-%m-%d")
+  #   )
+  # )
 }
 
-. <- output_directories %>%
+output_directories %>%
   file.path("figures") %>%
   lapply(
     FUN = dir.create,
     recursive = TRUE,
     showWarnings = FALSE
-  )
+  ) -> .
 
 
 # indicate whether line list should be used
