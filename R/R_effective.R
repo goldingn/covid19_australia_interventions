@@ -12,7 +12,6 @@ source("R/functions.R")
 ll_date <- NULL
 # ll_date <- as.Date("2020-07-31")
 
-# scenario_date <- as.Date("2020-08-03")
 output_directories <- c("outputs", "outputs/projection")
 
 # put in a separate directory if testing something
@@ -35,7 +34,6 @@ output_directories %>%
     recursive = TRUE,
     showWarnings = FALSE
   ) -> .
-
 
 # indicate whether line list should be used
 sa_partial_linelist_file <- NULL
@@ -124,6 +122,7 @@ google_change_data <- readRDS("outputs/google_change_trends.RDS") %>%
 last_mobility_date <- max(google_change_data$date)
 mobility_dates <- seq(earliest_date, last_mobility_date, by = 1)
 change_date <- last_mobility_date + 1
+scenario_date <- last_mobility_date
 
 # save these dates for Freya and Rob to check
 tibble(
