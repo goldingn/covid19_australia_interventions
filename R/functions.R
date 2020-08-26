@@ -7,6 +7,7 @@ library(greta)
 library(readxl)
 library(RColorBrewer)
 library(tensorflow)
+library(purrr)
 
 tfp <- reticulate::import("tensorflow_probability")
 
@@ -3885,6 +3886,383 @@ prep_state_lgas <- function(
 # reverse it.
 old_right_join <- function(x, y, ...) {
   left_join(y, x, ...)
+}
+
+# get the survey wave number from a raw survey filename
+wave_from_file <- function(filename, previous_waves = 14) {
+  
+  files <- list.files("data/survey_raw/", pattern = ".csv$", full.names = TRUE)
+  lengths <- nchar(files)
+  dates <- files %>%
+    substr(lengths - 9, lengths - 4) %>%
+    as.Date("%d%m%y")
+  files <- files[order(dates)]
+  waves <- seq_along(files) + previous_waves
+  idx <- match(
+    basename(filename),
+    basename(files)
+  )
+  
+  waves[idx]
+  
+}
+
+# which household types correspond to the respondent being a parent (guessing at
+# BETA's 'parent' field)
+parenty_households <- c(
+  "Couple with non-dependent child(ren)",
+  "Couple with dependent child(ren)",
+  "Couple with dependent and non-dependent children",
+  "Single parent with non-dependent child(ren)",
+  "Single parent with dependent child(ren)",
+  "Single parent with dependent and non-dependent children"
+)
+
+parse_all_doh_surveys <- function(dir = "data/survey_raw") {
+  
+  dir %>%
+    list.files(
+      pattern = ".csv$",
+      full.names = TRUE
+    ) %>%
+    lapply(parse_doh_survey) %>%
+    bind_rows()
+  
+}
+
+# read in and parse raw DoH survey files in a similar way to BETA
+parse_doh_survey <- function(filename) {
+  full <- filename %>%
+    read_csv(
+      col_types = cols(
+        .default = col_character(),
+        S1 = col_double(),
+        Q138 = col_double(),
+        Q166_1 = col_double(),
+        Q166_4 = col_double(),
+        Q167_1 = col_double(),
+        Q168_2 = col_double(),
+        Q169_1 = col_double()
+      )
+    ) %>%
+    mutate(
+      wave = wave_from_file(filename),
+      state = abbreviate_states(S3),
+      city = Location == "Major city",
+      parent = Q39 %in% parenty_households,
+      distancing_any = NA,
+      cough_any = NA,
+      mask = NA,
+      survey = "doh",
+      date = as.Date(StartDate, format = "%Y%m%d"),
+    )
+  
+  # add face covering data if it is there
+  if ("Q222" %in% names(full)) {
+    full <- full %>%
+      mutate(face_covering = Q222)
+  } else {
+    full <- full %>%
+      mutate(face_covering = NA)
+  }
+  
+  full %>%
+    select(
+      wave,
+      state,
+      gender = S2,
+      vulnerable = Q75,
+      age_groups = AgeBracket,
+      city,
+      location = Location,
+      postcode = Q37,
+      household = Q39,
+      income = Q42,
+      parent,
+      employment = Q38,
+      phys_contact = Q109,
+      phys_distance = Q65,
+      wash_hands = Q110,
+      cough_any,
+      cough = Q111,
+      mask,
+      face_covering,
+      contact_num = Q138,
+      contacts_under18 = Q166_1,
+      contacts_18to39 = Q166_2,
+      contacts_40to59 = Q166_3,
+      contacts_60plus = Q166_4,
+      contacts_ageunsure = Q166_5,
+      contacts_phys = Q167_1,
+      contacts_close = Q167_2,
+      contacts_notclose = Q167_3,
+      contacts_physdontknow = Q167_4,
+      contacts_home = Q168_1,
+      contacts_work = Q168_2,
+      contacts_worship = Q168_3,
+      contacts_school = Q168_4,
+      contacts_shop = Q168_5,
+      contacts_cafe = Q168_6,
+      contacts_sport = Q168_7,
+      contacts_public = Q168_8,
+      contacts_other = Q168_9,
+      contacts_cantremember = Q168_10,
+      contacts_5min = Q169_1,
+      contacts_5to30min = Q169_2,
+      contacts_30to90min = Q169_3,
+      contacts_90minto3hrs = Q169_4,
+      contacts_3hrsplus = Q169_5,
+      contacts_timedontknow = Q169_6,
+      date,
+      survey
+    ) %>%
+    mutate_at(
+      vars(vulnerable, phys_contact),
+      ~yesno_to_logical(.)
+    ) %>%
+    mutate_at(
+      vars(starts_with("contacts_")),
+      ~as.numeric(.)
+    )
+  
+}
+
+# read in and parse a uom survey in a similar way to the Barometer data
+parse_uom_survey <- function(filename, wave = NA) {
+  
+  major_cities <- c(
+    "Sydney",
+    "Melbourne",
+    "Brisbane",
+    "Perth",
+    "Adelaide",
+    "Hobart",
+    "ACT"
+  )
+  
+  # read the file and skip the second row (full questions)
+  read_xlsx(filename, col_types = "text")[-1, ] %>%
+    map_df(~parse_guess(.)) %>%
+    mutate(
+      wave = wave,
+      state = abbreviate_states(state),
+      city = location %in% major_cities,
+      parent = case_when(
+        parent_yn_1 == "Yes" | parent_yn_2 == "Yes" ~ TRUE,
+        parent_yn_3 == "Yes" ~ FALSE,
+        TRUE ~ NA
+      ),
+      ATSI = case_when(
+        Q2 == "No" ~ FALSE,
+        Q2 == "Prefer not to say" ~ NA,
+        TRUE ~ TRUE
+      ),
+      poor_health = Q3 == "poor",
+      vulnerable = age > 70 | ATSI | poor_health,
+      age_groups = case_when(
+        age >= 75 ~ "75+",
+        age > 64 ~ "65-74",
+        age > 54 ~ "55-64",
+        age > 44 ~ "45-54",
+        age > 34 ~ "35-44",
+        age > 24 ~ "25-34",
+        age >= 18 ~ "18-24",
+        TRUE ~ "NA"
+      ),
+      location = ifelse(city, "Major city", "Regional"),
+      postcode = as.character(postcode),
+      household = NA,
+      income = NA,
+      employment = NA,
+      phys_contact = NA,
+      phys_distance = NA,
+      distancing_any = yesno_to_logical(Q9_7),
+      wash_hands = NA,
+      cough_any = yesno_to_logical(Q9_2),
+      cough = NA,
+      mask = yesno_to_logical(Q9_20),
+      face_covering = NA,
+      contacts_under18 = NA,
+      contacts_18to39 = NA,
+      contacts_40to59 = NA,
+      contacts_60plus = NA,
+      contacts_ageunsure = NA,
+      contacts_phys = NA,
+      contacts_close = NA,
+      contacts_notclose = NA,
+      contacts_physdontknow = NA,
+      contacts_home = NA,
+      contacts_work = NA,
+      contacts_worship = NA,
+      contacts_school = NA,
+      contacts_shop = NA,
+      contacts_cafe = NA,
+      contacts_sport = NA,
+      contacts_public = NA,
+      contacts_other = NA,
+      contacts_cantremember = NA,
+      contacts_5min = NA,
+      contacts_5to30min = NA,
+      contacts_30to90min = NA,
+      contacts_90minto3hrs = NA,
+      contacts_3hrsplus = NA,
+      contacts_timedontknow = NA,
+      date = as.Date(`Date of`, origin = "1900-01-01"),
+      survey = "uom"
+    ) %>%
+    select(
+      wave,
+      state,
+      gender = Q1,
+      vulnerable,
+      age_groups,
+      city,
+      location,
+      postcode,
+      household,
+      income,
+      parent,
+      employment,
+      phys_contact,
+      distancing_any,
+      phys_distance,
+      wash_hands,
+      cough_any,
+      cough,
+      mask,
+      face_covering,
+      contact_num = Q11,
+      contacts_under18,
+      contacts_18to39,
+      contacts_40to59,
+      contacts_60plus,
+      contacts_ageunsure,
+      contacts_phys,
+      contacts_close,
+      contacts_notclose,
+      contacts_physdontknow,
+      contacts_home,
+      contacts_work,
+      contacts_worship,
+      contacts_school,
+      contacts_shop,
+      contacts_cafe,
+      contacts_sport,
+      contacts_public,
+      contacts_other,
+      contacts_cantremember,
+      contacts_5min,
+      contacts_5to30min,
+      contacts_30to90min,
+      contacts_90minto3hrs,
+      contacts_3hrsplus,
+      contacts_timedontknow,
+      date,
+      survey
+    )
+}
+
+yesno_to_logical <- function(x) {
+  case_when(
+    x == "Yes" ~ TRUE,
+    x == "No" ~ FALSE,
+    TRUE ~ NA
+  )
+}
+
+# read in and parse the BETA barometer data dump
+parse_barometer <- function(filename = "data/barometer_all/Barometer full contact_dates.csv") {
+  df <- read_csv(
+    filename,
+    col_types = cols(
+      .default = col_double(),
+      postcode = col_character(),
+      state = col_character(),
+      gender = col_character(),
+      vulnerable = col_character(),
+      age_groups_pd = col_character(),
+      city = col_character(),
+      location = col_character(),
+      household = col_character(),
+      income = col_character(),
+      parent = col_character(),
+      employment = col_character(),
+      phys_contact = col_character(),
+      phys_distance = col_character(),
+      wash_hands = col_character(),
+      cough = col_character(),
+      wave_date = col_date(format = ""),
+      date = col_date(format = "%Y%m%d")
+    )
+  ) %>%
+    # filter out leading numbers in responses
+    mutate_at(
+      vars(income, phys_distance, wash_hands, cough),
+      ~substr(., 3, 100)
+    ) %>%
+    mutate_at(
+      vars(vulnerable, city, phys_contact, parent),
+      ~yesno_to_logical(.)
+    ) %>%
+    mutate_at(
+      vars(starts_with("contacts_")),
+      ~ifelse(. == -66, NA, .)
+    ) %>%
+    mutate(
+      survey = "barometer",
+      state = abbreviate_states(state),
+      cough_any = NA,
+      mask = NA,
+      face_covering = NA,
+      distancing_any = NA
+    ) %>%
+    rename(
+      wave = barometer_week
+    ) %>%
+    select(-wave_date, -age_groups_pd)
+  
+}
+
+parse_all_uom_surveys <- function(dir = "~/not_synced/uom_surveys/unlocked") {
+  
+  dir %>%
+    file.path(
+      c(
+        "SPSS Updated Data Covid19 Attitudes and Practices labels April2020.xlsx",
+        "SPSS Wave 2 Data Covid19 Attitudes and Practices labels May2020.xlsx"
+      )
+    ) %>%
+    mapply(
+      parse_uom_survey,
+      .,
+      wave = c(-1, 0),
+      SIMPLIFY = FALSE
+    ) %>%
+    bind_rows()
+  
+}
+
+is_weekend <- function(date) {
+  lubridate::wday(date, label = TRUE) %in% c("Sat", "Sun")
+}
+
+# get the expected fraction of the previous 24h that was on a weekend
+weekend_weight <- function(date) {
+  weekend_today <- is_weekend(date)
+  weekend_yesterday <- is_weekend(date - 1)
+  (weekend_today + weekend_yesterday) / 2
+}
+
+# read in and parse all the respondent-level survey data
+parse_all_surveys <- function() {
+  bind_rows(
+    parse_all_uom_surveys(),
+    parse_barometer(),
+    parse_all_doh_surveys()
+  ) %>%
+    mutate(
+      weekend_fraction = weekend_weight(date)
+    )
 }
 
 # colours for plotting
