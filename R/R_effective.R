@@ -40,7 +40,7 @@ sa_partial_linelist_file <- NULL
 # sa_partial_linelist_file <- "~/not_synced/sa/20200804_recent_linelist_only.csv"
 
 # load the linelist
-linelist_raw <- load_linelist(use_vic = TRUE, date = ll_date)
+linelist_raw <- load_linelist(use_vic = FALSE, date = ll_date)
 
 # compute delays from symptom onset to detection for each state over time
 notification_delay_cdf <- get_notification_delay_cdf(linelist_raw)
@@ -529,7 +529,7 @@ for (type in types) {
     infectious_days * (1 - de$p ^ de$OD_0)
   R_t <- household_infections + non_household_infections
   fraction_non_household <- non_household_infections / R_t
-  vic_fraction_non_household <- fraction_non_household[n_dates-1, vic_idx]
+  vic_fraction_non_household <- fraction_non_household[n_dates - 2, vic_idx]
   
   # make sure the seeds are the same for each type of prediction, so the samples
   # match
