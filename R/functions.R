@@ -47,7 +47,7 @@ facebook_mobility <- function() {
       -corrected,
       -baseline,
       -weekday
-      ) %>%
+    ) %>%
     mutate(
       trend = trend * 100,
     )
@@ -129,15 +129,15 @@ apple_url <- function() {
 apple_mobility <- function() {
   data <- apple_url() %>%
     readr::read_csv(
-    col_types = cols(
-      .default = col_double(),
-      geo_type = col_character(),
-      region = col_character(),
-      transportation_type = col_character(),
-      alternative_name = col_character(),
-      `sub-region` = col_character(),
-      country = col_character()
-    )) %>%
+      col_types = cols(
+        .default = col_double(),
+        geo_type = col_character(),
+        region = col_character(),
+        transportation_type = col_character(),
+        alternative_name = col_character(),
+        `sub-region` = col_character(),
+        country = col_character()
+      )) %>%
     tidyr::pivot_longer(
       cols = starts_with("2020-"),
       names_to = "date",
@@ -156,7 +156,7 @@ apple_mobility <- function() {
   data <- data %>%
     mutate(trend = trend - 100,
            date = date + 1)
-
+  
   # pull out the states and cities
   states <- c("New South Wales", "Victoria", "Queensland", "Western Australia", 
               "South Australia", "Australian Capital Territory", "Tasmania", 
@@ -190,7 +190,7 @@ apple_mobility <- function() {
     rename(state = region)
   
   data
-   
+  
 }
 
 # try a bunch of previous days to find the most recent citymapper dataset
@@ -218,7 +218,7 @@ citymapper_url <- function(min_delay = 0, max_delay = 14) {
   if (delay == max_delay) {
     stop ("could not find a valid citymapper URL")
   }
-
+  
 }
 
 # load the Citymapper index (urban direction requests, mostly public transport)
@@ -272,7 +272,7 @@ all_mobility <- function() {
       -geo_type,
       -transportation_type
     )
-
+  
   # facebook <- facebook_mobility() %>%
   #   mutate(
   #     datastream = str_c("Facebook: ", metric)
@@ -298,14 +298,14 @@ all_mobility <- function() {
 
 abbreviate_states <- function(state_names) {
   case_when(
-    state_names == "Australian Capital Territory" ~ "ACT",
-    state_names == "New South Wales" ~ "NSW",
-    state_names == "Northern Territory" ~ "NT",
-    state_names == "Queensland" ~ "QLD",
-    state_names == "South Australia" ~ "SA",
-    state_names == "Tasmania" ~ "TAS",
-    state_names == "Victoria" ~ "VIC",
-    state_names == "Western Australia" ~ "WA"
+    state_names %in% c("Australian Capital Territory", "ACT") ~ "ACT",
+    state_names %in% c("New South Wales", "NSW") ~ "NSW",
+    state_names %in% c("Northern Territory", "NT") ~ "NT",
+    state_names %in% c("Queensland", "QLD") ~ "QLD",
+    state_names %in% c("South Australia", "SA") ~ "SA",
+    state_names %in% c("Tasmania", "TAS") ~ "TAS",
+    state_names %in% c("Victoria", "VIC") ~ "VIC",
+    state_names %in% c("Western Australia", "WA") ~ "WA"
   )
 }
 
@@ -534,138 +534,138 @@ nsw_lga_active_cases <- function() {
   # paste in using datapasta addin
   # and remove the annoying asterisk and parentheses in title
   tibble::tribble(
-              ~Local.Government.Area,  ~Cases, ~Cases.with.unknown.source, ~Total.tests,   ~Test.rate.per.1000,
-                            "Albury",       2,                          0,         3068,                    56,
-                 "Armidale Regional",       0,                          0,         1109,                    36,
-                           "Ballina",       0,                          0,         1986,                    45,
-                         "Balranald",       0,                          0,           87,                    37,
-                 "Bathurst Regional",       0,                          0,         2228,                    51,
-                           "Bayside",       2,                          0,         7368,                    41,
-                       "Bega Valley",       0,                          0,         2267,                    66,
-                         "Bellingen",       0,                          0,          484,                    37,
-                          "Berrigan",       0,                          0,          376,                    43,
-                         "Blacktown",       8,                          1,        22713,                    61,
-                             "Bland",       0,                          0,          269,                    45,
-                           "Blayney",       0,                          0,          309,                    42,
-                    "Blue Mountains",       5,                          0,         5687,                    72,
-                             "Bogan",       0,                          0,          102,                    40,
-                            "Bourke",       0,                          0,           92,                    36,
-                        "Brewarrina",       0,                          0,           56,                    35,
-                       "Broken Hill",       0,                          0,          611,                    35,
-                           "Burwood",       0,                          0,         1434,                    35,
-                             "Byron",       2,                          0,         1841,                    52,
-                           "Cabonne",       0,                          0,          342,                    25,
-                            "Camden",       2,                          1,        12092,                   119,
-                      "Campbelltown",       9,                          1,        16784,                    98,
-                        "Canada Bay",       0,                          0,         5867,                    61,
-              "Canterbury-Bankstown",      14,                          1,        20189,                    53,
-                        "Carrathool",       0,                          0,           43,                    15,
-                     "Central Coast",       0,                          0,        16536,                    48,
-                   "Central Darling",       0,                          0,           64,                    35,
-                          "Cessnock",       0,                          0,         2158,                    36,
-                   "Clarence Valley",       0,                          0,         1448,                    28,
-                             "Cobar",       0,                          0,          176,                    38,
-                     "Coffs Harbour",       0,                          0,         2785,                    36,
-                          "Coolamon",       0,                          0,          188,                    43,
-                         "Coonamble",       0,                          0,          120,                    30,
-     "Cootamundra-Gundagai Regional",       0,                          0,          468,                    42,
-                             "Cowra",       0,                          0,          450,                    35,
-                        "Cumberland",      13,                          0,        13060,                    54,
-                    "Dubbo Regional",       0,                          0,         2418,                    45,
-                            "Dungog",       0,                          0,          342,                    36,
-                      "Edward River",       0,                          0,          451,                    50,
-                       "Eurobodalla",       3,                          0,         4314,                   112,
-                         "Fairfield",      25,                          0,        16440,                    78,
-                        "Federation",       0,                          0,          490,                    39,
-                            "Forbes",       0,                          0,          308,                    31,
-                     "Georges River",       4,                          0,         7083,                    44,
-                         "Gilgandra",       0,                          0,          170,                    40,
-                 "Glen Innes Severn",       0,                          0,          287,                    32,
-                 "Goulburn Mulwaree",       0,                          0,         1419,                    46,
-                "Greater Hume Shire",       0,                          0,          584,                    54,
-                          "Griffith",       0,                          0,         1244,                    46,
-                          "Gunnedah",       0,                          0,          435,                    34,
-                            "Gwydir",       0,                          0,           98,                    18,
-                        "Hawkesbury",       0,                          0,         4158,                    62,
-                               "Hay",       0,                          0,           69,                    23,
-                          "Hilltops",       0,                          0,          731,                    39,
-                           "Hornsby",       0,                          0,         6419,                    42,
-                      "Hunters Hill",       0,                          0,         1620,                   108,
-                        "Inner West",       0,                          0,        16140,                    80,
-                          "Inverell",       0,                          0,          618,                    37,
-                             "Junee",       0,                          0,          200,                    30,
-                           "Kempsey",       0,                          0,         1114,                    37,
-                             "Kiama",       0,                          0,         1439,                    62,
-                       "Ku-ring-gai",       0,                          0,         8177,                    64,
-                            "Kyogle",       0,                          0,          291,                    33,
-                           "Lachlan",       0,                          0,          170,                    28,
-                    "Lake Macquarie",       2,                          0,        10389,                    50,
-                         "Lane Cove",       0,                          0,         4544,                   113,
-                            "Leeton",       0,                          0,          311,                    27,
-                           "Lismore",       0,                          0,         2008,                    46,
-                           "Lithgow",       0,                          0,          854,                    40,
-                         "Liverpool",      32,                          2,        22937,                   101,
-                  "Liverpool Plains",       0,                          0,          259,                    33,
-                          "Lockhart",       0,                          0,          109,                    33,
-                          "Maitland",       0,                          0,         5846,                    69,
-                         "Mid-Coast",       0,                          0,         2956,                    32,
-              "Mid-Western Regional",       0,                          0,         1150,                    46,
-                      "Moree Plains",       0,                          0,          337,                    25,
-                            "Mosman",       0,                          0,         1646,                    53,
-                      "Murray River",       0,                          0,          185,                    15,
-                      "Murrumbidgee",       0,                          0,          146,                    37,
-                      "Muswellbrook",       0,                          0,          750,                    46,
-                          "Nambucca",       0,                          0,          618,                    31,
-                          "Narrabri",       0,                          0,          379,                    29,
-                        "Narrandera",       0,                          0,          171,                    29,
-                         "Narromine",       0,                          0,          242,                    37,
-                         "Newcastle",       0,                          0,        11168,                    67,
-                      "North Sydney",       0,                          0,         3434,                    46,
-                  "Northern Beaches",       0,                          0,        13685,                    50,
-                            "Oberon",       0,                          0,          175,                    32,
-                            "Orange",       0,                          0,         2002,                    47,
-                            "Parkes",       0,                          0,          423,                    29,
-                        "Parramatta",      11,                          0,        11404,                    44,
-                           "Penrith",       2,                          1,        15811,                    74,
-           "Port Macquarie-Hastings",       0,                          0,         3466,                    41,
-                     "Port Stephens",       3,                          0,         6845,                    93,
-      "Queanbeyan-Palerang Regional",       0,                          0,         1942,                    32,
-                          "Randwick",       0,                          0,         9269,                    60,
-                   "Richmond Valley",       0,                          0,         1016,                    43,
-                              "Ryde",       0,                          0,         6019,                    46,
-                      "Shellharbour",       1,                          0,         4538,                    62,
-                        "Shoalhaven",       0,                          0,         4764,                    45,
-                         "Singleton",       0,                          0,         1517,                    65,
-             "Snowy Monaro Regional",       0,                          0,         1033,                    50,
-                     "Snowy Valleys",       0,                          0,          642,                    44,
-                       "Strathfield",       0,                          0,         2665,                    57,
-                  "Sutherland Shire",       5,                          0,        15905,                    69,
-                            "Sydney",       3,                          1,        15135,                    61,
-                 "Tamworth Regional",       0,                          0,         2413,                    39,
-                            "Temora",       0,                          0,          178,                    28,
-                       "Tenterfield",       0,                          0,          144,                    22,
-                   "The Hills Shire",       6,                          0,        11766,                    66,
-                             "Tweed",       0,                          0,         3217,                    33,
-                "Unincorporated NSW",       0,                          0,            0,                     0,
-                "Upper Hunter Shire",       0,                          0,          604,                    43,
-               "Upper Lachlan Shire",       0,                          0,          309,                    38,
-                            "Uralla",       0,                          0,          146,                    24,
-                       "Wagga Wagga",       0,                          0,         3385,                    52,
-                            "Walcha",       0,                          0,           82,                    26,
-                           "Walgett",       0,                          0,          305,                    51,
-                            "Warren",       0,                          0,          172,                    64,
-                "Warrumbungle Shire",       0,                          0,          439,                    47,
-                          "Waverley",       1,                          1,         4832,                    65,
-                            "Weddin",       0,                          0,          172,                    48,
-                         "Wentworth",       0,                          0,          352,                    50,
-                        "Willoughby",       0,                          0,         3255,                    40,
-                     "Wingecarribee",       0,                          0,         4698,                    92,
-                       "Wollondilly",       5,                          0,         4349,                    82,
-                        "Wollongong",       4,                          1,        11981,                    55,
-                         "Woollahra",       0,                          0,         4161,                    70,
-                       "Yass Valley",       0,                          0,          466,                    27
-     )
-
+    ~Local.Government.Area,  ~Cases, ~Cases.with.unknown.source, ~Total.tests,   ~Test.rate.per.1000,
+    "Albury",       2,                          0,         3068,                    56,
+    "Armidale Regional",       0,                          0,         1109,                    36,
+    "Ballina",       0,                          0,         1986,                    45,
+    "Balranald",       0,                          0,           87,                    37,
+    "Bathurst Regional",       0,                          0,         2228,                    51,
+    "Bayside",       2,                          0,         7368,                    41,
+    "Bega Valley",       0,                          0,         2267,                    66,
+    "Bellingen",       0,                          0,          484,                    37,
+    "Berrigan",       0,                          0,          376,                    43,
+    "Blacktown",       8,                          1,        22713,                    61,
+    "Bland",       0,                          0,          269,                    45,
+    "Blayney",       0,                          0,          309,                    42,
+    "Blue Mountains",       5,                          0,         5687,                    72,
+    "Bogan",       0,                          0,          102,                    40,
+    "Bourke",       0,                          0,           92,                    36,
+    "Brewarrina",       0,                          0,           56,                    35,
+    "Broken Hill",       0,                          0,          611,                    35,
+    "Burwood",       0,                          0,         1434,                    35,
+    "Byron",       2,                          0,         1841,                    52,
+    "Cabonne",       0,                          0,          342,                    25,
+    "Camden",       2,                          1,        12092,                   119,
+    "Campbelltown",       9,                          1,        16784,                    98,
+    "Canada Bay",       0,                          0,         5867,                    61,
+    "Canterbury-Bankstown",      14,                          1,        20189,                    53,
+    "Carrathool",       0,                          0,           43,                    15,
+    "Central Coast",       0,                          0,        16536,                    48,
+    "Central Darling",       0,                          0,           64,                    35,
+    "Cessnock",       0,                          0,         2158,                    36,
+    "Clarence Valley",       0,                          0,         1448,                    28,
+    "Cobar",       0,                          0,          176,                    38,
+    "Coffs Harbour",       0,                          0,         2785,                    36,
+    "Coolamon",       0,                          0,          188,                    43,
+    "Coonamble",       0,                          0,          120,                    30,
+    "Cootamundra-Gundagai Regional",       0,                          0,          468,                    42,
+    "Cowra",       0,                          0,          450,                    35,
+    "Cumberland",      13,                          0,        13060,                    54,
+    "Dubbo Regional",       0,                          0,         2418,                    45,
+    "Dungog",       0,                          0,          342,                    36,
+    "Edward River",       0,                          0,          451,                    50,
+    "Eurobodalla",       3,                          0,         4314,                   112,
+    "Fairfield",      25,                          0,        16440,                    78,
+    "Federation",       0,                          0,          490,                    39,
+    "Forbes",       0,                          0,          308,                    31,
+    "Georges River",       4,                          0,         7083,                    44,
+    "Gilgandra",       0,                          0,          170,                    40,
+    "Glen Innes Severn",       0,                          0,          287,                    32,
+    "Goulburn Mulwaree",       0,                          0,         1419,                    46,
+    "Greater Hume Shire",       0,                          0,          584,                    54,
+    "Griffith",       0,                          0,         1244,                    46,
+    "Gunnedah",       0,                          0,          435,                    34,
+    "Gwydir",       0,                          0,           98,                    18,
+    "Hawkesbury",       0,                          0,         4158,                    62,
+    "Hay",       0,                          0,           69,                    23,
+    "Hilltops",       0,                          0,          731,                    39,
+    "Hornsby",       0,                          0,         6419,                    42,
+    "Hunters Hill",       0,                          0,         1620,                   108,
+    "Inner West",       0,                          0,        16140,                    80,
+    "Inverell",       0,                          0,          618,                    37,
+    "Junee",       0,                          0,          200,                    30,
+    "Kempsey",       0,                          0,         1114,                    37,
+    "Kiama",       0,                          0,         1439,                    62,
+    "Ku-ring-gai",       0,                          0,         8177,                    64,
+    "Kyogle",       0,                          0,          291,                    33,
+    "Lachlan",       0,                          0,          170,                    28,
+    "Lake Macquarie",       2,                          0,        10389,                    50,
+    "Lane Cove",       0,                          0,         4544,                   113,
+    "Leeton",       0,                          0,          311,                    27,
+    "Lismore",       0,                          0,         2008,                    46,
+    "Lithgow",       0,                          0,          854,                    40,
+    "Liverpool",      32,                          2,        22937,                   101,
+    "Liverpool Plains",       0,                          0,          259,                    33,
+    "Lockhart",       0,                          0,          109,                    33,
+    "Maitland",       0,                          0,         5846,                    69,
+    "Mid-Coast",       0,                          0,         2956,                    32,
+    "Mid-Western Regional",       0,                          0,         1150,                    46,
+    "Moree Plains",       0,                          0,          337,                    25,
+    "Mosman",       0,                          0,         1646,                    53,
+    "Murray River",       0,                          0,          185,                    15,
+    "Murrumbidgee",       0,                          0,          146,                    37,
+    "Muswellbrook",       0,                          0,          750,                    46,
+    "Nambucca",       0,                          0,          618,                    31,
+    "Narrabri",       0,                          0,          379,                    29,
+    "Narrandera",       0,                          0,          171,                    29,
+    "Narromine",       0,                          0,          242,                    37,
+    "Newcastle",       0,                          0,        11168,                    67,
+    "North Sydney",       0,                          0,         3434,                    46,
+    "Northern Beaches",       0,                          0,        13685,                    50,
+    "Oberon",       0,                          0,          175,                    32,
+    "Orange",       0,                          0,         2002,                    47,
+    "Parkes",       0,                          0,          423,                    29,
+    "Parramatta",      11,                          0,        11404,                    44,
+    "Penrith",       2,                          1,        15811,                    74,
+    "Port Macquarie-Hastings",       0,                          0,         3466,                    41,
+    "Port Stephens",       3,                          0,         6845,                    93,
+    "Queanbeyan-Palerang Regional",       0,                          0,         1942,                    32,
+    "Randwick",       0,                          0,         9269,                    60,
+    "Richmond Valley",       0,                          0,         1016,                    43,
+    "Ryde",       0,                          0,         6019,                    46,
+    "Shellharbour",       1,                          0,         4538,                    62,
+    "Shoalhaven",       0,                          0,         4764,                    45,
+    "Singleton",       0,                          0,         1517,                    65,
+    "Snowy Monaro Regional",       0,                          0,         1033,                    50,
+    "Snowy Valleys",       0,                          0,          642,                    44,
+    "Strathfield",       0,                          0,         2665,                    57,
+    "Sutherland Shire",       5,                          0,        15905,                    69,
+    "Sydney",       3,                          1,        15135,                    61,
+    "Tamworth Regional",       0,                          0,         2413,                    39,
+    "Temora",       0,                          0,          178,                    28,
+    "Tenterfield",       0,                          0,          144,                    22,
+    "The Hills Shire",       6,                          0,        11766,                    66,
+    "Tweed",       0,                          0,         3217,                    33,
+    "Unincorporated NSW",       0,                          0,            0,                     0,
+    "Upper Hunter Shire",       0,                          0,          604,                    43,
+    "Upper Lachlan Shire",       0,                          0,          309,                    38,
+    "Uralla",       0,                          0,          146,                    24,
+    "Wagga Wagga",       0,                          0,         3385,                    52,
+    "Walcha",       0,                          0,           82,                    26,
+    "Walgett",       0,                          0,          305,                    51,
+    "Warren",       0,                          0,          172,                    64,
+    "Warrumbungle Shire",       0,                          0,          439,                    47,
+    "Waverley",       1,                          1,         4832,                    65,
+    "Weddin",       0,                          0,          172,                    48,
+    "Wentworth",       0,                          0,          352,                    50,
+    "Willoughby",       0,                          0,         3255,                    40,
+    "Wingecarribee",       0,                          0,         4698,                    92,
+    "Wollondilly",       5,                          0,         4349,                    82,
+    "Wollongong",       4,                          1,        11981,                    55,
+    "Woollahra",       0,                          0,         4161,                    70,
+    "Yass Valley",       0,                          0,          466,                    27
+  )
+  
 }
 
 
@@ -955,13 +955,13 @@ nishiura_samples <- function () {
 # used as a prior the model is able to estimate parameters corresponding to
 # that scenario.
 ganyani_gi <- function(which = c("Tianjin", "Singapore")) {
-
+  
   tianjin <- tibble::tribble(
     ~which, ~est, ~lower, ~upper,
     "mean", 3.95, 3.01, 4.91,
     "sd", 1.51, 0.74, 2.97
   )
-
+  
   singapore <- tibble::tribble(
     ~which, ~est, ~lower, ~upper,
     "mean", 5.20, 3.78, 6.78,
@@ -985,7 +985,7 @@ ganyani_gi <- function(which = c("Tianjin", "Singapore")) {
     nest() %>%
     pull(data) %>%
     `names<-`(ganyani$which)
-    
+  
 }
 
 # The two (baseline) generation intervals of Ganyani et al.
@@ -1080,7 +1080,7 @@ delay_probability <- function(days) {
   delay_samples <- read_csv("data/cases/sampled_report_delay.csv",
                             col_types = cols(x = col_double())) %>%
     pull(x)
-
+  
   rate <- lognormal(0, 1)
   distribution(delay_samples) <- exponential(rate)
   
@@ -1164,7 +1164,7 @@ time_difference_matrix <- function (n_days) {
   
   mat <- matrix(0, n_days, n_days)
   row(mat) - col(mat)
-
+  
 }
 
 # given a positive integer 'n_days' of the number of days for which to compute
@@ -1333,7 +1333,7 @@ plot_trend <- function(simulations,
               colour = base_colour,
               alpha = 0.8) + 
     
-
+    
     geom_hline(yintercept = hline_at, linetype = "dotted") +
     
     cowplot::theme_cowplot() +
@@ -1351,11 +1351,11 @@ plot_trend <- function(simulations,
   if (!is.na(vline2_at)) {
     p <- p +
       annotate("rect",
-             xmin = vline2_at,
-             xmax = max(df$date),
-             ymin = -Inf,
-             ymax = Inf,
-             fill = grey(0.5), alpha = 0.1) +
+               xmin = vline2_at,
+               xmax = max(df$date),
+               ymin = -Inf,
+               ymax = Inf,
+               fill = grey(0.5), alpha = 0.1) +
       geom_text(aes(x = vline2_at, y = 3, label = "projection"),
                 hjust = -0.1, size = 3, colour = grey(0.6))
   }
@@ -1739,13 +1739,16 @@ baseline_contact_parameters <- function(gi_cdf) {
     se = sqrt(TC_0_prior$se ^ 2 + baseline_contact_params$se_contacts[1] ^ 2)
   )
   baseline_contact_params$mean_contacts[2] <- OC_0_prior$mean
-  baseline_contact_params$se_contacts[2] <- OC_0_prior$se
+  # increase the uncertainty on the baseline contact rate, since the survey
+  # design of Polymod is not the same as those we have fielded, and the
+  # demographic conversion in Prem may also make it less comparable
+  baseline_contact_params$se_contacts[2] <- OC_0_prior$se * 5
   
   baseline_contact_params
   
 }
 
-  # Results of Freya's survey
+# Results of Freya's survey
 freya_survey_results <- function() {
   
   results <- tibble::tribble(
@@ -1848,7 +1851,7 @@ location_change <- function(dates = NULL) {
       ungroup() %>%
       mutate_at(vars(-state, -date), replace_na, 1)
   }
-
+  
   location_change_trends
   
 }
@@ -1985,41 +1988,19 @@ distancing_effect_model <- function(dates, gi_cdf) {
   # get HD_t in each state
   h_t <- h_t_state(dates)
   HD_t <- HD_0 * h_t
-
+  
+  
   # model for non-household contacts in each state over time
-  # modelled change (after/before ratio) in time at types of locations from Google
-  location_change_trends <- location_change(dates) %>%
-    mutate_at(
-      vars(public, home, retail, transit, work),
-      ~replace_na(., 1)
-    ) %>%
-    mutate(state = abbreviate_states(state))
+  macro_data <- macrodistancing_data(dates)
+  macro_params <- macrodistancing_params(baseline_contact_params)
+  macro_predictions <- macrodistancing_model(macro_data, macro_params)
+  . <- macrodistancing_likelihood(macro_predictions, macro_data)
   
-  # state-level numbers of non-household contacts by state and date from Freya's
-  # survey and the BETA barometer. Remove implausible responses, from the
-  # reporting clump at 999 and above (short conversation with 999 or more people
-  # in a day is implausible, and probably an entry/reporting/understanding error)
-  contacts <- contact_survey_data() %>%
-    filter(contacts < 999)
+  OC_0 <- macro_params$OC_0
+  OC_t_state <- macro_predictions$avg_daily_contacts
   
-  params <- macrodistancing_params(location_change_trends, gi_cdf)
-  OC_0 <- params$OC_0
-  relative_weights <- params$relative_weights
-  scaling <- params$scaling
-  
-  OC_t_state <- macrodistancing_model(
-    location_change_trends,
-    baseline = OC_0,
-    relative_weights = relative_weights,
-    scaling = scaling
-  )
-  
-  # define the likelihood
-  macrodistancing_likelihood(OC_t_state, contacts, location_change_trends)
-    
   # model gamma_t: reduction in duration and transmission probability of
   # non-household contacts over time, per state
-  
   data <- microdistancing_data(dates)
   barometer_distance <- data$barometer_data
   pred_data <- data$prediction_data
@@ -2030,7 +2011,7 @@ distancing_effect_model <- function(dates, gi_cdf) {
   distancing_effects <- params$distancing_effects
   waning_effects <- params$waning_effects
   inflection_effects <- params$inflection_effects
-
+  
   # define likelihood  
   prob <- microdistancing_model(
     data = barometer_distance,
@@ -2045,7 +2026,7 @@ distancing_effect_model <- function(dates, gi_cdf) {
     barometer_distance$respondents,
     prob
   )
-
+  
   # predict to new data  
   prob_pred <- microdistancing_model(
     data = pred_data,
@@ -2081,8 +2062,6 @@ distancing_effect_model <- function(dates, gi_cdf) {
        gamma_t_state = gamma_t_state,
        OC_t_state = OC_t_state,
        p = p,
-       relative_weights = relative_weights,
-       scaling = scaling,
        beta = beta,
        HC_0 = HC_0,
        HD_0 = HD_0,
@@ -2237,7 +2216,7 @@ barometer_results <- function() {
       respondents = col_double()
     )
   )
-
+  
   do.call(bind_rows, tibbles) %>%
     filter(
       !state %in% c("Australia", "Other")
@@ -2304,29 +2283,49 @@ microdistancing_model <- function(data,
 # model for the trend in macrodistancing a weighted sum of time at location
 # types, and an overall scaling coefficient, multiplied by a scalar baseline
 # contact rate
-macrodistancing_model <- function(data,
-                                  baseline,
-                                  relative_weights,
-                                  scaling) {
+macrodistancing_model <- function(data, parameters) {
   
   # format data into a date/state by location greta array
-  location_changes <- data %>%
+  log_location_changes <- data$location_change_trends %>%
     select(-state, -date) %>%
     as.matrix() %>%
+    log() %>%
     as_data()
   
-  # weight locations and multiply by scaling factor to get change in
-  # non-household contacts
-  relative_contacts <- location_changes %*% t(relative_weights)
-  relative_contacts_scaled <- relative_contacts ^ scaling
+  # log of change in number of contacts compared to baseline
+  log_diff_contacts <- log_location_changes %*% parameters$mobility_coefs
   
-  # convert change to absolute estimate of nonhousehold contacts
-  state_long <- baseline * relative_contacts_scaled
+  # fraction of weekly contacts that are on weekends - as a function of change in numbers of contacts
+  p_weekend <- ilogit(parameters$weekend_intercept + parameters$weekend_coef * log_diff_contacts)
   
-  # reshape to date-by-state matrix
-  wide_dim <- c(n_distinct(data$date), n_distinct(data$state))
-  greta_array(state_long, dim = wide_dim)
+  # average daily number of contacts
+  log_avg_daily_contacts <- log(parameters$OC_0) + log_diff_contacts
+  avg_daily_contacts <- exp(log_avg_daily_contacts)
   
+  avg_daily_contacts_wide <- greta_long_to_date_state(
+    avg_daily_contacts,
+    data$location_change_trends$date,
+    data$location_change_trends$state
+  )
+  
+  p_weekend_wide <- greta_long_to_date_state(
+    p_weekend,
+    data$location_change_trends$date,
+    data$location_change_trends$state
+  )
+  
+  list(
+    avg_daily_contacts = avg_daily_contacts_wide,
+    p_weekend = p_weekend_wide
+  )
+  
+}
+
+# take a vector greta array correpsonding to dates and states and convert to
+# date-by-state wide format
+greta_long_to_date_state <- function(long, dates, states) {
+  wide_dim <- c(n_distinct(dates), n_distinct(states))
+  greta_array(long, dim = wide_dim)
 }
 
 # contruct multiple GPs for epsilons in the Reff model
@@ -2402,7 +2401,7 @@ tf_project_local_cases <- function(infectiousness, R_local, disaggregation_proba
     # infected on this day
     new_C <- R[, t, ] * I[, t, ]
     new_C <- tf$expand_dims(new_C, 1L)
-
+    
     # distribute infectiousness of these cases across their infectious profile
     new_I <- new_C * p
     
@@ -2427,7 +2426,7 @@ tf_project_local_cases <- function(infectiousness, R_local, disaggregation_proba
     list(C, I, R, p, t + 1L, T, K, sequence)
     
   }
-
+  
   # pad I and R with K zeros so we don't need to mess with indexing inside the loop
   batch_size <- greta:::get_batch_size()
   n_locations <- dim(infectiousness)[[3]]
@@ -2453,13 +2452,13 @@ tf_project_local_cases <- function(infectiousness, R_local, disaggregation_proba
     K,
     as.matrix((1:K) - 1L)
   )
-
+  
   # iterate to compute infectiousness
   result <- tf$while_loop(cond, body, values)
   
   # return expected numbers of new local cases
   result[[1]]
-
+  
 }
 
 # check fit of projected cases against national epi curve
@@ -2574,9 +2573,9 @@ load_contacts_by_state <- function(csv, date) {
     mutate(date = date) %>%
     filter(state != "Other") %>%
     uncount(respondents) 
- 
+  
   contacts
-     
+  
 }
 
 # load in data from the contact surveys
@@ -2603,7 +2602,7 @@ contact_survey_data <- function() {
     )
     
   )
-   
+  
   # add on barometer survey data that comes in waves
   contact_wave_files <- list.files("data/contacts/barometer",
                                    pattern = "\\d.csv",
@@ -2639,60 +2638,114 @@ contact_survey_data <- function() {
   
 }
 
-macrodistancing_params <- function(location_change_trends, gi_cdf) {
-  # baseline number of non-household contacts, from Prem and Rolls
-  baseline_contact_params <- baseline_contact_parameters(gi_cdf)
+# load the data needed for the macrodistancing model
+macrodistancing_data <- function(dates = NULL) {
   
+  # modelled change (after/before ratio) in time at types of locations from Google
+  location_change_trends <- location_change(dates) %>%
+    mutate_at(
+      vars(public, home, retail, transit, work),
+      ~replace_na(., 1)
+    ) %>%
+    mutate(state = abbreviate_states(state))
+  
+  # state-level numbers of non-household contacts by state and date from Freya's
+  # survey and the BETA barometer. Remove implausible responses, from the
+  # reporting clump at 999 and above (short conversation with 999 or more people
+  # in a day is implausible, and probably an entry/reporting/understanding error)
+  contact_data <- parse_all_surveys() %>%
+    filter(
+      !is.na(contact_num),
+      !is.na(state)
+    ) %>%
+    select(
+      state,
+      date,
+      wave,
+      wave_date,
+      wave_duration,
+      weekend_fraction,
+      age_groups,
+      city,
+      employment,
+      contact_num,
+      starts_with("contacts_")
+    ) %>%
+    filter(
+      contact_num <= 999,
+      date %in% location_change_trends$date
+    )
+  
+  list(
+    contacts = contact_data,
+    location_change_trends = location_change_trends
+  )
+  
+}
+
+macrodistancing_params <- function(baseline_contact_params) {
+  
+  # baseline number of non-household contacts, from Prem and Rolls
   OC_0 <- normal(baseline_contact_params$mean_contacts[2],
                  baseline_contact_params$se_contacts[2],
                  truncation = c(0, Inf))
   
-  # prior weights on the relationship between numbers of non-houshold contacts and
-  # time spent in those locations, from baseline proportions of contacts in those
-  # locations
-  location_weights <- location_contacts()
-  location_names <- colnames(location_change_trends)[-(1:2)]
-  location_idx <- match(location_names,
-                        location_weights$location)
-  relative_weights_prior <- location_weights[location_idx, ]$proportion_contacts
+  # coefficients for change in average contacts as a function of mobility indices
+  mobility_coefs <- normal(0, 10, dim = 5)
   
-  # relative contribution of time in each location type to the number of
-  # non-household contacts
-  relative_weights <- dirichlet(t(relative_weights_prior * 1))
+  # coefficients for the fraction of weekly contacts that are on weekends, as a
+  # function of the log diffference in contacts
+  weekend_intercept <- normal(0, 1)
+  weekend_coef <- normal(0, 10) 
   
-  # scaling to account for greater/lower reductions than implied by the mobility
-  scaling <- lognormal(0, 1)
-  
-  list(OC_0 = OC_0,
-       relative_weights = relative_weights,
-       scaling = scaling)
+  list(
+    OC_0 = OC_0,
+    mobility_coefs = mobility_coefs,
+    weekend_intercept = weekend_intercept,
+    weekend_coef = weekend_coef 
+  )
   
 }
 
 
 # define the likelihood for the macrodistancing model
-macrodistancing_likelihood <- function(OC_t_state, contacts, location_change_trends) {
-  
-  # keep only contact data where there is mobility data
-  contacts <- contacts %>%
-    filter(date %in% location_change_trends$date)
+macrodistancing_likelihood <- function(predictions, data) {
   
   # pull out the expected number of non-household contacts by state and date
-  dates <- unique(location_change_trends$date)
-  states <- unique(location_change_trends$state)
-  date_idx <- match(contacts$date, dates)
-  state_idx <- match(contacts$state, states)
+  all_dates <- unique(data$location_change_trends$date)
+  all_states <- unique(data$location_change_trends$state)
+  date_idx <- match(data$contacts$date, all_dates)
+  state_idx <- match(data$contacts$state, all_states)
   idx <- cbind(date_idx, state_idx)
   
-  # likelihood for state-level contact rate data (truncate contacts at 500 for numerical stability)
-  mean_contacts <- OC_t_state[idx]
+  # get expected number of contacts per respondent based on their date, state,
+  # and the fraction of the contact survey period that was a weekend
+  OC_t_state <- predictions$avg_daily_contacts
+  p_weekend_t_state <- predictions$p_weekend
+  avg_daily_contacts <- OC_t_state[idx]
+  p_weekend <- p_weekend_t_state[idx]
+  
+  # weighting to account for the weekendiness of each survey response scale up
+  # to weekly then down to avg on weekend/weekday, then weighted sum to get
+  # expected count on the observed day:
+  # week_total_contacts = avg_daily_contacts * 7
+  # weekend_avg_daily_contacts = week_total_contacts * p_weekend / 2
+  # weekday_avg_daily_contacts = week_total_contacts * (1 - p_weekend) / 5
+  # expected_observed_contacts = weekend_avg_daily_contacts * weekend_fraction +
+  #  weekday_avg_daily_contacts * (1  - weekend_fraction
+  # factor out avg_daily contacts to get a weight for each observation
+  weight <- p_weekend * data$contacts$weekend_fraction * 7 / 2 +
+    (1 - p_weekend) * (1 - data$contacts$weekend_fraction) * 7 / 5
+  predicted_contacts <- avg_daily_contacts * weight
+  
   sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf))
   size <- 1 / sqrt(sqrt_inv_size)
-  prob <- 1 / (1 + mean_contacts / size)
-  distribution(contacts$contacts) <- negative_binomial(size, prob)
+  prob <- 1 / (1 + predicted_contacts / size)
+  distribution(data$contacts$contact_num) <- negative_binomial(size, prob)
   
   result <- list(size = size,
-                 prob = prob)
+                 prob = prob,
+                 weekend_weight = weight)
   
   invisible(result)
   
@@ -2739,7 +2792,7 @@ microdistancing_params <- function(n_locations = 8) {
   # timing of peak microdistancing between the date of the last intervention and
   # today's date
   peak <- normal(0, 1, truncation = c(0, 1))
-
+  
   # timing of inflections between peak and now
   inflections <- normal(0, 1, truncation = c(0, 1), dim = n_locations)
   
@@ -2923,10 +2976,10 @@ impute_one_onset <- function(confirmation_date,
   surv_from <- notification_delay_cdf(delays - 1, possible_onset_dates, state)
   surv_to <- notification_delay_cdf(delays, possible_onset_dates, state)
   prob <- surv_from - surv_to
-
+  
   # normalise to get probabilities of different delays
   prob <- prob / sum(prob)
-
+  
   # compute either the expected time since onset, or draw a random one
   delay <- switch(method,
                   expected = round(sum(delays * prob)),
@@ -3006,10 +3059,10 @@ postcode_to_state <- function(postcode) {
     grepl("^93", postcode) ~ "QLD",
     TRUE ~ "NA"
   )
-
+  
   state[state == "NA"] <- NA
   state
-    
+  
 }
 
 lga_to_state <- function (lga) {
@@ -3105,7 +3158,7 @@ get_nndss_linelist <- function(date = NULL, dir = "~/not_synced/nndss", strict =
       CV_CLOSE_CONTACT = "numeric"
     )
   }
-
+  
   
   dat <- readxl::read_xlsx(
     data$file,
@@ -3126,7 +3179,7 @@ get_nndss_linelist <- function(date = NULL, dir = "~/not_synced/nndss", strict =
   # Remove cases without a state
   dat <- dat %>%
     filter(!is.na(STATE))
-
+  
   # tidy up dates and parse place of acquisition to local (Australia) vs. overseas
   dat <- dat %>%
     mutate(
@@ -3323,7 +3376,7 @@ get_notification_delay_cdf <- function(linelist) {
       delay >= lower,
       delay <= upper
     )
-
+  
   # get an ecdf for each group
   ecdfs <- delay_data %>%
     mutate(
@@ -3367,7 +3420,7 @@ detection_probability_matrix <- function(latest_date, infection_dates, states) {
     nrow = n_dates,
     ncol = n_states
   )
-
+  
   delays_mat <- matrix(
     delays, 
     nrow = n_dates,
@@ -3396,7 +3449,7 @@ detection_probability_matrix <- function(latest_date, infection_dates, states) {
 
 
 impute_linelist <- function(linelist, notification_delay_cdf) {
-
+  
   # impute the onset dates (only 0.6% of cases) using expected value from time to
   # detection distribution. Do this outside dplyr to avoid duplicating slow computations
   missing_onset <- is.na(linelist$date_onset)
@@ -3464,10 +3517,10 @@ infections_by_region <- function(linelist,
   
   region_type <- match.arg(region_type)
   case_type <- match.arg(case_type)
-
+  
   # get full range of dates (do this before dropping rows)
   dates <- seq(from, to, by = 1)
-    
+  
   # drop unneeded rows (and regions)
   if (case_type != "both") {
     linelist <- linelist %>%
@@ -3702,7 +3755,7 @@ forecast_locals <- function (local_cases, imported_cases,
   expected_transmission <- forecast_local_infectious * Reff_locals + 
     primary_local_cases
   p_cases <- 1 - exp(-expected_transmission)
-
+  
   list(
     local_cases = forecast_local_cases,
     seecondary_local_cases = secondary_local_cases,
@@ -3720,7 +3773,7 @@ pad_cases_matrix <- function(cases, n_dates, which = c("after", "before")) {
     pad <- matrix(0,
                   nrow = n_dates - nrow(cases),
                   ncol = ncol(cases))
-
+    
     if (inherits(cases, "greta_array")) {
       pad <- as_data(pad)
     }
@@ -3765,7 +3818,7 @@ gi_matrix <- function(gi_cdf, dates, gi_bounds = c(0, 20)) {
 # date, applying the effect of improving surveillance and normalising to
 # integrate to 1
 gi_vector <- function(gi_cdf, date, gi_bounds = c(0, 20)) {
-
+  
   # baseline GI vector, without effects of improved surveillance
   days <- seq(gi_bounds[1], gi_bounds[2])
   gi_vec_naive <- gi_probability(gi_cdf, days = days, bounds = gi_bounds)
@@ -3865,7 +3918,7 @@ prep_state_lgas <- function(
   
   # get LGAs in VIC, join with mesh blocks, and sum populations
   st_read("data/spatial/abs/LGA_2016_AUST.shp",
-                     stringsAsFactors = FALSE) %>%
+          stringsAsFactors = FALSE) %>%
     filter(STE_NAME16 == state) %>%
     select(lga_code = LGA_CODE16,
            lga = LGA_NAME16,
@@ -4262,7 +4315,13 @@ parse_all_surveys <- function() {
   ) %>%
     mutate(
       weekend_fraction = weekend_weight(date)
-    )
+    ) %>%
+    group_by(wave) %>%
+    mutate(
+      wave_date = mean(date),
+      wave_duration = as.numeric(max(date) - min(date))
+    ) %>%
+    ungroup()
 }
 
 # colours for plotting

@@ -4,49 +4,31 @@
 source("R/functions.R")
 library(greta)
 
-# make sure we have the latest survey data
-format_raw_survey_data()
+# informative priors for baseline contact parameters
+baseline_contact_params <- baseline_contact_parameters(gi_cdf)
 
-# modelled change (after/before ratio) in time at types of locations from Google
-location_change_trends <- location_change() %>%
-  mutate_at(
-    vars(public, home, retail, transit, work),
-    ~replace_na(., 1)
-  ) %>%
-  mutate(state = abbreviate_states(state))
+# data, parameters, preedictions, and likleihood definition for the model
+data <- macrodistancing_data()
+params <- macrodistancing_params(baseline_contact_params)
+predictions <- macrodistancing_model(data, params)
+out <- macrodistancing_likelihood(predictions, data)
 
-# state-level numbers of non-household contacts by state and date from Freya's
-# survey and the BETA barometer. Remove implausible responses, from the
-# reporting clump at 999 and above (short conversation with 999 or more people
-# in a day is implausible, and probably an entry/reporting/understanding error)
-contacts <- contact_survey_data() %>%
-  filter(contacts < 999)
-
-# gi_cdf <- nishiura_cdf()
-
-params <- macrodistancing_params(location_change_trends, gi_cdf)
-OC_0 <- params$OC_0
-relative_weights <- params$relative_weights
-scaling <- params$scaling
-
-OC_t_state <- macrodistancing_model(
-  location_change_trends,
-  baseline = OC_0,
-  relative_weights = relative_weights,
-  scaling = scaling
-)
-
-out <- macrodistancing_likelihood(OC_t_state, contacts, location_change_trends)
+OC_t_state <- predictions$avg_daily_contacts
+p_weekend_t_state <- predictions$p_weekend
 
 # fit model
 set.seed(2020-05-30)
-m <- model(relative_weights, scaling, OC_0, out$size)
-draws <- mcmc(m,
-              sampler = hmc(Lmin = 10, Lmax = 15),
-              chains = 10)
 
-draws <- extra_samples(draws, 2000)
+m <- model(
+  params$OC_0,
+  params$mobility_coefs,
+  params$weekend_intercept,
+  params$weekend_coef,
+  out$size
+)
+draws <- mcmc(m, chains = 10)
 convergence(draws)
+# draws <- extra_samples(draws, 4000)
 
 nsim <- coda::niter(draws) * coda::nchain(draws)
 nsim <- min(10000, nsim)
@@ -55,7 +37,7 @@ nsim <- min(10000, nsim)
 contacts_ga <- negative_binomial(out$size, out$prob)
 contacts_sim <- calculate(contacts_ga, values = draws, nsim = nsim)[[1]][, , 1]
 bayesplot::ppc_ecdf_overlay(
-  contacts$contacts,
+  data$contacts$contact_num,
   contacts_sim[1:1000, ],
   discrete = TRUE
 )
@@ -65,57 +47,74 @@ pred_sim <- calculate(c(OC_t_state), values = draws, nsim = nsim)[[1]][, , 1]
 quants <- t(apply(pred_sim, 2, quantile, c(0.05, 0.25, 0.75, 0.95)))
 colnames(quants) <- c("ci_90_lo", "ci_50_lo", "ci_50_hi", "ci_90_hi")
 
-# get point estimates for plotting
-# gi_cdf <- nishiura_cdf()
-baseline_contact_params <- baseline_contact_parameters(gi_cdf)
-baseline_point <- tibble::tribble(
-  ~date, ~estimate, ~sd,
-  as.Date("2020-03-01"),
-  baseline_contact_params$mean_contacts[2],
-  baseline_contact_params$se_contacts[2]
+baseline_point <- tibble::tibble(
+  date = as.Date("2020-03-01"),
+  estimate = baseline_contact_params$mean_contacts[2],
+  sd = baseline_contact_params$se_contacts[2],
+  type = "Nowcast"
 ) %>%
-  mutate(type = "Nowcast") %>%
-  mutate(lower = estimate - sd * 1.96,
-         upper = estimate + sd * 1.96)
+  mutate(
+    lower = estimate - sd * 1.96,
+    upper = estimate + sd * 1.96
+  )
+
+
+# compute weekend effect weights for INLA, based on fitted weekend_weight
+weekend_weights_mean <- out$weekend_weight %>%
+  calculate(values = draws, nsim = nsim) %>%
+  magrittr::extract2(1) %>%
+  magrittr::extract(, , 1) %>%
+  colMeans()
+
+# us this as an offset in INLA estimate
 
 # slim down dataframe to get independent estimates for surveys
-survey_points <- contacts %>%
-  group_by(state, date) %>%
-  summarise(n = n())  %>%
+survey_points <- data$contacts %>%
+  group_by(state, wave_date) %>%
+  summarise(
+    n = n(),
+    wave_duration = first(wave_duration)
+  )  %>%
   ungroup()
 
-library(INLA)
-contacts_inla <- contacts %>%
-  mutate(date = as.character(date),
-         date_state = paste(date, state))
+# need to group this by survey periods to plot
 
-glm <- inla(contacts ~ f(date_state, model = "iid"),
+library(INLA)
+contacts_inla <- data$contacts %>%
+  mutate(wave = as.character(wave),
+         wave_state = paste(wave, state))
+
+glm <- inla(contact_num ~ f(wave_state, model = "iid"),
             family = "nbinomial",
             data = contacts_inla,
+            E = weekend_weights_mean,
             control.predictor = list(link = 1))
 
 # pull out fitted values for each date/state combination
 idx <- contacts_inla %>%
   mutate(id = row_number()) %>%
-  distinct(date, state, .keep_all = TRUE) %>%
-  mutate(date = as.Date(date)) %>%
+  distinct(wave_date, state, .keep_all = TRUE) %>%
   old_right_join(survey_points) %>%
   pull(id)
 
 sry <- glm$summary.fitted.values[idx, ]
+
+# The width of the horizontal bars for survey data is proportional to the
+# duration, but plotted in arbitrary units (which depend on the plot size).
+# Rescale it with this tweaking parameter to roughly match the durations
 survey_points <- survey_points %>%
   mutate(
-    date = date + 2,
     estimate = sry$mean,
     lower = sry$`0.025quant`,
-    upper = sry$`0.975quant`
+    upper = sry$`0.975quant`,
+    width = wave_duration
   ) %>%
   mutate(type = "Nowcast")
 
 # get holiday dates and subset to where they overlap with surveys
 holiday_lines <- survey_points %>%
-  mutate(date_start = date - 3,
-         date_end = date + 3) %>%
+  mutate(date_start = wave_date - wave_duration / 2,
+         date_end = wave_date + wave_duration / 2) %>%
   select(state, date_start, date_end) %>%
   left_join(
     holiday_dates() %>%
@@ -124,9 +123,10 @@ holiday_lines <- survey_points %>%
   filter(date < date_end & date > date_start)
 
 type <- 1
-states <- unique(location_change_trends$state)
-dates <- unique(location_change_trends$date)
+states <- unique(data$location_change_trends$state)
+dates <- unique(data$location_change_trends$date)
 n_states <- length(states)
+
 # non-household contacts
 p <- plot_trend(pred_sim,
                 dates = dates,
@@ -172,17 +172,20 @@ p <- plot_trend(pred_sim,
   
   # add survey results estimate
   geom_point(
-    aes(date, estimate),
+    aes(
+      wave_date,
+      estimate,
+    ),
     data = survey_points,
     size = 4,
     pch = "_"
   ) +
   geom_errorbar(
     aes(
-      date,
+      wave_date,
       estimate,
       ymin = lower,
-      ymax = upper
+      ymax = upper,
     ),
     data = survey_points,
     size = 4,
@@ -196,7 +199,7 @@ p
 save_ggplot("macrodistancing_effect.png")
 
 # prepare outputs for plotting
-pred_trend <- location_change_trends %>%
+pred_trend <- data$location_change_trends %>%
   select(date, state) %>%
   # add predictions
   mutate(mean = colMeans(pred_sim)) %>%
@@ -223,8 +226,3 @@ pred_summary <- pred_trend %>%
 
 saveRDS(pred_summary,
         file = "outputs/macrodistancing_trend_summary.RDS")
-
-# save the raw contact survey data
-contact_survey_data() %>%
- saveRDS("outputs/contact_survey_data.RDS")
-

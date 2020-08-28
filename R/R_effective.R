@@ -1,10 +1,6 @@
 # fit a Bayesian model-based estimate of R_effective over time, quantifying the
 # impacts of both quarantine and physical distancing measures.
 
-# see the manuscript for an explanation of the model that may or may not be out
-# of date.
-
-
 set.seed(2020-04-29)
 source("R/functions.R")
 
