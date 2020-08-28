@@ -502,8 +502,6 @@ for (type in types) {
   R_eff_loc_1_macro_vec <- c(R_eff_loc_1_macro_proj[rows, ])
   R_eff_loc_1_surv_vec <- c(R_eff_loc_1_surv_proj[rows])
   
-  OC_t_state_vec <- c(de$OC_t_state)
-  
   # some things for VIC postcode-level simulations
   vic_idx <- which(states == "VIC")
   full_reduction_idx <- which(dates == as.Date("2020-04-13"))
@@ -542,7 +540,6 @@ for (type in types) {
     R_eff_loc_1_micro_vec,
     R_eff_loc_1_macro_vec,
     R_eff_loc_1_surv_vec,
-    OC_t_state_vec,
     vic_r_eff_reduction_full,
     vic_r_eff_reduction_half,
     vic_r_eff,
@@ -561,7 +558,6 @@ for (type in types) {
   R_eff_loc_1_micro_sim <- sims$R_eff_loc_1_micro_vec
   R_eff_loc_1_macro_sim <- sims$R_eff_loc_1_macro_vec
   R_eff_loc_1_surv_sim <- sims$R_eff_loc_1_surv_vec
-  OC_t_state_sim <- sims$OC_t_state_vec
   vic_r_eff_reduction_full_sim <- sims$vic_r_eff_reduction_full
   vic_r_eff_reduction_half_sim <- sims$vic_r_eff_reduction_half
   vic_r_eff_sim <- sims$vic_r_eff

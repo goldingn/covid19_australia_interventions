@@ -2,16 +2,13 @@
 # from the BETA barometer
 source("R/functions.R")
 
-# make sure we have the latest survey data
-format_raw_survey_data()
-
 data <- microdistancing_data()
-barometer_distance <- data$barometer_data
+survey_distance <- data$survey_distance
 pred_data <- data$prediction_data
 
 library(greta)
 
-n_locations <- max(barometer_distance$state_id)
+n_locations <- max(survey_distance$state_id)
 
 params <- microdistancing_params(n_locations)
 
@@ -22,7 +19,7 @@ waning_effects <- params$waning_effects
 inflection_effects <- params$inflection_effects
 
 prob <- microdistancing_model(
-  data = barometer_distance,
+  data = survey_distance,
   peak = peak,
   inflections = inflections,
   distancing_effects = distancing_effects,
@@ -30,8 +27,8 @@ prob <- microdistancing_model(
   inflection_effects = inflection_effects
 )
 
-distribution(barometer_distance$count) <- binomial(
-  barometer_distance$respondents,
+distribution(survey_distance$count) <- binomial(
+  survey_distance$respondents,
   prob
 )
 
@@ -71,11 +68,18 @@ line_df <- pred_plot %>%
   filter(date >= as.Date("2020-03-01")) %>%
   mutate(type = "Nowcast")
 
-point_df <- barometer_distance %>%
+point_df <- survey_distance %>%
+  group_by(state, wave_date) %>%
+  summarise(
+    count =  sum(count),
+    respondents = sum(respondents)
+  ) %>%
   ungroup() %>%
   mutate(
+    proportion = count / respondents,
     percentage = proportion * 100
   ) %>%
+  rename(date = wave_date) %>%
   mutate(type = "Nowcast")
 
 # Compute confidence intervals for the proportions for plotting. Need to fudge

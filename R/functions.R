@@ -2759,12 +2759,30 @@ microdistancing_params <- function(n_locations = 8) {
        inflection_effects = inflection_effects)
 }
 
-# get data for fitting and predicting from microdistancing model
-microdistancing_data <- function(dates = NULL) {
-  
-  # recode and collapse responses into percentage adherence
-  barometer <- barometer_results() %>%
-    # recode 1.5m compliance question as yes/no (whether they mostly did it)
+# load  all hygiene/microdistancing survey data
+hygiene_data <- function () {
+  parse_all_surveys()  %>%
+    select(
+      -starts_with("contact")
+    ) %>%
+    mutate(
+      phys_contact = ifelse(phys_contact, "Yes", "No")
+    ) %>%
+    pivot_longer(
+      cols = c(phys_contact, phys_distance, wash_hands, cough, face_covering),
+      names_to = "question",
+      values_to = "response"
+    ) %>%
+    mutate(
+      question = recode(
+        question,
+        `phys_distance` = "1.5m compliance",
+        `wash_hands` = "Hand washing",
+        `cough` = "Cough etiquette",
+        `face_covering` = "Face covering",
+        `phys_contact` = "Physical contact"
+      )
+    ) %>%
     mutate(
       response = case_when(
         question == "1.5m compliance" &
@@ -2787,6 +2805,15 @@ microdistancing_data <- function(dates = NULL) {
         question == "Cough etiquette" & response == "Nothing" ~ "no",
         TRUE ~ response) 
     ) %>%
+    # recode face covering as Always or not
+    mutate(
+      response = case_when(
+        question == "Face covering" &
+          response %in% c("Always") ~ "yes",
+        question == "Face covering" &
+          response %in% c("Often", "Sometimes", "Rarely", "No") ~ "no",
+        TRUE ~ response) 
+    ) %>%
     # recode physical contact to the opposite, to reflect avoidance
     mutate(
       response = case_when(
@@ -2794,21 +2821,36 @@ microdistancing_data <- function(dates = NULL) {
         question == "Physical contact" & response == "Yes" ~ "no",
         TRUE ~ response) 
     ) %>%
-    # combine responses into yes/no
-    group_by(state, date, question, response) %>%
-    summarise(count = sum(count),
-              respondents = mean(respondents)) %>%
+    filter(
+      !is.na(response),
+      !is.na(state)
+    ) %>%
+    # collate responses into respondents and yeses
+    group_by(state, wave_date, date, question, response) %>%
+    summarise(count = n())%>%
+    ungroup() %>%
+    pivot_wider(
+      names_from = "response",
+      values_from  = "count",
+    ) %>%
+    mutate(
+      yes = replace_na(yes, 0),
+      no = replace_na(no, 0),
+      respondents = yes + no
+    ) %>%
+    rename(count = yes) %>%
+    select(-no) %>%
     mutate(proportion = count / respondents) %>%
-    # now we can just keep the proportion responding 'yes'
-    filter(response == "yes") %>%
-    select(-response) %>%
     arrange(state, question, date)
   
-  # load latent factors
-  # assume adoption of microdistancing follows the same trend as macrodistancing,
-  # and that waning starts at the same time, butdon't assume it wanes at the same
-  # rate
+}
+
+# get data for fitting and predicting from microdistancing model
+microdistancing_data <- function(dates = NULL) {
   
+  # assume adoption of microdistancing follows the same trend as macrodistancing,
+  # and that waning starts at the same time, but don't assume it wanes at the same
+  # rate
   distancing <- readRDS("outputs/social_distancing_latent.RDS")
   
   # use these dates if no others are specified
@@ -2816,8 +2858,10 @@ microdistancing_data <- function(dates = NULL) {
     dates <- distancing$date
   }
   
-  barometer <- barometer %>%
-    filter(date %in% dates)
+  survey <- hygiene_data() %>%
+    filter(
+      date %in% dates
+    )
   
   # get data to predict to
   pred_data <- distancing %>%
@@ -2826,7 +2870,7 @@ microdistancing_data <- function(dates = NULL) {
     old_right_join(
       expand_grid(
         date = dates,
-        state = unique(barometer$state)
+        state = unique(survey$state)
       )
     ) %>%
     replace_na(list(distancing = 0)) %>%
@@ -2838,11 +2882,11 @@ microdistancing_data <- function(dates = NULL) {
     arrange(state, date)
   
   # subset to 1.5m question and add data for modelling
-  barometer_distance <- barometer %>%
+  survey_distance <- survey %>%
     filter(question == "1.5m compliance") %>%
     left_join(pred_data)
   
-  result <- list(barometer_data = barometer_distance,
+  result <- list(survey_distance = survey_distance,
                  prediction_data = pred_data)
   
   result
@@ -4216,7 +4260,13 @@ parse_barometer <- function(filename = "data/barometer_all/Barometer full contac
     rename(
       wave = barometer_week
     ) %>%
-    select(-wave_date, -age_groups_pd)
+    select(-age_groups_pd)
+  
+  # fill in missing dates withthe wave date - the only information we have
+  missing_date <- is.na(df$date)
+  df$date[missing_date] <- df$wave_date[missing_date]
+  df %>%
+    select(-wave_date)
   
 }
 
@@ -4262,7 +4312,7 @@ parse_all_surveys <- function() {
     ) %>%
     group_by(wave) %>%
     mutate(
-      wave_date = mean(date),
+      wave_date = median(date),
       wave_duration = as.numeric(max(date) - min(date))
     ) %>%
     ungroup()
