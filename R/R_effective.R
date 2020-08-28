@@ -525,7 +525,7 @@ for (type in types) {
     infectious_days * (1 - de$p ^ de$OD_0)
   R_t <- household_infections + non_household_infections
   fraction_non_household <- non_household_infections / R_t
-  vic_fraction_non_household <- fraction_non_household[n_dates - 2, vic_idx]
+  vic_fraction_non_household <- fraction_non_household[min(n_dates, nrow(fraction_non_household)), vic_idx]
   
   # make sure the seeds are the same for each type of prediction, so the samples
   # match

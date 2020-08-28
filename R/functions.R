@@ -1889,46 +1889,23 @@ location_contacts <- function() {
 }
 
 # get the index of microdistancing in each state as a date-by-state matrix
-microdistancing_state <- function (dates, states) {
+trends_date_state <- function (file, dates = NULL, states = NULL) {
   
-  microdistancing_file <- "outputs/microdistancing_trends.RDS"
-  microdistancing_index <- microdistancing_file %>%
-    readRDS() %>%
+  trends <- readRDS(file)
+  
+  date_seq <- seq(min(trends$date), max(trends$date), by = 1)
+  
+  if (is.null(states)) {
+    states <- unique(trends$state)
+  }
+  
+  index <- trends %>%
     # expand to all required dates and states
     select(state, date, mean) %>%
     old_right_join(
       expand_grid(
         state = states,
-        date = dates
-      )
-    ) %>%
-    replace_na(list(mean = 0)) %>%
-    # scale to have a maximum of 1
-    mutate(mean = mean / max(mean)) %>%
-    # turn into a date-by-state matrix
-    pivot_wider(
-      names_from = state,
-      values_from = mean
-    ) %>%
-    select(-date) %>%
-    as.matrix()
-  
-  microdistancing_index
-  
-}
-
-# get the index of macrodistancing in each state as a date-by-state matrix
-macrodistancing_state <- function (dates, states) {
-  
-  macrodistancing_file <- "outputs/macrodistancing_trends.RDS"
-  macrodistancing_index <- macrodistancing_file %>%
-    readRDS() %>%
-    # expand to all required dates and states
-    select(state, date, mean) %>%
-    old_right_join(
-      expand_grid(
-        state = states,
-        date = dates
+        date = date_seq
       )
     ) %>%
     # turn into a date-by-state matrix
@@ -1939,7 +1916,15 @@ macrodistancing_state <- function (dates, states) {
     select(-date) %>%
     as.matrix()
   
-  macrodistancing_index
+  # crop to speecified dates, extending either end out flat if missing
+  if (!is.null(dates)) {
+    idx <- dates - min(date_seq) + 1
+    idx <- pmax(idx, 1)
+    idx <- pmin(idx, nrow(index))
+    index <- index[idx, ]
+  }
+  
+  index
   
 }
 
@@ -1989,65 +1974,24 @@ distancing_effect_model <- function(dates, gi_cdf) {
   h_t <- h_t_state(dates)
   HD_t <- HD_0 * h_t
   
-  
-  # model for non-household contacts in each state over time
-  macro_data <- macrodistancing_data(dates)
-  macro_params <- macrodistancing_params(baseline_contact_params)
-  macro_predictions <- macrodistancing_model(macro_data, macro_params)
-  . <- macrodistancing_likelihood(macro_predictions, macro_data)
-  
-  OC_0 <- macro_params$OC_0
-  OC_t_state <- macro_predictions$avg_daily_contacts
+  # trends in non-household contacts in each state over time
+  OC_t_state <- trends_date_state(
+    "outputs/macrodistancing_trends.RDS",
+    dates
+  )
+  OC_0 <- OC_t_state[1, 1]
   
   # model gamma_t: reduction in duration and transmission probability of
   # non-household contacts over time, per state
-  data <- microdistancing_data(dates)
-  barometer_distance <- data$barometer_data
-  pred_data <- data$prediction_data
   
-  params <- microdistancing_params()
-  peak <- params$peak
-  inflections <- params$inflections
-  distancing_effects <- params$distancing_effects
-  waning_effects <- params$waning_effects
-  inflection_effects <- params$inflection_effects
-  
-  # define likelihood  
-  prob <- microdistancing_model(
-    data = barometer_distance,
-    peak = peak,
-    inflections = inflections,
-    distancing_effects = distancing_effects,
-    waning_effects = waning_effects,
-    inflection_effects = inflection_effects
+  # load probability of microdistancing and divide by the maximum value to get
+  # an index of per-contact transmission probability
+  microdistancing_prob <- trends_date_state(
+    "outputs/microdistancing_trends.RDS",
+    dates
   )
-  
-  distribution(barometer_distance$count) <- binomial(
-    barometer_distance$respondents,
-    prob
-  )
-  
-  # predict to new data  
-  prob_pred <- microdistancing_model(
-    data = pred_data,
-    peak = peak,
-    inflections = inflections,
-    distancing_effects = distancing_effects,
-    waning_effects = waning_effects,
-    inflection_effects = inflection_effects
-  )
-  
-  pred_data_wide <- pred_data %>%
-    pivot_wider(names_from = state, values_from = distancing)
-  
-  # reshape to date-by-state matrix
-  wide_dim <- c(n_distinct(pred_data$date), n_distinct(pred_data$state))
-  microdistancing_prob <- greta_array(prob_pred, dim = wide_dim)
-  
-  # divide by the maximum value, so that beta can scale it properly
   d_t_state <- microdistancing_prob / max(microdistancing_prob)
   
-  # d_t_state <- microdistancing_state(dates, states)
   beta <- uniform(0, 1)
   gamma_t_state <- 1 - beta * d_t_state
   
