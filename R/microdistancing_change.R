@@ -2,6 +2,9 @@
 # from the BETA barometer
 source("R/functions.R")
 
+# sync aggregated data for Dennis
+format_raw_survey_data()
+
 data <- microdistancing_data()
 survey_distance <- data$survey_distance
 pred_data <- data$prediction_data

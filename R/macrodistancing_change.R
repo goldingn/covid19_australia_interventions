@@ -27,8 +27,8 @@ m <- model(
   out$size
 )
 draws <- mcmc(m, chains = 10)
+draws <- extra_samples(draws, 4000)
 convergence(draws)
-# draws <- extra_samples(draws, 4000)
 
 nsim <- coda::niter(draws) * coda::nchain(draws)
 nsim <- min(10000, nsim)
