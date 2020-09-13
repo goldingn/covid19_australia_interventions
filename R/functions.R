@@ -2018,7 +2018,11 @@ distancing_effect_model <- function(dates, gi_cdf) {
   
 }
 
-plot_fit <- function(observed_cases, cases_sim, valid) {
+plot_fit <- function(observed_cases, cases_sim, model) {
+  
+  valid <- model$greta_arrays$misc$valid
+  dates <- model$data$dates$infection
+  states <- model$data$states
   
   # compute quantiles and plot timeseries for each state
   quants <- apply(
@@ -2409,24 +2413,40 @@ tf_project_local_cases <- function(infectiousness, R_local, disaggregation_proba
 }
 
 # check fit of projected cases against national epi curve
-check_projection <- function(draws, R_eff_local, R_eff_imported,
-                             gi_mat, gi_vec,
-                             local_infectious, imported_infectious,
-                             local_cases, dates,
+check_projection <- function(draws, 
+                             model,
                              start_date = as.Date("2020-02-28")) {
   
-  
-  n_states <- ncol(local_infectious)
-  n_dates <- nrow(local_infectious)
+  R_eff_local <- model$greta_arrays$reff$R_eff_loc_12
+  R_eff_imported <- model$greta_arrays$reff$R_eff_imp_12
+  gi_mat <- model$data$gi_mat
+  gi_vec <- gi_vector(gi_cdf, model$data$dates$latest)
+  local_infectiousness <- model$data$local$infectiousness
+  imported_infectiousness <- model$data$imported$infectiousnes
+  local_cases <- model$data$local$cases
+  dates <- model$data$dates$infection
+  n_states <- model$data$n_states
+  n_dates <- model$data$n_dates
   
   # national-level Reff - no clusters and weighted by state populations
-  local_weights <- sweep(local_infectious, 1, rowSums(local_infectious), FUN = "/")
+  local_weights <- sweep(
+    local_infectiousness,
+    1,
+    rowSums(local_infectiousness),
+    FUN = "/"
+  )
   local_weights[is.na(local_weights)] <- 1 / n_states
-  import_weights <- sweep(imported_infectious, 1, rowSums(imported_infectious), FUN = "/")
+  
+  import_weights <- sweep(
+    imported_infectiousness,
+    1,
+    rowSums(imported_infectiousness),
+    FUN = "/"
+  )
   import_weights[is.na(import_weights)] <- 1 / n_states
   
-  R_eff_loc_ntnl <- rowSums(R_eff_loc_12[seq_len(n_dates), ] * local_weights)
-  R_eff_imp_ntnl <- rowSums(R_eff_imp_12[seq_len(n_dates), ] * import_weights)
+  R_eff_loc_ntnl <- rowSums(R_eff_local[seq_len(n_dates), ] * local_weights)
+  R_eff_imp_ntnl <- rowSums(R_eff_imported[seq_len(n_dates), ] * import_weights)
   
   # subset to from the first of March, when transmission became established (the
   # model is not designed to work with the stochastic extinctions we saw at the beginning of the outbreak)
@@ -2450,7 +2470,7 @@ check_projection <- function(draws, R_eff_local, R_eff_imported,
   
   # expected number of new locally-acquired cases during the simulation period due
   # to infection from imports
-  import_local_cases <- rowSums(imported_infectious) * R_eff_imp_ntnl[seq_len(n_dates)]
+  import_local_cases <- rowSums(imported_infectiousness) * R_eff_imp_ntnl[seq_len(n_dates)]
   import_local_infectiousness <- gi_mat %*% import_local_cases
   
   # combine these to get forcing from existing and import-associated local cases,
@@ -3481,7 +3501,6 @@ reff_model_data <- function(linelist_raw,
   
 }
 
-
 reff_model <- function(model_data) {
   
   # reduction in R due to surveillance detecting and isolating infectious people
@@ -3582,6 +3601,9 @@ reff_model <- function(model_data) {
     FUN = "+"
   )
   
+  R_eff_loc_12 <- exp(log_R_eff_loc)
+  R_eff_imp_12 <- exp(log_R_eff_imp)
+  
   # combine everything as vectors, excluding invalid datapoints (remove invalid
   # elements here, otherwise it causes a gradient issue)
   R_eff_loc <- exp(log_R_eff_loc[1:data$n_dates, ])
@@ -3620,6 +3642,7 @@ reff_model <- function(model_data) {
   m <- model(expected_infections_vec)
   
   list(
+    data = model_data,
     model = m,
     greta_arrays = list(
       likelihood = module(
@@ -3628,10 +3651,12 @@ reff_model <- function(model_data) {
         prob_trunc
       ),
       reff = module(
-        R_eff_loc,
-        R_eff_imp,
+        R_eff_loc_1,
+        R_eff_imp_1,
         log_R_eff_loc,
-        log_R_eff_imp
+        log_R_eff_imp,
+        R_eff_loc_12,
+        R_eff_imp_12
       ),
       components = module(
         log_R0,
@@ -3645,6 +3670,45 @@ reff_model <- function(model_data) {
     )
   )
   
+}
+
+# reff component 1 under only surveillance changes
+reff_1_only_surveillance <- function(reff_model) {
+  components <- reff_model$greta_arrays$components
+  log_R0 <- components$log_R0
+  reduction <- components$surveillance_reff_local_reduction
+  exp(log_R0 + log(reduction))
+}
+
+# reff component 1 if only macrodistancing had changed
+reff_1_only_macro <- function(reff_model) {
+  components <- reff_model$greta_arrays$components
+  baseline_surveillance_effect <- components$surveillance_reff_local_reduction[1]
+  de <- components$distancing_effect
+  extend_idx <- reff_model$greta_arrays$misc$extend_idx
+  infectious_days <- infectious_period(gi_cdf)
+  h_t <- h_t_state(reff_model$data$dates$mobility)
+  HD_t <- de$HD_0 * h_t
+  household_infections_macro <- de$HC_0 * (1 - de$p ^ HD_t)
+  non_household_infections_macro <- de$OC_t_state * infectious_days * (1 - de$p ^ de$OD_0)
+  hourly_infections_macro <- household_infections_macro + non_household_infections_macro
+  hourly_infections_macro[extend_idx, ] * baseline_surveillance_effect
+}
+
+# reff component 1 if only macrodistancing had changed
+reff_1_only_micro <- function(reff_model) {
+  components <- reff_model$greta_arrays$components
+  baseline_surveillance_effect <- components$surveillance_reff_local_reduction[1]
+  de <- components$distancing_effect
+  extend_idx <- reff_model$greta_arrays$misc$extend_idx
+  infectious_days <- infectious_period(gi_cdf)
+  
+  household_infections_micro <- de$HC_0 * (1 - de$p ^ de$HD_0)
+  non_household_infections_micro <- de$OC_0 * infectious_days *
+    (1 - de$p ^ de$OD_0) * de$gamma_t_state
+  hourly_infections_micro <- household_infections_micro +
+    non_household_infections_micro
+  hourly_infections_micro[extend_idx, ] * baseline_surveillance_effect
 }
 
 fit_reff_model <- function(model, max_tries = 3, iterations_per_step = 1000) {
@@ -3693,16 +3757,56 @@ write_reff_key_dates <- function(model_data, dir = "outputs/") {
     )
 }
 
+# save local case data, dates, and detection probabilities for Robs
+write_local_cases <- function(model_data, file = "outputs/local_cases_input.csv") {
+  
+  tibble::tibble(
+    date_onset = rep(model_data$dates$onset, model_data$n_states),
+    detection_probability = as.vector(model_data$detection_prob_mat),
+    state = rep(model_data$states, each = model_data$n_dates),
+    count = as.vector(model_data$local$cases_infectious),
+    acquired_in_state = as.vector(model_data$local$cases)
+  ) %>%
+    write.csv(file, row.names = FALSE)
+  
+}
+
 # save the whole fitted Reff model to disk
-write_fitted_reff <- function(data, model, draws, file = "outputs/fitted_reff.RDS") {
+write_fitted_reff <- function(model, draws, file = "outputs/fitted_reff.RDS") {
   object <- list(
-    data = data,
     model = model,
     draws = draws
   )
   saveRDS(object, file)
 }
 
+# plot visual checks of model posterior calibration against observed data
+plot_reff_ppc_checks <- function(draws, model) {
+  
+  # check fit of observation model against data 
+  nsim <- coda::niter(draws) * coda::nchain(draws)
+  nsim <- min(10000, nsim)
+  
+  cases <- negative_binomial(
+    model$greta_arrays$likelihood$size,
+    model$greta_arrays$likelihood$prob_trunc
+  )
+  cases_sim <- calculate(cases, values = draws, nsim = nsim)[[1]][, , 1]
+  
+  valid <- model$greta_arrays$misc$valid
+  observed <- model$data$local$cases[valid]
+  
+  # overall PPC check
+  bayesplot::ppc_ecdf_overlay(
+    observed,
+    cases_sim[1:1000, ],
+    discrete = TRUE
+  )
+  
+  # check by state and time
+  plot_fit(observed, cases_sim, model)
+  
+}
 
 # split the dates and states into periods  with similar notification delay distributions
 notification_delay_group <- function(date_confirmation, state) {

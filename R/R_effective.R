@@ -16,101 +16,60 @@ google_change_data <- readRDS("outputs/google_change_trends.RDS")
 # prepare data for Reff modelling
 data <- reff_model_data(linelist, google_change_data)
 
-# save the key dates for Freya and David to read in
+# save the key dates for Freya and David to read in, and tabulated local cases
+# data for the Robs
 write_reff_key_dates(data)
+write_local_cases(data)
 
 # define the model (and greta arrays) for Reff, and sample until adequate convergence
-model <- reff_model(model_data)
+model <- reff_model(data)
 draws <- fit_reff_model(model)
 
-write_fitted_reff(model_data, model, draws) 
+# save these objects
+write_fitted_reff(model, draws) 
   
-# check fit of observation model against data 
-nsim <- coda::niter(draws) * coda::nchain(draws)
-nsim <- min(10000, nsim)
-cases <- negative_binomial(size, prob_trunc)
-cases_sim <- calculate(cases, values = draws, nsim = nsim)[[1]][, , 1]
+# object <- readRDS("outputs/fitted_reff.RDS")
+# model <- object$model
+# model$data <- object$data
+# draws <- object$draws
+# 
+# model$greta_arrays$reff$R_eff_loc_12 <- exp(model$greta_arrays$reff$log_R_eff_loc)
+# model$greta_arrays$reff$R_eff_imp_12 <- exp(model$greta_arrays$reff$log_R_eff_imp)
 
-# overall PPC check
-bayesplot::ppc_ecdf_overlay(
-  data$local$cases[valid],
-  cases_sim[1:1000, ],
-  discrete = TRUE
-)
-
-# check by state and time
-plot_fit(data$local$cases[valid], cases_sim, valid)
-
-# R_eff for local-local and import-local among active cases per state
-# (components 1 and 2)
-R_eff_loc_12 <- exp(log_R_eff_loc)
-R_eff_imp_12 <- exp(log_R_eff_imp)
-
-# vector of generation interval probabilities
-gi_vec <- gi_vector(gi_cdf, data$dates$latest)
+# visual checks of model fit
+plot_reff_ppc_checks(draws, model)
 
 # check fit of projected cases against national epi curve
-check_projection(draws,
-                 R_eff_local = R_eff_loc_12,
-                 R_eff_imported = R_eff_imp_12,
-                 gi_mat = data$gi_mat,
-                 gi_vec = gi_vec,
-                 local_infectiousness = data$local$infectiousness,
-                 imported_infectiousness = data$imported$infectiousness,
-                 local_cases = data$local$cases,
-                 dates = data$dates$infection,
-                 start_date = as.Date("2020-02-28"))
+check_projection(draws, model)
 
-# Reff local component one under only micro- and only macro-distancing
-de <- distancing_effect
+# add counterfactuals to the model object: Reff for locals component 1 under
+# only micro/macro/surveillance improvements
+model$greta_arrays$counterfactuals <- list(
+  R_eff_loc_1_macro = reff_1_only_macro(model),
+  R_eff_loc_1_micro = reff_1_only_micro(model),
+  R_eff_loc_1_surv = reff_1_only_surveillance(model)
+) 
 
-# include the effect of surveillance at baseline (no improvements yet, but not nothing)
-baseline_surveillance_effect <- surveillance_reff_local_reduction[1]
 
-infectious_days <- infectious_period(gi_cdf)
+# function to make projected versions of greta arrays, optionally clamped at
+# some level
 
-# microdistancing
-household_infections_micro <- de$HC_0 * (1 - de$p ^ de$HD_0)
-non_household_infections_micro <- de$OC_0 * infectious_days *
-  (1 - de$p ^ de$OD_0) * de$gamma_t_state
-hourly_infections_micro <- household_infections_micro +
-  non_household_infections_micro
-R_eff_loc_1_micro <- hourly_infections_micro[extend_idx, ] * baseline_surveillance_effect
 
-# macrodistancing
-h_t <- h_t_state(data$dates$mobility)
-HD_t <- de$HD_0 * h_t
-household_infections_macro <- de$HC_0 * (1 - de$p ^ HD_t)
-non_household_infections_macro <- de$OC_t_state * infectious_days * (1 - de$p ^ de$OD_0)
-hourly_infections_macro <- household_infections_macro + non_household_infections_macro
-R_eff_loc_1_macro <- hourly_infections_macro[extend_idx, ] * baseline_surveillance_effect
 
-# Reff for locals component under only surveillance improvements
-R_eff_loc_1_surv <- exp(log_R0 + log(surveillance_reff_local_reduction))
 
-# make 5 different versions of the plots and outputs:
-# 1. to the latest date of mobility data
-# 2. 6 weeks into the future
-# 3. 6 weeks into the future, with increase in mean Reff to 1.1
-# 4. 6 weeks into the future, with increase in mean Reff to 1.2
-# 5. 6 weeks into the future, with increase in mean Reff to 1.5
 
-# types <- seq_along(output_directories)
-types <- 1:2
+# function to calculate, plot, and save all the outputs (with flags for plot
+# types)
+
+
+
+
+
+types <- seq_along(output_directories)
 
 for (type in types) {
   
   dir <- output_directories[type]
-  
-  # save local case data, dates, and detection probabilities for Rob
-  tibble::tibble(
-      date_onset = rep(data$dates$onset, data$n_states),
-      detection_probability = as.vector(data$detection_prob_mat),
-      state = rep(data$states, each = data$n_dates),
-      count = as.vector(data$local$cases_infectious),
-      acquired_in_state = as.vector(data$local$cases)
-  ) %>%
-    write.csv(file.path(dir, "local_cases_input.csv"), row.names = FALSE)
   
   # subset or extend projections based on type of projection
   if (type == 1) {
