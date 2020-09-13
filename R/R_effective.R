@@ -8,7 +8,7 @@ source("R/functions.R")
 ll_date <- NULL
 # ll_date <- as.Date("2020-07-31")
 
-output_directories <- c("outputs", "outputs/projection")
+output_directories <- c("outputs", "outputs/projection", "outputs/fixed_projection")
 
 # put in a separate directory if testing something
 staging <- FALSE
@@ -479,7 +479,7 @@ for (type in types) {
                            "4" = 0.85,
                            "5" = 0.7)
       
-      # after the projection date, set the component 1 value to the one form this date
+      # after the projection date, set the component 1 value to the one from this date
       state_idx <- which(states == "VIC")
       duplicate_idx <- seq_along(dates_type)
       latest_value <- R_eff_loc_12[dates_type == scenario_date, state_idx]
