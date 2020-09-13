@@ -39,7 +39,7 @@ m <- model(waning_effects, distancing_effects, peak)
 
 set.seed(2020-05-30)
 draws <- mcmc(m, chains = 10)
-draws <- extra_samples(draws, 1000)
+draws <- extra_samples(draws, 3000)
 convergence(draws)
 
 prob_pred <- microdistancing_model(

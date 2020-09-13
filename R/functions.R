@@ -3313,6 +3313,164 @@ get_vic_linelist <- function(file) {
   
 }
 
+get_output_directories <- function(
+  dirs = c("outputs", "outputs/projection", "outputs/fixed_projection"),
+  staging = FALSE,
+  staging_name = "staging"
+) {
+  
+  # amend the directories for staging if needed
+  if (staging) {
+    dirs <- file.path(dirs, staging_name)
+  }
+  
+  # make sure the output directories exist 
+  . <- dirs %>%
+    file.path("figures") %>%
+    lapply(
+      FUN = dir.create,
+      recursive = TRUE,
+      showWarnings = FALSE
+    )
+  
+  dirs
+  
+}
+
+
+# given a raw (unimputed) linelist, prepare all the data needed for modelling
+reff_model_data <- function(linelist_raw,
+                            google_change_data,
+                            n_weeks_ahead = 6,
+                            inducing_gap = 3) {
+  
+  linelist_date <- linelist_raw$date_linelist[1]
+  
+  # truncate mobility data to no later than the day before the linelist
+  google_change_data <- google_change_data %>%
+    filter(date < linelist_date)
+  
+  # compute delays from symptom onset to detection for each state over time
+  notification_delay_cdf <- get_notification_delay_cdf(linelist_raw)
+  
+  # impute onset dates and infection dates using this
+  linelist <- linelist_raw %>%
+    impute_linelist(notification_delay_cdf = notification_delay_cdf)
+  
+  # get linelist date and state information
+  earliest_date <- min(linelist$date)
+  latest_date <- max(linelist$date)
+  latest_mobility_date <- max(google_change_data$date)
+  
+  states <- sort(unique(linelist$state))
+  dates <- seq(earliest_date, latest_date, by = 1)
+  mobility_dates <- seq(earliest_date, latest_mobility_date, by = 1)
+  
+  n_states <- length(states)
+  n_dates <- length(dates)
+  n_extra <- as.numeric(Sys.Date() - max(dates)) + 7 * n_weeks_ahead
+  date_nums <- seq_len(n_dates + n_extra)
+  n_date_nums <- length(date_nums)
+  
+  # build a vector of inducing points, regularly spaced over time but with one on
+  # the most recent date
+  inducing_date_nums <- rev(seq(n_date_nums, 1, by = -inducing_gap))
+  n_inducing <- length(inducing_date_nums)
+  
+  # get detection probabilities for these dates and states
+  detection_prob_mat <- detection_probability_matrix(
+    latest_date = linelist_date - 1,
+    infection_dates = dates,
+    states = states,
+    notification_delay_cdf = notification_delay_cdf
+  )
+  
+  # subset to dates with reasonably high detection probabilities in some states
+  detectable <- detection_prob_mat >= 0.5
+  
+  # the last date with infection data we include
+  last_detectable_idx <- which(!apply(detectable, 1, any))[1]
+  latest_infection_date <- dates[last_detectable_idx]
+  
+  # those infected in the state
+  local_cases <- linelist %>%
+    filter(!interstate_import) %>%
+    infections_by_region(
+      region_type = "state",
+      case_type = "local"
+    )
+  
+  # and those infected in any state, but infectious in this one
+  local_cases_infectious <- linelist %>%
+    infections_by_region(
+      region_type = "state",
+      case_type = "local"
+    )
+  
+  # those imported (only considered infectious, but with a different Reff)
+  imported_cases <- linelist %>%
+    infections_by_region(
+      region_type = "state",
+      case_type = "imported"
+    )
+  
+  # Circulant matrix of generation interval discrete probabilities
+  # use Nishiura's serial interval as a generation interval
+  # gi_cdf <- nishiura_cdf()
+  gi_mat <- gi_matrix(gi_cdf, dates, gi_bounds = c(0, 20))
+  
+  # correct Reff denominator for right-truncation (infectors not yet detected) by
+  # expectation (resolving divide-by-zero error)
+  detection_prob_mat[] <- pmax(detection_prob_mat, 1e-6)
+  local_cases_infectious_corrected <- local_cases_infectious /  detection_prob_mat
+  imported_cases_corrected <- imported_cases / detection_prob_mat
+  
+  # disaggregate imported and local cases according to the generation interval
+  # probabilities to get the expected number of infectious people in each state
+  # and time
+  local_infectiousness <- gi_mat %*% local_cases_infectious_corrected
+  imported_infectiousness <- gi_mat %*% imported_cases_corrected  
+  
+  # elements to exclude due to a lack of infectiousness
+  local_valid <- is.finite(local_infectiousness) & local_infectiousness > 0
+  import_valid <- is.finite(imported_infectiousness) & imported_infectiousness > 0
+  valid_mat <- (local_valid | import_valid) & detectable
+  
+  # return a named, nested list of these objects
+  list(
+    local = list(
+      cases = local_cases,
+      cases_infectious = local_cases_infectious,
+      infectiousness = local_infectiousness
+    ),
+    imported = list(
+      cases = imported_cases,
+      infectiousness = imported_infectiousness
+    ),
+    detection_prob_mat = detection_prob_mat,
+    gi_mat = gi_mat,
+    valid_mat = valid_mat,
+    states = states,
+    dates = list(
+      infection = dates,
+      onset = dates + 1,
+      date_nums = date_nums,
+      inducing_date_nums = inducing_date_nums,
+      mobility = mobility_dates,
+      earliest = earliest_date,
+      latest = latest_date,
+      latest_mobility = latest_mobility_date,
+      latest_infection = latest_infection_date,
+      linelist = linelist_date
+    ),
+    n_dates = n_dates,
+    n_states = n_states,
+    n_date_nums = n_date_nums,
+    n_inducing =  n_inducing
+  )
+  
+}
+
 # split the dates and states into periods  with similar notification delay distributions
 notification_delay_group <- function(date_confirmation, state) {
   
@@ -3398,7 +3556,7 @@ get_notification_delay_cdf <- function(linelist) {
 }
 
 # return a date-by-state matrix of detection probabilities
-detection_probability_matrix <- function(latest_date, infection_dates, states) {
+detection_probability_matrix <- function(latest_date, infection_dates, states, notification_delay_cdf) {
   
   n_dates <- length(infection_dates)
   n_states <- length(states)
@@ -3424,7 +3582,6 @@ detection_probability_matrix <- function(latest_date, infection_dates, states) {
     byrow = TRUE
   )
   
-  
   # get the detection probability matrix
   detection_prob_mat <- delays_mat * 0
   detection_prob_mat[] <- notification_delay_cdf(
@@ -3436,7 +3593,6 @@ detection_probability_matrix <- function(latest_date, infection_dates, states) {
   detection_prob_mat
   
 }
-
 
 impute_linelist <- function(linelist, notification_delay_cdf) {
   
@@ -3466,7 +3622,7 @@ load_vic <- function (file) {
     impute_linelist()
 }
 
-load_linelist <- function(use_vic = TRUE, date = NULL) {
+load_linelist <- function(date = NULL, use_vic = FALSE) {
   
   # load the latest NNDSS linelist (either the latest or specified file)
   linelist <- get_nndss_linelist(date = date)
