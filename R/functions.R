@@ -4,12 +4,15 @@ library(stringr)
 library(rjson)
 library(tidyr)
 library(greta)
+library(greta.gp)
 library(readxl)
 library(RColorBrewer)
 library(tensorflow)
 library(purrr)
 
 tfp <- reticulate::import("tensorflow_probability")
+
+module <- greta::.internals$utils$misc$module
 
 # read in and tidy up Facebook movement data
 facebook_mobility <- function() {
@@ -2712,6 +2715,13 @@ convergence <- function(draws) {
   
 }
 
+# has the sampler converged to our standards?
+converged <- function(draws, max_r_hat = 1.1, min_n_eff = 1000) {
+  stats <- convergence(draws)
+  all(stats$r_hats < max_r_hat) &
+    all(stats$n_eff >= min_n_eff)
+}
+
 # define a zero-mean hierarchical normal prior over a vector of length n
 hierarchical_normal <- function(n, index = NULL, mean_sd = 10, sd_sd = 0.5) {
   
@@ -3470,6 +3480,229 @@ reff_model_data <- function(linelist_raw,
   )
   
 }
+
+
+reff_model <- function(model_data) {
+  
+  # reduction in R due to surveillance detecting and isolating infectious people
+  dates_long <- data$dates$earliest + seq_along(data$dates$date_nums) - 1
+  surveillance_reff_local_reduction <- surveillance_effect(
+    dates = dates_long,
+    cdf = gi_cdf
+  )
+  
+  # the reduction from R0 down to R_eff for imported cases due to different
+  # quarantine measures each measure applied during a different period. Q_t is
+  # R_eff_t / R0 for each time t, modelled as a monotone decreasing step function
+  # over three periods with increasingly strict policies
+  quarantine_dates <- as.Date(c("2020-03-15", "2020-03-28"))
+  
+  q_index <- case_when(
+    data$dates$infection < quarantine_dates[1] ~ 1,
+    data$dates$infection < quarantine_dates[2] ~ 2,
+    TRUE ~ 3,
+  )
+  q_index <- c(q_index, rep(3, data$n_date_nums - data$n_dates))
+  
+  # q_raw <- uniform(0, 1, dim = 3)
+  log_q_raw <- -exponential(1, dim = 3)
+  log_q <- cumsum(log_q_raw)
+  log_Qt <- log_q[q_index]
+  
+  # The change in R_t for locally-acquired cases due to social distancing
+  # behaviour, modelled as a sum of household R_t and non-household R_t
+  # Non-household Reff is modelled as a function of the number of non-household
+  # contacts per 24h (itself modelled from mobility data, calibrated against
+  # contact surveys) and the relative transmission probability per contact,
+  # inferred from surveys on micro-distancing behaviour.
+  distancing_effect <- distancing_effect_model(data$dates$mobility, gi_cdf)
+  
+  # pull out R_t component due to distancing for locally-acquired cases, and
+  # extend to correct length
+  extend_idx <- pmin(seq_len(data$n_date_nums), nrow(distancing_effect$R_t))
+  R_eff_loc_1_no_surv <- distancing_effect$R_t[extend_idx, ]
+  
+  # multiply by the surveillance effect
+  R_eff_loc_1 <- sweep(
+    R_eff_loc_1_no_surv,
+    1,
+    surveillance_reff_local_reduction,
+    FUN = "*"
+  )
+  
+  log_R_eff_loc_1 <- log(R_eff_loc_1)
+  
+  # extract R0 from this model and estimate R_t component due to quarantine for
+  # overseas-acquired cases
+  log_R0 <- log_R_eff_loc_1[1, 1]
+  log_R_eff_imp_1 <- log_R0 + log_Qt
+  R_eff_imp_1 <- exp(log_R_eff_imp_1)
+  
+  # temporally correlated errors in R_eff for local and imported cases - representing all the
+  # stochastic transmission dynamics in the community, such as outbreaks in
+  # communities with higher or lower tranmission rates, and interstate and
+  # temporal variation in quarantine effectiveness not captured by the step
+  # function
+  
+  kernel_O <- rbf(
+    lengthscales = lognormal(3, 1),
+    variance = normal(0, 0.5, truncation = c(0, Inf)) ^ 2,
+  )
+  
+  epsilon_O <- epsilon_gp(
+    date_nums = data$dates$date_nums,
+    n_states = data$n_states,
+    kernel = kernel_O,
+    inducing_date_nums = data$dates$inducing_date_nums
+  )
+  
+  kernel_L <- rational_quadratic(
+    lengthscales = lognormal(3, 1),
+    variance = normal(0, 0.5, truncation = c(0, Inf)) ^ 2,
+    alpha = lognormal(3, 1)
+  )
+  
+  epsilon_L <- epsilon_gp(
+    date_nums = data$dates$date_nums,
+    n_states = data$n_states,
+    kernel = kernel_L,
+    inducing_date_nums = data$dates$inducing_date_nums
+  )
+  
+  # work out which elements to exclude (because there were no infectious people)
+  valid <- which(data$valid_mat, arr.ind = TRUE)
+  
+  # log Reff for locals and imports
+  log_R_eff_loc <- log_R_eff_loc_1 + epsilon_L
+  
+  log_R_eff_imp <- sweep(
+    epsilon_O,
+    1,
+    log_R_eff_imp_1,
+    FUN = "+"
+  )
+  
+  # combine everything as vectors, excluding invalid datapoints (remove invalid
+  # elements here, otherwise it causes a gradient issue)
+  R_eff_loc <- exp(log_R_eff_loc[1:data$n_dates, ])
+  R_eff_imp <- exp(log_R_eff_imp[1:data$n_dates, ])
+  new_from_loc_vec <- data$local$infectiousness[valid] * R_eff_loc[valid]
+  new_from_imp_vec <- data$imported$infectiousness[valid] * R_eff_imp[valid]
+  expected_infections_vec <- new_from_loc_vec + new_from_imp_vec
+  
+  # negative binomial likelihood for number of cases
+  sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf), dim = data$n_states)
+  size <- 1 / sqrt(sqrt_inv_size[valid[, 2]])
+  prob <- 1 / (1 + expected_infections_vec / size)
+  
+  # Account for right truncation; underreporting of recent infections which have
+  # had less time to be detected. Given the number of cases N_t infected on day t
+  # (that will ever be detected), the number of cases N^*_t infected on that day
+  # that are known about so far is drawn from a binomial sample with probability
+  # p, from the time-to-detection distribution. Since N_t is drawn from a negative
+  # binomial,  N^*_t is drawn from a compound binomial/negative binomial mixture
+  # distribution. Fortunately that turns out to be a negative binomial with
+  # modified probability parameter (NB is poisson-gamma, so binomial-NB is
+  # binomial-poisson-gamma, but binomial-poisson is poisson with rate lambda * p and gamma times a constant is gamma,
+  # so it's a poisson-gamma, which is NB).
+  
+  # There is an average of one day from specimen collection to confirmation, and
+  # the linelist covers the previous day, so the date by which they need to have
+  # been detected two days prior to the linelist date.
+  detection_prob_vec <- data$detection_prob_mat[valid]
+  
+  # Modify the probability to account for truncation. When detection_prob_vec = 1,
+  # this collapses to prob
+  prob_trunc <- 1 / (1 + detection_prob_vec * (1 - prob) / prob)
+  
+  distribution(data$local$cases[valid]) <- negative_binomial(size, prob_trunc)
+  
+  m <- model(expected_infections_vec)
+  
+  list(
+    model = m,
+    greta_arrays = list(
+      likelihood = module(
+        expected_infections_vec,
+        size,
+        prob_trunc
+      ),
+      reff = module(
+        R_eff_loc,
+        R_eff_imp,
+        log_R_eff_loc,
+        log_R_eff_imp
+      ),
+      components = module(
+        log_R0,
+        distancing_effect,
+        surveillance_reff_local_reduction
+      ),
+      misc = module(
+        valid,
+        extend_idx
+      )
+    )
+  )
+  
+}
+
+fit_reff_model <- function(model, max_tries = 3, iterations_per_step = 1000) {
+  
+  # first pass at model fitting  
+  draws <- mcmc(
+    model$model,
+    sampler = hmc(Lmin = 25, Lmax = 30),
+    chains = 10,
+    n_samples = 2000,
+    one_by_one = TRUE
+  )
+  
+  # if it did not converge, try extending it a bunch more times
+  finished <- converged(draws)
+  tries <- 0
+  while(!finished & tries < max_tries) {
+    draws <- extra_samples(
+      draws,
+      iterations_per_step,
+      one_by_one = TRUE
+    )
+    tries <- tries + 1
+    finished <- converged(draws)
+  }
+  
+  # warn if we timed out before converging successfully
+  if (tries == max_tries) {
+    warning("sampling did not converge according to benchmarks")
+  }
+  
+  draws
+  
+}
+
+write_reff_key_dates <- function(model_data, dir = "outputs/") {
+  # save these dates for Freya and Rob to check
+  tibble(
+    linelist_date = model_data$dates$linelist,
+    latest_infection_date = model_data$dates$latest_infection,
+    latest_reff_date = model_data$dates$latest_mobility,
+    forecast_reff_change_date = model_data$dates$latest_mobility + 1
+  ) %>%
+    write_csv(
+      file.path(dir, "output_dates.csv")
+    )
+}
+
+# save the whole fitted Reff model to disk
+write_fitted_reff <- function(data, model, draws, file = "outputs/fitted_reff.RDS") {
+  object <- list(
+    data = data,
+    model = model,
+    draws = draws
+  )
+  saveRDS(object, file)
+}
+
 
 # split the dates and states into periods  with similar notification delay distributions
 notification_delay_group <- function(date_confirmation, state) {
