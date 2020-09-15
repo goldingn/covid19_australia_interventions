@@ -317,128 +317,37 @@ for (type in types) {
   ) %>%
     mutate(date_onset = date + 5)
   
-  # CSV of R_eff local posterior samples
+  # CSVs of R_eff local posterior samples
+  
+  # component 1
+  df_base %>%
+    cbind(R_eff_1_samples) %>%
+    write_csv(
+      file.path(dir, "r_eff_1_local_samples.csv")
+    )
+
+  # components 1 + 2  
   df_base %>%
     cbind(R_eff_12_samples) %>%
     write_csv(
       file.path(dir, "r_eff_12_local_samples.csv")
     )
   
-  # CSV of R_eff local posterior samples
+  # components 1 + 2 soft-clamped into the future
   df_base %>%
-    cbind(R_eff_1_samples) %>%
+    cbind(R_eff_12_samples) %>%
+    soft_clamp(data$dates$latest_mobility) %>%
     write_csv(
-      file.path(dir, "r_eff_1_local_samples.csv")
+      file.path(dir, "r_eff_12_local_samples_soft_clamped.csv")
     )
   
-  # # make forecasts
-  # if (type >= 2) {
-  #   
-  #   # forecast locally-acquired cases
-  #   
-  #   # drop last two days of case data, because detection probabilities are very low
-  #   keep_idx <- seq_len(nrow(data$local$cases) - 2)
-  #   
-  #   # add constant rate of imported cases - model numbers of imports per day from
-  #   # two weeks after the last quarantine date (mandatory hotel quarantine
-  #   # introduced), using a poisson model with offset of the population size; add
-  #   # those expectations to the imported cases data.
-  #   
-  #   forecast_list <- forecast_locals(local_cases = data$local$cases[keep_idx, ],
-  #                                    imported_cases = imported_cases[keep_idx, ],
-  #                                    Reff_locals = R_eff_loc_12_proj,
-  #                                    Reff_imports = R_eff_imp_12,
-  #                                    dates = dates_type,
-  #                                    gi_cdf = gi_cdf,
-  #                                    simulation_start = data$dates$latest_infection,
-  #                                    gi_bounds = c(0, 20))
-  #   
-  #   forecast <- forecast_list$local_cases
-  #   
-  #   # is the probability of any new cases very small, and is it after the
-  #   # projection period? if so sthen set the number of new cases from this point onwards to 0?
-  #   n_forecast <- nrow(forecast) - nrow(data$local$cases)
-  #   
-  #   # in the forecasting period?
-  #   projection_mask <- rbind(
-  #     matrix(0,
-  #            nrow(data$local$cases),
-  #            data$n_states),
-  #     matrix(1,
-  #            n_forecast,
-  #            data$n_states)
-  #   )
-  #   
-  #   # small enough probbability of more cases to round to 0
-  #   small_mask <- forecast_list$probability_of_cases < 0.01
-  #   
-  #   # invert this (small and forecasting gets 0)
-  #   forecast_mask <- 1 - (projection_mask * small_mask)
-  #   
-  #   # set all subsequent dates to 0
-  #   forecast_mask <- apply(forecast_mask, 2, "cumprod")
-  #   # cap forecasts by this
-  #   forecast_capped <- forecast * forecast_mask
-  #   
-  #   forecast_sim <- calculate(c(forecast),
-  #                             values = draws,
-  #                             nsim = nsim)[[1]]
-  #   
-  #   forecast_capped_sim <- calculate(c(forecast_capped),
-  #                                    values = draws,
-  #                                    nsim = nsim)[[1]]
-  #   
-  #   plot_trend(forecast_sim,
-  #              dates = dates_type,
-  #              multistate = TRUE,
-  #              base_colour = blue,
-  #              hline_at = NULL,
-  #              ylim = c(0, 200),
-  #              vline_at = quarantine_dates,
-  #              vline2_at = data$dates$latest) + 
-  #     ggtitle(label = "Forecast numbers of locally-acquired cases") +
-  #     ylab("New infections per day")
-  #   
-  #   save_ggplot("forecast.png", dir)
-  #   
-  #   plot_trend(forecast_sim,
-  #              dates = dates_type,
-  #              multistate = TRUE,
-  #              base_colour = blue,
-  #              hline_at = NULL,
-  #              ylim = c(0, 10),
-  #              vline_at = quarantine_dates,
-  #              vline2_at = data$dates$latest) + 
-  #     ggtitle(label = "Forecast numbers of locally-acquired cases") +
-  #     ylab("New infections per day")
-  #   
-  #   save_ggplot("forecast_low.png", dir)
-  #   
-  #   plot_trend(forecast_capped_sim,
-  #              dates = dates_type,
-  #              multistate = TRUE,
-  #              base_colour = blue,
-  #              hline_at = NULL,
-  #              ylim = c(0, 200),
-  #              vline_at = quarantine_dates,
-  #              vline2_at = data$dates$latest) + 
-  #     ggtitle(label = "Forecast numbers of locally-acquired cases") +
-  #     ylab("New infections per day")
-  #   
-  #   save_ggplot("forecast_capped.png", dir)
-  #   
-  #   # save forecast draws
-  #   forecast_sim_mat <- t(forecast_sim[, , 1])
-  #   colnames(forecast_sim_mat) <- paste0("sim", seq_len(ncol(forecast_sim_mat)))
-  #   df_base %>%
-  #     cbind(
-  #       forecast_sim_mat
-  #     ) %>%
-  #     write_csv(
-  #       file.path(dir, "forecast_samples.csv")
-  #     )
-  #   
-  # }
+  # components 1 + 2 hard-clamped into the future
+  df_base %>%
+    cbind(R_eff_12_samples) %>%
+    hard_clamp(data$dates$latest_mobility) %>%
+    write_csv(
+      file.path(dir, "r_eff_12_local_samples_hard_clamped.csv")
+    )
   
 }
 

@@ -1919,7 +1919,7 @@ trends_date_state <- function (file, dates = NULL, states = NULL) {
     select(-date) %>%
     as.matrix()
   
-  # crop to speecified dates, extending either end out flat if missing
+  # crop to specified dates, extending either end out flat if missing
   if (!is.null(dates)) {
     idx <- dates - min(date_seq) + 1
     idx <- pmax(idx, 1)
@@ -2020,7 +2020,7 @@ distancing_effect_model <- function(dates, gi_cdf) {
 
 plot_fit <- function(observed_cases, cases_sim, model) {
   
-  valid <- model$greta_arrays$misc$valid
+  valid <- which(model$data$valid_mat, arr.ind = TRUE)
   dates <- model$data$dates$infection
   states <- model$data$states
   
@@ -3538,8 +3538,7 @@ reff_model <- function(model_data) {
   
   # pull out R_t component due to distancing for locally-acquired cases, and
   # extend to correct length
-  extend_idx <- pmin(seq_len(data$n_date_nums), nrow(distancing_effect$R_t))
-  R_eff_loc_1_no_surv <- distancing_effect$R_t[extend_idx, ]
+  R_eff_loc_1_no_surv <- extend(distancing_effect$R_t, data$n_date_nums)
   
   # multiply by the surveillance effect
   R_eff_loc_1 <- sweep(
@@ -3672,6 +3671,23 @@ reff_model <- function(model_data) {
   
 }
 
+# extend (or truncate, or optionally clamp) values in rows of a matrix
+# greta_array. I.e. given a matrix `x`, return another matrix with `n_rows` rows
+# (by default the same as `x`), and with rows after `clamp_from` taking the
+# value of row `clamp_from`. This can be used to extend a matrix, propagating
+# the last value (if `n_rows` is increased), shorten a matrix (if n_rows is
+# decreased), and simultaneously clamp subsequent values in the matrix at a
+# fixed value.
+extend <- function(x, n_rows = nrow(x), clamp_from = nrow(x)) {
+  if (clamp_from > nrow(x)) {
+    stop ("clamp_from must not be higher than the umber of rows in the matrix",
+          call. = FALSE)
+  }
+  index <- seq_len(n_rows)
+  clamped_index <- pmin(index, clamp_from)
+  x[clamped_index, ]
+}
+
 # reff component 1 under only surveillance changes
 reff_1_only_surveillance <- function(reff_model) {
   components <- reff_model$greta_arrays$components
@@ -3692,7 +3708,11 @@ reff_1_only_macro <- function(reff_model) {
   household_infections_macro <- de$HC_0 * (1 - de$p ^ HD_t)
   non_household_infections_macro <- de$OC_t_state * infectious_days * (1 - de$p ^ de$OD_0)
   hourly_infections_macro <- household_infections_macro + non_household_infections_macro
-  hourly_infections_macro[extend_idx, ] * baseline_surveillance_effect
+  hourly_infections_macro_extended <- extend(
+    hourly_infections_macro,
+    reff_model$data$n_date_nums
+  )
+  hourly_infections_macro_extended * baseline_surveillance_effect
 }
 
 # reff component 1 if only macrodistancing had changed
@@ -3702,13 +3722,79 @@ reff_1_only_micro <- function(reff_model) {
   de <- components$distancing_effect
   extend_idx <- reff_model$greta_arrays$misc$extend_idx
   infectious_days <- infectious_period(gi_cdf)
-  
   household_infections_micro <- de$HC_0 * (1 - de$p ^ de$HD_0)
   non_household_infections_micro <- de$OC_0 * infectious_days *
     (1 - de$p ^ de$OD_0) * de$gamma_t_state
   hourly_infections_micro <- household_infections_micro +
     non_household_infections_micro
-  hourly_infections_micro[extend_idx, ] * baseline_surveillance_effect
+  hourly_infections_micro_extended <- extend(
+    hourly_infections_micro,
+    reff_model$data$n_date_nums
+  )
+  hourly_infections_micro_extended * baseline_surveillance_effect
+}
+
+
+# given a dataframe of Reff trajectory samples for Rob M, 'soft-clamp' the Reff
+# trajectories so that the log-mean of Reff is constant into the future from the target date, but the
+# trajectories still vary over time (rather than hard-clamping them so the
+# trajectory for each Reff is flat into the future).
+soft_clamp <- function(local_samples, target_date) {
+  local_samples %>%
+    pivot_longer(
+      cols = starts_with("sim"),
+      names_to = "sim",
+      values_to = "reff"
+    ) %>%
+    group_by(
+      date,
+      state
+    ) %>%
+    mutate(
+      log_reff = log(reff),
+      log_mean = mean(log_reff)
+    ) %>%
+    group_by(
+      state
+    ) %>%
+    mutate(
+      latest_log_mean = mean(log_reff[date == target_date]),
+      adjust = ifelse(date > target_date, latest_log_mean - log_mean, 0),
+      log_reff = log_reff + adjust,
+      reff = exp(log_reff)
+    ) %>%
+    ungroup() %>%
+    select(-log_reff, -log_mean, -latest_log_mean, -adjust) %>%
+    pivot_wider(
+      names_from = sim,
+      values_from = reff
+    ) 
+}
+
+# given a dataframe of Reff trajectory samples for Rob M, 'hard-clamp' the Reff
+# trajectories so that the trajectory for each Reff is costant into the future
+# from the target date.
+hard_clamp <- function(local_samples, target_date) {
+  local_samples %>%
+    pivot_longer(
+      cols = starts_with("sim"),
+      names_to = "sim",
+      values_to = "reff"
+    ) %>%
+    group_by(
+      state,
+      sim
+    ) %>%
+    mutate(
+      target_reff = reff[date == target_date],
+      reff = ifelse(date > target_date, reff[date == target_date], reff),
+    ) %>%
+    ungroup() %>%
+    select(-target_reff) %>%
+    pivot_wider(
+      names_from = sim,
+      values_from = reff
+    )
 }
 
 fit_reff_model <- function(model, max_tries = 3, iterations_per_step = 1000) {
@@ -3793,7 +3879,7 @@ plot_reff_ppc_checks <- function(draws, model) {
   )
   cases_sim <- calculate(cases, values = draws, nsim = nsim)[[1]][, , 1]
   
-  valid <- model$greta_arrays$misc$valid
+  valid <- which(model$data$valid_mat, arr.ind = TRUE)
   observed <- model$data$local$cases[valid]
   
   # overall PPC check
