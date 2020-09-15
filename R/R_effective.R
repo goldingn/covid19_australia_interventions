@@ -28,13 +28,9 @@ draws <- fit_reff_model(model)
 # save these objects
 write_fitted_reff(model, draws) 
   
-# object <- readRDS("outputs/fitted_reff.RDS")
-# model <- object$model
-# model$data <- object$data
-# draws <- object$draws
-# 
-# model$greta_arrays$reff$R_eff_loc_12 <- exp(model$greta_arrays$reff$log_R_eff_loc)
-# model$greta_arrays$reff$R_eff_imp_12 <- exp(model$greta_arrays$reff$log_R_eff_imp)
+object <- readRDS("outputs/fitted_reff.RDS")
+model <- object$model
+draws <- object$draws
 
 # visual checks of model fit
 plot_reff_ppc_checks(draws, model)
@@ -44,23 +40,56 @@ check_projection(draws, model)
 
 # add counterfactuals to the model object: Reff for locals component 1 under
 # only micro/macro/surveillance improvements
-model$greta_arrays$counterfactuals <- list(
-  R_eff_loc_1_macro = reff_1_only_macro(model),
-  R_eff_loc_1_micro = reff_1_only_micro(model),
-  R_eff_loc_1_surv = reff_1_only_surveillance(model)
-) 
-
-
-# function to make projected versions of greta arrays, optionally clamped at
-# some level
-
-
-
-
+model$greta_arrays <- c(
+  model$greta_arrays,
+  list(
+    R_eff_loc_1_macro = reff_1_only_macro(model),
+    R_eff_loc_1_micro = reff_1_only_micro(model),
+    R_eff_loc_1_surv = reff_1_only_surveillance(model)
+  ) 
+)
 
 # function to calculate, plot, and save all the outputs (with flags for plot
-# types)
+# types) - pass in an optional maximum date argument
+reff_plotting <- function(
+  draws,
+  model,
+  dir = "outputs",
+  latest_date = model$data$dates$latest_mobility,
+  projection_date = NA
+) {
+  
+  # flatten all relevant greta array matrices to vectors before calculating
+  vector_list <- lapply(
+    model$greta_arrays[
+      c(
+        "R_eff_loc_1",
+        "R_eff_imp_1",
+        "R_eff_loc_12",
+        "R_eff_imp_12",
+        "epsilon_L",
+        "epsilon_O",
+        "R_eff_loc_1_micro",
+        "R_eff_loc_1_macro",
+        "R_eff_loc_1_surv"
+      )
+    ],
+    c
+  )
+  
+  # make sure the seeds are the same for each type of prediction, so the samples
+  # match
+  set.seed(2020-06-02)
+  
+  # simulate from posterior for quantitities of interest
+  args <- c(vector_list, list(values = draws, nsim = 10000))
+  sims <- do.call(calculate, args)
 
+  
+}
+
+
+# need to do away with dates_type, and set the x axis date limits instead
 
 
 
@@ -160,7 +189,7 @@ for (type in types) {
   # Component 1 for national / state populations
   
   # microdistancing only
-  plot_trend(R_eff_loc_1_micro_sim,
+  plot_trend(sims$R_eff_loc_1_micro,
              dates = dates_type,
              multistate = TRUE,
              base_colour = purple,
@@ -173,7 +202,7 @@ for (type in types) {
   save_ggplot("R_eff_1_local_micro.png", dir)
 
   # macrodistancing only
-  plot_trend(R_eff_loc_1_macro_sim,
+  plot_trend(sims$R_eff_loc_1_macro,
              dates = dates_type,
              multistate = TRUE,
              base_colour = blue,
@@ -186,7 +215,7 @@ for (type in types) {
   save_ggplot("R_eff_1_local_macro.png", dir)
   
   # improved surveilance only
-  plot_trend(R_eff_loc_1_surv_sim,
+  plot_trend(sims$R_eff_loc_1_surv,
              dates = dates_type,
              multistate = FALSE,
              base_colour = yellow,
@@ -199,7 +228,7 @@ for (type in types) {
   save_ggplot("R_eff_1_local_surv.png", dir, multi = FALSE)
   
   # Component 1 for national / state populations
-  plot_trend(R_eff_loc_1_sim,
+  plot_trend(sims$R_eff_loc_1,
              dates = dates_type,
              multistate = TRUE,
              base_colour = green,
@@ -211,7 +240,7 @@ for (type in types) {
   
   save_ggplot("R_eff_1_local.png", dir)
   
-  plot_trend(R_eff_imp_1_sim,
+  plot_trend(sims$R_eff_imp_1,
              dates = dates_type,
              multistate = FALSE,
              base_colour = orange,
@@ -225,7 +254,7 @@ for (type in types) {
   save_ggplot("R_eff_1_import.png", dir, multi = FALSE)
   
   # Reff for active cases
-  p <- plot_trend(R_eff_loc_12_sim,
+  p <- plot_trend(sims$R_eff_loc_12,
                   dates = dates_type,
                   multistate = TRUE,
                   base_colour = green,
@@ -249,7 +278,7 @@ for (type in types) {
   
   save_ggplot("R_eff_12_local.png", dir)
   
-  plot_trend(R_eff_imp_12_sim,
+  plot_trend(sims$R_eff_imp_12,
              dates = dates_type,
              multistate = TRUE,
              base_colour = orange,
@@ -263,7 +292,7 @@ for (type in types) {
   save_ggplot("R_eff_12_imported.png", dir)
   
   # component 2 (noisy error trends)
-  p <- plot_trend(epsilon_L_sim,
+  p <- plot_trend(sims$epsilon_L,
                   dates = dates_type,
                   multistate = TRUE,
                   base_colour = pink,
@@ -289,7 +318,7 @@ for (type in types) {
   
   save_ggplot("R_eff_2_local.png", dir)
   
-  plot_trend(epsilon_O_sim,
+  plot_trend(sims$epsilon_O,
              dates = dates_type,
              multistate = TRUE,
              base_colour = pink,
@@ -304,11 +333,11 @@ for (type in types) {
   save_ggplot("R_eff_2_imported.png", dir)
 
   # output 2000 posterior samples of R_eff for active local cases
-  R_eff_12_samples <- t(R_eff_loc_12_sim[1:2000, , 1])
+  R_eff_12_samples <- t(sims$R_eff_loc_12[1:2000, , 1])
   colnames(R_eff_12_samples) <- paste0("sim", 1:2000)
   
   # output 2000 posterior samples of R_eff for statewide local cases
-  R_eff_1_samples <- t(R_eff_loc_1_sim[1:2000, , 1])
+  R_eff_1_samples <- t(sims$R_eff_loc_1[1:2000, , 1])
   colnames(R_eff_1_samples) <- paste0("sim", 1:2000)
   
   df_base <- tibble(

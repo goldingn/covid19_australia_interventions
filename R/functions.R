@@ -2417,8 +2417,8 @@ check_projection <- function(draws,
                              model,
                              start_date = as.Date("2020-02-28")) {
   
-  R_eff_local <- model$greta_arrays$reff$R_eff_loc_12
-  R_eff_imported <- model$greta_arrays$reff$R_eff_imp_12
+  R_eff_local <- model$greta_arrays$R_eff_loc_12
+  R_eff_imported <- model$greta_arrays$R_eff_imp_12
   gi_mat <- model$data$gi_mat
   gi_vec <- gi_vector(gi_cdf, model$data$dates$latest)
   local_infectiousness <- model$data$local$infectiousness
@@ -3641,31 +3641,23 @@ reff_model <- function(model_data) {
   m <- model(expected_infections_vec)
   
   list(
-    data = model_data,
     model = m,
-    greta_arrays = list(
-      likelihood = module(
-        expected_infections_vec,
-        size,
-        prob_trunc
-      ),
-      reff = module(
-        R_eff_loc_1,
-        R_eff_imp_1,
-        log_R_eff_loc,
-        log_R_eff_imp,
-        R_eff_loc_12,
-        R_eff_imp_12
-      ),
-      components = module(
-        log_R0,
-        distancing_effect,
-        surveillance_reff_local_reduction
-      ),
-      misc = module(
-        valid,
-        extend_idx
-      )
+    data = model_data,
+    greta_arrays = module(
+      expected_infections_vec,
+      size,
+      prob_trunc,
+      R_eff_loc_1,
+      R_eff_imp_1,
+      R_eff_loc_12,
+      R_eff_imp_12,
+      log_R0,
+      distancing_effect,
+      surveillance_reff_local_reduction,
+      log_R_eff_loc,
+      log_R_eff_imp,
+      epsilon_L,
+      epsilon_O
     )
   )
   
@@ -3690,18 +3682,16 @@ extend <- function(x, n_rows = nrow(x), clamp_from = nrow(x)) {
 
 # reff component 1 under only surveillance changes
 reff_1_only_surveillance <- function(reff_model) {
-  components <- reff_model$greta_arrays$components
-  log_R0 <- components$log_R0
-  reduction <- components$surveillance_reff_local_reduction
+  log_R0 <- reff_model$greta_arrays$log_R0
+  reduction <- reff_model$greta_arrays$surveillance_reff_local_reduction
   exp(log_R0 + log(reduction))
 }
 
 # reff component 1 if only macrodistancing had changed
 reff_1_only_macro <- function(reff_model) {
-  components <- reff_model$greta_arrays$components
-  baseline_surveillance_effect <- components$surveillance_reff_local_reduction[1]
-  de <- components$distancing_effect
-  extend_idx <- reff_model$greta_arrays$misc$extend_idx
+  ga <- reff_model$greta_arrays
+  baseline_surveillance_effect <- ga$surveillance_reff_local_reduction[1]
+  de <- ga$distancing_effect
   infectious_days <- infectious_period(gi_cdf)
   h_t <- h_t_state(reff_model$data$dates$mobility)
   HD_t <- de$HD_0 * h_t
@@ -3717,10 +3707,9 @@ reff_1_only_macro <- function(reff_model) {
 
 # reff component 1 if only macrodistancing had changed
 reff_1_only_micro <- function(reff_model) {
-  components <- reff_model$greta_arrays$components
-  baseline_surveillance_effect <- components$surveillance_reff_local_reduction[1]
-  de <- components$distancing_effect
-  extend_idx <- reff_model$greta_arrays$misc$extend_idx
+  ga <- reff_model$greta_arrays
+  baseline_surveillance_effect <- ga$surveillance_reff_local_reduction[1]
+  de <- ga$distancing_effect
   infectious_days <- infectious_period(gi_cdf)
   household_infections_micro <- de$HC_0 * (1 - de$p ^ de$HD_0)
   non_household_infections_micro <- de$OC_0 * infectious_days *
@@ -3867,15 +3856,11 @@ write_fitted_reff <- function(model, draws, file = "outputs/fitted_reff.RDS") {
 }
 
 # plot visual checks of model posterior calibration against observed data
-plot_reff_ppc_checks <- function(draws, model) {
-  
-  # check fit of observation model against data 
-  nsim <- coda::niter(draws) * coda::nchain(draws)
-  nsim <- min(10000, nsim)
+plot_reff_ppc_checks <- function(draws, model, nsim = 10000) {
   
   cases <- negative_binomial(
-    model$greta_arrays$likelihood$size,
-    model$greta_arrays$likelihood$prob_trunc
+    model$greta_arrays$size,
+    model$greta_arrays$prob_trunc
   )
   cases_sim <- calculate(cases, values = draws, nsim = nsim)[[1]][, , 1]
   
