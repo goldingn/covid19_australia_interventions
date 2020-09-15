@@ -3490,6 +3490,7 @@ reff_model_data <- function(
     ),
     n_dates = n_dates,
     n_states = n_states,
+    n_date_nums = n_date_nums,
     n_dates_project = n_dates_project,
     n_inducing =  n_inducing
   )
