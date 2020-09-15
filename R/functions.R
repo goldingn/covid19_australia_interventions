@@ -3355,11 +3355,12 @@ get_vic_linelist <- function(file) {
 }
 
 # given a raw (unimputed) linelist, prepare all the data needed for modelling
-reff_model_data <- function(n_weeks_ahead = 6,
-                            inducing_gap = 3) {
+reff_model_data <- function(
+  linelist_raw = load_linelist(),
+  n_weeks_ahead = 6,
+  inducing_gap = 3
+) {
   
-  # load NNDSS linelist
-  linelist_raw <- load_linelist()
   linelist_date <- linelist_raw$date_linelist[1]
   
   # load modelled google mobility data 
