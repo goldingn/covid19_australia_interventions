@@ -49,6 +49,9 @@ model$greta_arrays <- c(
   ) 
 )
 
+# model$data$n_dates_project <- model$data$n_date_nums
+# model$data$dates$infection_project <- model$data$dates$earliest + model$data$dates$date_nums - 1
+
 # function to calculate, plot, and save all the outputs (with flags for plot
 # types) - pass in an optional maximum date argument
 reff_plotting <- function(
@@ -90,6 +93,8 @@ reff_plotting <- function(
 
 
 # need to do away with dates_type, and set the x axis date limits instead
+write_reff_sims(draws, model, dir = "outputs/projection/staging")
+
 
 
 
@@ -331,52 +336,6 @@ for (type in types) {
     ylab("Deviation")
   
   save_ggplot("R_eff_2_imported.png", dir)
-
-  # output 2000 posterior samples of R_eff for active local cases
-  R_eff_12_samples <- t(sims$R_eff_loc_12[1:2000, , 1])
-  colnames(R_eff_12_samples) <- paste0("sim", 1:2000)
-  
-  # output 2000 posterior samples of R_eff for statewide local cases
-  R_eff_1_samples <- t(sims$R_eff_loc_1[1:2000, , 1])
-  colnames(R_eff_1_samples) <- paste0("sim", 1:2000)
-  
-  df_base <- tibble(
-    date = rep(dates_type, data$n_states),
-    state = rep(data$states, each = length(dates_type)),
-  ) %>%
-    mutate(date_onset = date + 5)
-  
-  # CSVs of R_eff local posterior samples
-  
-  # component 1
-  df_base %>%
-    cbind(R_eff_1_samples) %>%
-    write_csv(
-      file.path(dir, "r_eff_1_local_samples.csv")
-    )
-
-  # components 1 + 2  
-  df_base %>%
-    cbind(R_eff_12_samples) %>%
-    write_csv(
-      file.path(dir, "r_eff_12_local_samples.csv")
-    )
-  
-  # components 1 + 2 soft-clamped into the future
-  df_base %>%
-    cbind(R_eff_12_samples) %>%
-    soft_clamp(data$dates$latest_mobility) %>%
-    write_csv(
-      file.path(dir, "r_eff_12_local_samples_soft_clamped.csv")
-    )
-  
-  # components 1 + 2 hard-clamped into the future
-  df_base %>%
-    cbind(R_eff_12_samples) %>%
-    hard_clamp(data$dates$latest_mobility) %>%
-    write_csv(
-      file.path(dir, "r_eff_12_local_samples_hard_clamped.csv")
-    )
   
 }
 

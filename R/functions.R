@@ -3400,7 +3400,8 @@ reff_model_data <- function(linelist_raw,
   n_dates <- length(dates)
   n_extra <- as.numeric(Sys.Date() - max(dates)) + 7 * n_weeks_ahead
   date_nums <- seq_len(n_dates + n_extra)
-  n_date_nums <- length(date_nums)
+  dates_project <- earliest_date + date_nums - 1
+  n_dates_project <- n_date_nums <- length(date_nums)
   
   # build a vector of inducing points, regularly spaced over time but with one on
   # the most recent date
@@ -3483,6 +3484,7 @@ reff_model_data <- function(linelist_raw,
     states = states,
     dates = list(
       infection = dates,
+      infection_project = dates_project,
       onset = dates + 1,
       date_nums = date_nums,
       inducing_date_nums = inducing_date_nums,
@@ -3495,18 +3497,17 @@ reff_model_data <- function(linelist_raw,
     ),
     n_dates = n_dates,
     n_states = n_states,
-    n_date_nums = n_date_nums,
+    n_dates_project = n_dates_project,
     n_inducing =  n_inducing
   )
   
 }
 
-reff_model <- function(model_data) {
+reff_model <- function(data) {
   
   # reduction in R due to surveillance detecting and isolating infectious people
-  dates_long <- data$dates$earliest + seq_along(data$dates$date_nums) - 1
   surveillance_reff_local_reduction <- surveillance_effect(
-    dates = dates_long,
+    dates = data$dates$infection_project,
     cdf = gi_cdf
   )
   
@@ -3538,7 +3539,7 @@ reff_model <- function(model_data) {
   
   # pull out R_t component due to distancing for locally-acquired cases, and
   # extend to correct length
-  R_eff_loc_1_no_surv <- extend(distancing_effect$R_t, data$n_date_nums)
+  R_eff_loc_1_no_surv <- extend(distancing_effect$R_t, data$n_dates_project)
   
   # multiply by the surveillance effect
   R_eff_loc_1 <- sweep(
@@ -3700,7 +3701,7 @@ reff_1_only_macro <- function(reff_model) {
   hourly_infections_macro <- household_infections_macro + non_household_infections_macro
   hourly_infections_macro_extended <- extend(
     hourly_infections_macro,
-    reff_model$data$n_date_nums
+    reff_model$data$n_dates_project
   )
   hourly_infections_macro_extended * baseline_surveillance_effect
 }
@@ -3718,11 +3719,29 @@ reff_1_only_micro <- function(reff_model) {
     non_household_infections_micro
   hourly_infections_micro_extended <- extend(
     hourly_infections_micro,
-    reff_model$data$n_date_nums
+    reff_model$data$n_dates_project
   )
   hourly_infections_micro_extended * baseline_surveillance_effect
 }
 
+# outputting Reff trajectories for Rob M
+reff_sims <- function(draws, model, nsim = 2000, which = "R_eff_loc_12") {
+  
+  ga <- model$greta_arrays[[which]]
+  ga_vec <- c(ga)
+  sim <- calculate(ga_vec, values = draws, nsim = nsim)
+  
+  samples <- t(sim[[1]][, , 1])
+  colnames(samples) <- paste0("sim", 1:2000)
+  
+  tibble(
+    date = rep(model$data$dates$infection_project, model$data$n_states),
+    state = rep(model$data$states, each = model$data$n_dates_project),
+  ) %>%
+    mutate(date_onset = date + 5) %>%
+    cbind(samples)
+  
+}
 
 # given a dataframe of Reff trajectory samples for Rob M, 'soft-clamp' the Reff
 # trajectories so that the log-mean of Reff is constant into the future from the target date, but the
@@ -3784,6 +3803,64 @@ hard_clamp <- function(local_samples, target_date) {
       names_from = sim,
       values_from = reff
     )
+}
+
+# output simulations
+write_reff_sims <- function(draws, model, dir = "outputs/projection") {
+  
+  # find the dates for clamping into the future (where 50%/95% cases so far detected)
+  clip_idx_50 <- (model$data$detection_prob_mat > 0.5) %>%
+    apply(1, all) %>%
+    which() %>%
+    max()
+  
+  clip_idx_95 <- (model$data$detection_prob_mat > 0.95) %>%
+    apply(1, all) %>%
+    which() %>%
+    max()
+  
+  date_50 <- model$data$dates$infection[clip_idx_50]
+  date_95 <- model$data$dates$infection[clip_idx_95]
+  
+  reff_1 <- reff_sims(draws, model, which = "R_eff_loc_1")
+  reff_12 <- reff_sims(draws, model, which = "R_eff_loc_12")
+  
+  reff_12_soft_50 <- soft_clamp(reff_12, date_50)
+  reff_12_soft_95 <- soft_clamp(reff_12, date_95)
+  
+  reff_12_hard_50 <- hard_clamp(reff_12, date_50)
+  reff_12_hard_95 <- hard_clamp(reff_12, date_95)
+  
+  write_csv(
+    reff_1,
+    file.path(dir, "r_eff_1_local_samples.csv")
+  )
+  
+  write_csv(
+    reff_12,
+    file.path(dir, "r_eff_12_local_samples.csv")
+  )
+  
+  write_csv(
+    reff_12_soft_50,
+    file.path(dir, "r_eff_12_local_samples_soft_clamped_50.csv")
+  )
+  
+  write_csv(
+    reff_12_soft_95,
+    file.path(dir, "r_eff_12_local_samples_soft_clamped_95.csv")
+  )
+  
+  write_csv(
+    reff_12_hard_50,
+    file.path(dir, "r_eff_12_local_samples_hard_clamped_50.csv")
+  )
+  
+  write_csv(
+    reff_12_hard_95,
+    file.path(dir, "r_eff_12_local_samples_hard_clamped_95.csv")
+  )
+  
 }
 
 fit_reff_model <- function(model, max_tries = 3, iterations_per_step = 1000) {
