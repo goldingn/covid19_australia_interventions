@@ -3354,42 +3354,16 @@ get_vic_linelist <- function(file) {
   
 }
 
-get_output_directories <- function(
-  dirs = c("outputs", "outputs/projection", "outputs/fixed_projection"),
-  staging = FALSE,
-  staging_name = "staging"
-) {
-  
-  # amend the directories for staging if needed
-  if (staging) {
-    dirs <- file.path(dirs, staging_name)
-  }
-  
-  # make sure the output directories exist 
-  . <- dirs %>%
-    file.path("figures") %>%
-    lapply(
-      FUN = dir.create,
-      recursive = TRUE,
-      showWarnings = FALSE
-    )
-  
-  dirs
-  
-}
-
-
 # given a raw (unimputed) linelist, prepare all the data needed for modelling
-reff_model_data <- function(linelist_raw,
-                            google_change_data,
-                            n_weeks_ahead = 6,
+reff_model_data <- function(n_weeks_ahead = 6,
                             inducing_gap = 3) {
   
+  # load NNDSS linelist
+  linelist_raw <- load_linelist()
   linelist_date <- linelist_raw$date_linelist[1]
   
-  # truncate mobility data to no later than the day before the linelist
-  google_change_data <- google_change_data %>%
-    filter(date < linelist_date)
+  # load modelled google mobility data 
+  mobility_data <- readRDS("outputs/google_change_trends.RDS")
   
   # compute delays from symptom onset to detection for each state over time
   notification_delay_cdf <- get_notification_delay_cdf(linelist_raw)
@@ -3398,10 +3372,16 @@ reff_model_data <- function(linelist_raw,
   linelist <- linelist_raw %>%
     impute_linelist(notification_delay_cdf = notification_delay_cdf)
   
+  # truncate mobility data to no later than the day before the linelist (needed
+  # for modelling on historic linelists) and then get the most recent date
+  latest_mobility_date <- mobility_data %>%
+    filter(date < linelist_date) %>%
+    pull(date) %>%
+    max()
+  
   # get linelist date and state information
   earliest_date <- min(linelist$date)
   latest_date <- max(linelist$date)
-  latest_mobility_date <- max(google_change_data$date)
   
   states <- sort(unique(linelist$state))
   dates <- seq(earliest_date, latest_date, by = 1)
@@ -4061,7 +4041,7 @@ write_reff_sims <- function(fitted_model, dir = "outputs/projection") {
   
 }
 
-fit_reff_model <- function(model, data, max_tries = 3, iterations_per_step = 1000) {
+fit_reff_model <- function(data, max_tries = 3, iterations_per_step = 1000) {
   
   # build the greta model
   model_output <- reff_model(data)
