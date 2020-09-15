@@ -2027,11 +2027,11 @@ distancing_effect_model <- function(dates, gi_cdf) {
   
 }
 
-plot_fit <- function(observed_cases, cases_sim, model) {
+plot_fit <- function(observed_cases, cases_sim, data) {
   
-  valid <- which(model$data$valid_mat, arr.ind = TRUE)
-  dates <- model$data$dates$infection
-  states <- model$data$states
+  valid <- which(data$valid_mat, arr.ind = TRUE)
+  dates <- data$dates$infection
+  states <- data$data$states
   
   # compute quantiles and plot timeseries for each state
   quants <- apply(
@@ -2422,20 +2422,18 @@ tf_project_local_cases <- function(infectiousness, R_local, disaggregation_proba
 }
 
 # check fit of projected cases against national epi curve
-check_projection <- function(draws, 
-                             model,
-                             start_date = as.Date("2020-02-28")) {
+check_projection <- function(fitted_model, start_date = as.Date("2020-02-28")) {
   
-  R_eff_local <- model$greta_arrays$R_eff_loc_12
-  R_eff_imported <- model$greta_arrays$R_eff_imp_12
-  gi_mat <- model$data$gi_mat
-  gi_vec <- gi_vector(gi_cdf, model$data$dates$latest)
-  local_infectiousness <- model$data$local$infectiousness
-  imported_infectiousness <- model$data$imported$infectiousnes
-  local_cases <- model$data$local$cases
-  dates <- model$data$dates$infection
-  n_states <- model$data$n_states
-  n_dates <- model$data$n_dates
+  R_eff_local <- fitted_model$greta_arrays$R_eff_loc_12
+  R_eff_imported <- fitted_model$greta_arrays$R_eff_imp_12
+  gi_mat <- fitted_model$data$gi_mat
+  gi_vec <- gi_vector(gi_cdf, fitted_model$data$dates$latest)
+  local_infectiousness <- fitted_model$data$local$infectiousness
+  imported_infectiousness <- fitted_model$data$imported$infectiousnes
+  local_cases <- fitted_model$data$local$cases
+  dates <- fitted_model$data$dates$infection
+  n_states <- fitted_model$data$n_states
+  n_dates <- fitted_model$data$n_dates
   
   # national-level Reff - no clusters and weighted by state populations
   local_weights <- sweep(
@@ -2498,18 +2496,22 @@ check_projection <- function(draws,
   # compute locally-acquired cases
   local_cases_project_ntnl <- import_local_cases[sub_idx] + secondary_locals
   local_cases_project_ntnl_sim <- calculate(local_cases_project_ntnl,
-                                            values = draws,
+                                            values = fitted_model$draws,
                                             nsim = 1000)[[1]]
+  
+  data <- fitted_model$data
+  data$dates$infection_project <- dates[sub_idx]
+  data$n_dates_project <- length(sub_idx)
   
   local_cases_ntnl <- rowSums(local_cases[sub_idx, ])
   plot_trend(local_cases_project_ntnl_sim,
+             data = data,
              multistate = FALSE,
              ylim = c(0, 2 * max(local_cases_ntnl)),
              hline_at = NULL,
-             dates = dates[sub_idx],
+             min_date = start_date,
              base_colour = green,
-             vline_at = intervention_dates()$date,
-             min_date = min(dates)) +
+             vline_at = intervention_dates()$date) +
     ggtitle("Projected national locally-acquired cases") +
     ylab("daily infections") +
     geom_line(data = data.frame(mean = local_cases_ntnl,
@@ -3650,8 +3652,7 @@ reff_model <- function(data) {
   m <- model(expected_infections_vec)
   
   list(
-    model = m,
-    data = model_data,
+    greta_model = m,
     greta_arrays = module(
       expected_infections_vec,
       size,
@@ -3690,33 +3691,34 @@ extend <- function(x, n_rows = nrow(x), clamp_from = nrow(x)) {
 }
 
 # reff component 1 under only surveillance changes
-reff_1_only_surveillance <- function(reff_model) {
-  log_R0 <- reff_model$greta_arrays$log_R0
-  reduction <- reff_model$greta_arrays$surveillance_reff_local_reduction
+reff_1_only_surveillance <- function(fitted_model) {
+  ga <- fitted_model$greta_arrays
+  log_R0 <- ga$log_R0
+  reduction <- ga$surveillance_reff_local_reduction
   exp(log_R0 + log(reduction))
 }
 
 # reff component 1 if only macrodistancing had changed
-reff_1_only_macro <- function(reff_model) {
-  ga <- reff_model$greta_arrays
+reff_1_only_macro <- function(fitted_model) {
+  ga <- fitted_model$greta_arrays
   baseline_surveillance_effect <- ga$surveillance_reff_local_reduction[1]
   de <- ga$distancing_effect
   infectious_days <- infectious_period(gi_cdf)
-  h_t <- h_t_state(reff_model$data$dates$mobility)
+  h_t <- h_t_state(fitted_model$data$dates$mobility)
   HD_t <- de$HD_0 * h_t
   household_infections_macro <- de$HC_0 * (1 - de$p ^ HD_t)
   non_household_infections_macro <- de$OC_t_state * infectious_days * (1 - de$p ^ de$OD_0)
   hourly_infections_macro <- household_infections_macro + non_household_infections_macro
   hourly_infections_macro_extended <- extend(
     hourly_infections_macro,
-    reff_model$data$n_dates_project
+    fitted_model$data$n_dates_project
   )
   hourly_infections_macro_extended * baseline_surveillance_effect
 }
 
 # reff component 1 if only macrodistancing had changed
-reff_1_only_micro <- function(reff_model) {
-  ga <- reff_model$greta_arrays
+reff_1_only_micro <- function(fitted_model) {
+  ga <- fitted_model$greta_arrays
   baseline_surveillance_effect <- ga$surveillance_reff_local_reduction[1]
   de <- ga$distancing_effect
   infectious_days <- infectious_period(gi_cdf)
@@ -3727,24 +3729,24 @@ reff_1_only_micro <- function(reff_model) {
     non_household_infections_micro
   hourly_infections_micro_extended <- extend(
     hourly_infections_micro,
-    reff_model$data$n_dates_project
+    fitted_model$data$n_dates_project
   )
   hourly_infections_micro_extended * baseline_surveillance_effect
 }
 
 # outputting Reff trajectories for Rob M
-reff_sims <- function(draws, model, nsim = 2000, which = "R_eff_loc_12") {
+reff_sims <- function(fitted_model, nsim = 2000, which = "R_eff_loc_12") {
   
-  ga <- model$greta_arrays[[which]]
+  ga <- fitted_model$greta_arrays[[which]]
   ga_vec <- c(ga)
-  sim <- calculate(ga_vec, values = draws, nsim = nsim)
+  sim <- calculate(ga_vec, values = fitted_model$draws, nsim = nsim)
   
   samples <- t(sim[[1]][, , 1])
   colnames(samples) <- paste0("sim", 1:2000)
   
   tibble(
-    date = rep(model$data$dates$infection_project, model$data$n_states),
-    state = rep(model$data$states, each = model$data$n_dates_project),
+    date = rep(fitted_model$data$dates$infection_project, fitted_model$data$n_states),
+    state = rep(fitted_model$data$states, each = fitted_model$data$n_dates_project),
   ) %>%
     mutate(date_onset = date + 5) %>%
     cbind(samples)
@@ -3754,22 +3756,21 @@ reff_sims <- function(draws, model, nsim = 2000, which = "R_eff_loc_12") {
 # function to calculate, plot, and save all the outputs (with flags for plot
 # types) - pass in an optional maximum date argument
 reff_plotting <- function(
-  draws,
-  model,
+  fitted_model,
   dir = "outputs",
-  max_date = model$data$dates$latest_mobility,
+  max_date = fitted_model$data$dates$latest_mobility,
   mobility_extrapolation_rectangle = TRUE,
   projection_date = NA
 ) {
   
   # add counterfactuals to the model object: Reff for locals component 1 under
   # only micro/macro/surveillance improvements
-  model$greta_arrays <- c(
-    model$greta_arrays,
+  fitted_model$greta_arrays <- c(
+    fitted_model$greta_arrays,
     list(
-      R_eff_loc_1_macro = reff_1_only_macro(model),
-      R_eff_loc_1_micro = reff_1_only_micro(model),
-      R_eff_loc_1_surv = reff_1_only_surveillance(model)
+      R_eff_loc_1_macro = reff_1_only_macro(fitted_model),
+      R_eff_loc_1_micro = reff_1_only_micro(fitted_model),
+      R_eff_loc_1_surv = reff_1_only_surveillance(fitted_model)
     ) 
   )
   
@@ -3785,15 +3786,15 @@ reff_plotting <- function(
     "R_eff_loc_1_macro",
     "R_eff_loc_1_surv"
   )
-  vector_list <- lapply(model$greta_arrays[trajectory_types], c)
+  vector_list <- lapply(fitted_model$greta_arrays[trajectory_types], c)
   
   # simulate from posterior for these quantities of interest
-  args <- c(vector_list, list(values = draws, nsim = 10000))
+  args <- c(vector_list, list(values = fitted_model$draws, nsim = 10000))
   sims <- do.call(calculate, args)
   
   # microdistancing only
   plot_trend(sims$R_eff_loc_1_micro,
-             data = model$data,
+             data = fitted_model$data,
              max_date = max_date,
              multistate = TRUE,
              base_colour = purple,
@@ -3807,7 +3808,7 @@ reff_plotting <- function(
   
   # macrodistancing only
   plot_trend(sims$R_eff_loc_1_macro,
-             data = model$data,
+             data = fitted_model$data,
              max_date = max_date,
              multistate = TRUE,
              base_colour = blue,
@@ -3821,7 +3822,7 @@ reff_plotting <- function(
   
   # improved surveilance only
   plot_trend(sims$R_eff_loc_1_surv,
-             data = model$data,
+             data = fitted_model$data,
              max_date = max_date,
              multistate = FALSE,
              base_colour = yellow,
@@ -3835,7 +3836,7 @@ reff_plotting <- function(
   
   # Component 1 for national / state populations
   plot_trend(sims$R_eff_loc_1,
-             data = model$data,
+             data = fitted_model$data,
              max_date = max_date,
              multistate = TRUE,
              base_colour = green,
@@ -3848,7 +3849,7 @@ reff_plotting <- function(
   save_ggplot("R_eff_1_local.png", dir)
   
   plot_trend(sims$R_eff_imp_1,
-             data = model$data,
+             data = fitted_model$data,
              max_date = max_date,
              multistate = FALSE,
              base_colour = orange,
@@ -3863,7 +3864,7 @@ reff_plotting <- function(
   
   # Reff for active cases
   p <- plot_trend(sims$R_eff_loc_12,
-                  data = model$data,
+                  data = fitted_model$data,
                   max_date = max_date,
                   multistate = TRUE,
                   base_colour = green,
@@ -3875,8 +3876,8 @@ reff_plotting <- function(
   
   if (mobility_extrapolation_rectangle) {
     p <- p + annotate("rect",
-                      xmin = data$dates$latest_infection,
-                      xmax = data$dates$latest_mobility,
+                      xmin = fitted_model$data$dates$latest_infection,
+                      xmax = fitted_model$data$dates$latest_mobility,
                       ymin = -Inf,
                       ymax = Inf,
                       fill = grey(0.5), alpha = 0.1)
@@ -3888,7 +3889,7 @@ reff_plotting <- function(
   save_ggplot("R_eff_12_local.png", dir)
   
   plot_trend(sims$R_eff_imp_12,
-             data = model$data,
+             data = fitted_model$data,
              max_date = max_date,
              multistate = TRUE,
              base_colour = orange,
@@ -3903,7 +3904,7 @@ reff_plotting <- function(
   
   # component 2 (noisy error trends)
   p <- plot_trend(sims$epsilon_L,
-                  data = model$data,
+                  data = fitted_model$data,
                   max_date = max_date,
                   multistate = TRUE,
                   base_colour = pink,
@@ -3917,8 +3918,8 @@ reff_plotting <- function(
   
   if (mobility_extrapolation_rectangle) {
     p <- p + annotate("rect",
-                      xmin = data$dates$latest_infection,
-                      xmax = data$dates$latest_mobility,
+                      xmin = fitted_model$data$dates$latest_infection,
+                      xmax = fitted_model$data$dates$latest_mobility,
                       ymin = -Inf,
                       ymax = Inf,
                       fill = grey(0.5), alpha = 0.1)
@@ -3930,7 +3931,7 @@ reff_plotting <- function(
   save_ggplot("R_eff_2_local.png", dir)
   
   plot_trend(sims$epsilon_O,
-             data = model$data,
+             data = fitted_model$data,
              max_date = max_date,
              multistate = TRUE,
              base_colour = pink,
@@ -4009,31 +4010,25 @@ hard_clamp <- function(local_samples, target_date) {
 }
 
 # output simulations
-write_reff_sims <- function(draws, model, dir = "outputs/projection") {
+write_reff_sims <- function(fitted_model, dir = "outputs/projection") {
   
   # find the dates for clamping into the future (where 50%/95% cases so far detected)
-  clip_idx_50 <- (model$data$detection_prob_mat > 0.5) %>%
+  clip_idx_50 <- (fitted_model$data$detection_prob_mat > 0.5) %>%
     apply(1, all) %>%
     which() %>%
     max()
   
-  clip_idx_95 <- (model$data$detection_prob_mat > 0.95) %>%
+  clip_idx_95 <- (fitted_model$data$detection_prob_mat > 0.95) %>%
     apply(1, all) %>%
     which() %>%
     max()
   
-  date_50 <- model$data$dates$infection[clip_idx_50]
-  date_95 <- model$data$dates$infection[clip_idx_95]
+  date_50 <- fitted_model$data$dates$infection[clip_idx_50]
+  date_95 <- fitted_model$data$dates$infection[clip_idx_95]
   
-  reff_1 <- reff_sims(draws, model, which = "R_eff_loc_1")
-  reff_12 <- reff_sims(draws, model, which = "R_eff_loc_12")
-  
-  reff_12_soft_50 <- soft_clamp(reff_12, date_50)
-  reff_12_soft_95 <- soft_clamp(reff_12, date_95)
-  
-  reff_12_hard_50 <- hard_clamp(reff_12, date_50)
-  reff_12_hard_95 <- hard_clamp(reff_12, date_95)
-  
+  reff_1 <- reff_sims(fitted_model, which = "R_eff_loc_1")
+  reff_12 <- reff_sims(fitted_model, which = "R_eff_loc_12")
+
   write_csv(
     reff_1,
     file.path(dir, "r_eff_1_local_samples.csv")
@@ -4045,32 +4040,37 @@ write_reff_sims <- function(draws, model, dir = "outputs/projection") {
   )
   
   write_csv(
-    reff_12_soft_50,
+    soft_clamp(reff_12, date_50),
     file.path(dir, "r_eff_12_local_samples_soft_clamped_50.csv")
   )
   
   write_csv(
-    reff_12_soft_95,
+    soft_clamp(reff_12, date_95),
     file.path(dir, "r_eff_12_local_samples_soft_clamped_95.csv")
   )
   
   write_csv(
-    reff_12_hard_50,
+    hard_clamp(reff_12, date_50),
     file.path(dir, "r_eff_12_local_samples_hard_clamped_50.csv")
   )
   
   write_csv(
-    reff_12_hard_95,
+    hard_clamp(reff_12, date_95),
     file.path(dir, "r_eff_12_local_samples_hard_clamped_95.csv")
   )
   
 }
 
-fit_reff_model <- function(model, max_tries = 3, iterations_per_step = 1000) {
+fit_reff_model <- function(model, data, max_tries = 3, iterations_per_step = 1000) {
+  
+  # build the greta model
+  model_output <- reff_model(data)
+  greta_arrays <- model_output$greta_arrays
+  greta_model <- model_output$greta_model
   
   # first pass at model fitting  
   draws <- mcmc(
-    model$model,
+    greta_model,
     sampler = hmc(Lmin = 25, Lmax = 30),
     chains = 10,
     n_samples = 2000,
@@ -4095,7 +4095,8 @@ fit_reff_model <- function(model, max_tries = 3, iterations_per_step = 1000) {
     warning("sampling did not converge according to benchmarks")
   }
   
-  draws
+  # return a fitted model object
+  module(greta_model, greta_arrays, data, draws)
   
 }
 
@@ -4126,26 +4127,17 @@ write_local_cases <- function(model_data, file = "outputs/local_cases_input.csv"
   
 }
 
-# save the whole fitted Reff model to disk
-write_fitted_reff <- function(model, draws, file = "outputs/fitted_reff.RDS") {
-  object <- list(
-    model = model,
-    draws = draws
-  )
-  saveRDS(object, file)
-}
-
 # plot visual checks of model posterior calibration against observed data
-plot_reff_ppc_checks <- function(draws, model, nsim = 10000) {
+plot_reff_checks <- function(fitted_model, nsim = 10000) {
   
   cases <- negative_binomial(
-    model$greta_arrays$size,
-    model$greta_arrays$prob_trunc
+    fitted_model$greta_arrays$size,
+    fitted_model$greta_arrays$prob_trunc
   )
-  cases_sim <- calculate(cases, values = draws, nsim = nsim)[[1]][, , 1]
+  cases_sim <- calculate(cases, values = fitted_model$draws, nsim = nsim)[[1]][, , 1]
   
-  valid <- which(model$data$valid_mat, arr.ind = TRUE)
-  observed <- model$data$local$cases[valid]
+  valid <- which(fitted_model$data$valid_mat, arr.ind = TRUE)
+  observed <- fitted_model$data$local$cases[valid]
   
   # overall PPC check
   bayesplot::ppc_ecdf_overlay(
@@ -4155,7 +4147,10 @@ plot_reff_ppc_checks <- function(draws, model, nsim = 10000) {
   )
   
   # check by state and time
-  plot_fit(observed, cases_sim, model)
+  plot_fit(observed, cases_sim, fitted_model$data)
+  
+  # check simulation fit
+  check_projection(fitted_model)
   
 }
 

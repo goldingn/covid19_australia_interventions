@@ -21,37 +21,34 @@ data <- reff_model_data(linelist, google_change_data)
 write_reff_key_dates(data)
 write_local_cases(data)
 
-# define the model (and greta arrays) for Reff, and sample until adequate convergence
-model <- reff_model(data)
-draws <- fit_reff_model(model)
+# define the model (and greta arrays) for Reff, and sample until convergence
+fitted_model <- fit_reff_model(model, data)
 
-# save these objects
-write_fitted_reff(model, draws) 
-  
-object <- readRDS("outputs/fitted_reff.RDS")
-model <- object$model
-draws <- object$draws
+# save
+saveRDS(fitted_model, "outputs/fitted_reff_model.RDS")
+# fit_reff_model should take in data and return a fitted_model object (module(draws, model, data)), and everything else should take in a fitted model object
+
+fitted_model <- readRDS("outputs/fitted_reff_model.RDS")
+# model <- fitted_model$model
+# data <- fitted_model$data
+# draws <- fitted_model$draws
+# greta_model <- model$greta_model
+# greta_arrays <- model$greta_arrays
+# fitted_model <-  module(greta_model, greta_arrays, data, draws)
 
 # output Reff trajectory draws
-write_reff_sims(draws, model, dir = "outputs/projection/staging")
+write_reff_sims(fitted_model, dir = "outputs/projection/staging")
 
 # visual checks of model fit
-plot_reff_ppc_checks(draws, model)
-
-# check fit of projected cases against national epi curve
-check_projection(draws, model)
+plot_reff_checks(fitted_model)
 
 # do plots for main period
-reff_plotting(draws, model, dir = "outputs/staging")
+reff_plotting(fitted_model, dir = "outputs/staging")
 
 # and for projected part
-reff_plotting(draws,
-              model,
+reff_plotting(fitted_model,
               dir = "outputs/projection/staging",
-              max_date = model$data$dates$latest_project,
+              max_date = fitted_model$data$dates$latest_project,
               mobility_extrapolation_rectangle = FALSE,
-              projection_date = data$dates$latest_mobility)
+              projection_date = fitted_model$data$dates$latest_mobility)
 
-# model$data$n_dates_project <- model$data$n_date_nums
-# model$data$dates$infection_project <- model$data$dates$earliest + model$data$dates$date_nums - 1
-# model$data$dates$latest_project <- max(model$data$dates$infection_project)
