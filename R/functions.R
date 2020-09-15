@@ -4095,7 +4095,7 @@ write_reff_key_dates <- function(model_data, dir = "outputs/") {
 }
 
 # save local case data, dates, and detection probabilities for Robs
-write_local_cases <- function(model_data, file = "outputs/local_cases_input.csv") {
+write_local_cases <- function(model_data, dir = "outputs") {
   
   tibble::tibble(
     date_onset = rep(model_data$dates$onset, model_data$n_states),
@@ -4104,7 +4104,10 @@ write_local_cases <- function(model_data, file = "outputs/local_cases_input.csv"
     count = as.vector(model_data$local$cases_infectious),
     acquired_in_state = as.vector(model_data$local$cases)
   ) %>%
-    write.csv(file, row.names = FALSE)
+    write.csv(
+      file.path(dir, "local_cases_input.csv"),
+      row.names = FALSE
+    )
   
 }
 
