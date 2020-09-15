@@ -344,6 +344,10 @@ intervention_dates <- function() {
     mutate(date = lubridate::date(date))
 }
 
+quarantine_dates <- function() {
+  as.Date(c("2020-03-15", "2020-03-28"))
+}
+
 # dates of public holidays by state, from:
 # https://www.australia.gov.au/about-australia/special-dates-and-events/public-holidays
 holiday_dates <- function() {
@@ -1265,7 +1269,7 @@ R0_prior <- function() {
 }
 
 plot_trend <- function(simulations,
-                       dates,
+                       data,
                        base_colour = grey(0.4),
                        multistate = FALSE,
                        hline_at = 1,
@@ -1273,6 +1277,7 @@ plot_trend <- function(simulations,
                        vline_at = NA,
                        vline2_at = NA,
                        keep_only_rows = NULL,
+                       max_date = data$dates$latest_mobility,
                        min_date = as.Date("2020-03-01")) {
   
   library(ggplot2)
@@ -1282,9 +1287,10 @@ plot_trend <- function(simulations,
   ci_50 <- apply(simulations, 2, quantile, c(0.25, 0.75))
   
   if (multistate) {
-    states <- rep(states, each = length(dates))
-    dates <- rep(dates, n_states)
+    states <- rep(data$states, each = data$n_dates_project)
+    dates <- rep(data$dates$infection_project, data$n_states)
   } else {
+    dates <- data$dates$infection_project
     states <- NA
   }
   
@@ -1301,7 +1307,10 @@ plot_trend <- function(simulations,
   }
   
   df <- df %>%
-    filter(date >= min_date) %>%
+    filter(
+      date >= min_date,
+      date <= max_date
+    ) %>%
     mutate(type = "Nowcast")
   
   if (is.null(ylim)) {
@@ -3493,6 +3502,7 @@ reff_model_data <- function(linelist_raw,
       latest = latest_date,
       latest_mobility = latest_mobility_date,
       latest_infection = latest_infection_date,
+      latest_project = max(dates_project),
       linelist = linelist_date
     ),
     n_dates = n_dates,
@@ -3515,11 +3525,9 @@ reff_model <- function(data) {
   # quarantine measures each measure applied during a different period. Q_t is
   # R_eff_t / R0 for each time t, modelled as a monotone decreasing step function
   # over three periods with increasingly strict policies
-  quarantine_dates <- as.Date(c("2020-03-15", "2020-03-28"))
-  
   q_index <- case_when(
-    data$dates$infection < quarantine_dates[1] ~ 1,
-    data$dates$infection < quarantine_dates[2] ~ 2,
+    data$dates$infection < quarantine_dates()[1] ~ 1,
+    data$dates$infection < quarantine_dates()[2] ~ 2,
     TRUE ~ 3,
   )
   q_index <- c(q_index, rep(3, data$n_date_nums - data$n_dates))
@@ -3740,6 +3748,201 @@ reff_sims <- function(draws, model, nsim = 2000, which = "R_eff_loc_12") {
   ) %>%
     mutate(date_onset = date + 5) %>%
     cbind(samples)
+  
+}
+
+# function to calculate, plot, and save all the outputs (with flags for plot
+# types) - pass in an optional maximum date argument
+reff_plotting <- function(
+  draws,
+  model,
+  dir = "outputs",
+  max_date = model$data$dates$latest_mobility,
+  mobility_extrapolation_rectangle = TRUE,
+  projection_date = NA
+) {
+  
+  # add counterfactuals to the model object: Reff for locals component 1 under
+  # only micro/macro/surveillance improvements
+  model$greta_arrays <- c(
+    model$greta_arrays,
+    list(
+      R_eff_loc_1_macro = reff_1_only_macro(model),
+      R_eff_loc_1_micro = reff_1_only_micro(model),
+      R_eff_loc_1_surv = reff_1_only_surveillance(model)
+    ) 
+  )
+  
+  # flatten all relevant greta array matrices to vectors before calculating
+  trajectory_types <- c(
+    "R_eff_loc_1",
+    "R_eff_imp_1",
+    "R_eff_loc_12",
+    "R_eff_imp_12",
+    "epsilon_L",
+    "epsilon_O",
+    "R_eff_loc_1_micro",
+    "R_eff_loc_1_macro",
+    "R_eff_loc_1_surv"
+  )
+  vector_list <- lapply(model$greta_arrays[trajectory_types], c)
+  
+  # simulate from posterior for these quantities of interest
+  args <- c(vector_list, list(values = draws, nsim = 10000))
+  sims <- do.call(calculate, args)
+  
+  # microdistancing only
+  plot_trend(sims$R_eff_loc_1_micro,
+             data = model$data,
+             max_date = max_date,
+             multistate = TRUE,
+             base_colour = purple,
+             vline_at = intervention_dates()$date,
+             vline2_at = projection_date) + 
+    ggtitle(label = "Impact of micro-distancing",
+            subtitle = expression(R["eff"]~"if"~only~"micro-distancing"~behaviour~had~changed)) +
+    ylab(expression(R["eff"]~component))
+  
+  save_ggplot("R_eff_1_local_micro.png", dir)
+  
+  # macrodistancing only
+  plot_trend(sims$R_eff_loc_1_macro,
+             data = model$data,
+             max_date = max_date,
+             multistate = TRUE,
+             base_colour = blue,
+             vline_at = intervention_dates()$date,
+             vline2_at = projection_date) + 
+    ggtitle(label = "Impact of macro-distancing",
+            subtitle = expression(R["eff"]~"if"~only~"macro-distancing"~behaviour~had~changed)) +
+    ylab(expression(R["eff"]~component))
+  
+  save_ggplot("R_eff_1_local_macro.png", dir)
+  
+  # improved surveilance only
+  plot_trend(sims$R_eff_loc_1_surv,
+             data = model$data,
+             max_date = max_date,
+             multistate = FALSE,
+             base_colour = yellow,
+             vline_at = intervention_dates()$date,
+             vline2_at = projection_date) + 
+    ggtitle(label = "Impact of improved surveillance",
+            subtitle = expression(R["eff"]~"if"~only~surveillance~effectiveness~had~changed)) +
+    ylab(expression(R["eff"]~component))
+  
+  save_ggplot("R_eff_1_local_surv.png", dir, multi = FALSE)
+  
+  # Component 1 for national / state populations
+  plot_trend(sims$R_eff_loc_1,
+             data = model$data,
+             max_date = max_date,
+             multistate = TRUE,
+             base_colour = green,
+             vline_at = intervention_dates()$date,
+             vline2_at = projection_date) + 
+    ggtitle(label = "Impact of social distancing",
+            subtitle = expression(Component~of~R["eff"]~due~to~social~distancing)) +
+    ylab(expression(R["eff"]~component))
+  
+  save_ggplot("R_eff_1_local.png", dir)
+  
+  plot_trend(sims$R_eff_imp_1,
+             data = model$data,
+             max_date = max_date,
+             multistate = FALSE,
+             base_colour = orange,
+             ylim = c(0, 0.4),
+             vline_at = quarantine_dates(),
+             vline2_at = projection_date) + 
+    ggtitle(label = "Impact of quarantine of overseas arrivals",
+            subtitle = expression(Component~of~R["eff"]~due~to~quarantine~of~overseas~arrivals)) +
+    ylab(expression(R["eff"]~component))
+  
+  save_ggplot("R_eff_1_import.png", dir, multi = FALSE)
+  
+  # Reff for active cases
+  p <- plot_trend(sims$R_eff_loc_12,
+                  data = model$data,
+                  max_date = max_date,
+                  multistate = TRUE,
+                  base_colour = green,
+                  vline_at = intervention_dates()$date,
+                  vline2_at = projection_date) +
+    ggtitle(label = "Local to local transmission potential",
+            subtitle = "Average across active cases") +
+    ylab(expression(R["eff"]~from~"locally-acquired"~cases))
+  
+  if (mobility_extrapolation_rectangle) {
+    p <- p + annotate("rect",
+                      xmin = data$dates$latest_infection,
+                      xmax = data$dates$latest_mobility,
+                      ymin = -Inf,
+                      ymax = Inf,
+                      fill = grey(0.5), alpha = 0.1)
+    
+  }
+  
+  p
+  
+  save_ggplot("R_eff_12_local.png", dir)
+  
+  plot_trend(sims$R_eff_imp_12,
+             data = model$data,
+             max_date = max_date,
+             multistate = TRUE,
+             base_colour = orange,
+             ylim = c(0, 0.4),
+             vline_at = quarantine_dates(),
+             vline2_at = projection_date) +
+    ggtitle(label = "Import to local transmission potential",
+            subtitle = "Average across active cases") +
+    ylab(expression(R["eff"]~from~"overseas-acquired"~cases))
+  
+  save_ggplot("R_eff_12_imported.png", dir)
+  
+  # component 2 (noisy error trends)
+  p <- plot_trend(sims$epsilon_L,
+                  data = model$data,
+                  max_date = max_date,
+                  multistate = TRUE,
+                  base_colour = pink,
+                  hline_at = 0,
+                  vline_at = intervention_dates()$date,
+                  vline2_at = projection_date,
+                  ylim = NULL) + 
+    ggtitle(label = "Short-term variation in local to local transmission rates",
+            subtitle = expression(Deviation~from~log(R["eff"])~of~"local-local"~transmission)) +
+    ylab("Deviation")
+  
+  if (mobility_extrapolation_rectangle) {
+    p <- p + annotate("rect",
+                      xmin = data$dates$latest_infection,
+                      xmax = data$dates$latest_mobility,
+                      ymin = -Inf,
+                      ymax = Inf,
+                      fill = grey(0.5), alpha = 0.1)
+    
+  }
+  
+  p
+  
+  save_ggplot("R_eff_2_local.png", dir)
+  
+  plot_trend(sims$epsilon_O,
+             data = model$data,
+             max_date = max_date,
+             multistate = TRUE,
+             base_colour = pink,
+             hline_at = 0,
+             vline_at = quarantine_dates(),
+             vline2_at = projection_date,
+             ylim = NULL) + 
+    ggtitle(label = "Short-term variation in import to local transmission rates",
+            subtitle = expression(Deviation~from~log(R["eff"])~of~"import-local"~transmission)) +
+    ylab("Deviation")
+  
+  save_ggplot("R_eff_2_imported.png", dir)
   
 }
 
