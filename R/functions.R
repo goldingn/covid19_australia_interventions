@@ -3644,6 +3644,7 @@ reff_model <- function(data) {
       R_eff_loc_12,
       R_eff_imp_12,
       log_R0,
+      log_q,
       distancing_effect,
       surveillance_reff_local_reduction,
       log_R_eff_loc,
@@ -4043,7 +4044,7 @@ write_reff_sims <- function(fitted_model, dir = "outputs/projection") {
   
 }
 
-fit_reff_model <- function(data, max_tries = 3, iterations_per_step = 1000) {
+fit_reff_model <- function(data, max_tries = 1, iterations_per_step = 2000) {
   
   # build the greta model
   model_output <- reff_model(data)
@@ -4053,7 +4054,7 @@ fit_reff_model <- function(data, max_tries = 3, iterations_per_step = 1000) {
   # first pass at model fitting  
   draws <- mcmc(
     greta_model,
-    sampler = hmc(Lmin = 25, Lmax = 30),
+    sampler = hmc(Lmin = 30, Lmax = 45),
     chains = 10,
     n_samples = 2000,
     one_by_one = TRUE
@@ -4467,7 +4468,7 @@ lga_infections <- function(linelist, dates, gi_mat, case_type = c("local", "impo
 # function to get a greta array forecasting numbers of locally-acquired cases
 # in each state into the future.
 
-# local cases and imported cases should be matrices conntaining integer (or
+# local cases and imported cases should be matrices containing integer (or
 # fractional) numbers of observed or assumed cases infected on each date.
 # Reff_locals and Reff_imports should be either matrices or 2D greta arrays of
 # transmission potential for locally-acquired and imported cases. All four of
@@ -4476,9 +4477,9 @@ lga_infections <- function(linelist, dates, gi_mat, case_type = c("local", "impo
 # or equal to the numbers of rows in local_cases and imported_cases. Where
 # local_cases and imported_cases have fewer rows than the other matrices, they
 # will be padded with zeros to represent an assumption of no imported cases or
-# other local cases injecxted into the local population. dates must be a vector
-# of dates with as many elements as rows in the Reff matrices, andgi_cdf must be
-# a function returning the continuous version of the generation interval
+# other local cases injected into the local population. dates must be a vector
+# of dates with as many elements as rows in the Reff matrices, and gi_cdf must
+# be a function returning the continuous version of the generation interval
 # distribution.
 
 # the function first computes the number of *primary* local cases - those
@@ -4572,7 +4573,7 @@ forecast_locals <- function (local_cases, imported_cases,
   
   list(
     local_cases = forecast_local_cases,
-    seecondary_local_cases = secondary_local_cases,
+    secondary_local_cases = secondary_local_cases,
     probability_of_cases = p_cases
   )
   
@@ -5142,6 +5143,202 @@ parse_all_surveys <- function() {
       wave_duration = as.numeric(max(date) - min(date))
     ) %>%
     ungroup()
+}
+
+# the vector of dates to use for each scenario
+scenario_dates <- function(scenario) {
+  
+  switch(
+    scenario$phase,
+    importation = seq(as.Date("2020-03-01"),
+                      as.Date("2020-04-30"),
+                      by = 1),
+    suppression = seq(as.Date("2020-05-01"),
+                      as.Date("2020-06-30"),
+                      by = 1),
+    community = seq(as.Date("2020-07-01"),
+                    as.Date("2020-08-31"),
+                    by = 1)
+  )
+  
+}
+
+# reff C1 locals (except surveillance effect) with macro/microdistancing either
+# at optimal effect (TRUE) or turned off (FALSE)
+reff_distancing <- function(fitted_model, macro_effect = TRUE, micro_effect = TRUE) {
+  
+  de <- fitted_model$greta_arrays$distancing_effect
+  infectious_days <- infectious_period(gi_cdf)
+  
+  # duration in the household
+  HD <- de$HD_0
+  
+  # non-household contacts
+  OC <- de$OC_0
+  
+  # reduction in transmission probability due to hygiene measures
+  gamma <- 1
+  
+  if (macro_effect) {
+    
+    macro_trends <- trends_date_state(
+      "outputs/macrodistancing_trends.RDS",
+      fitted_model$data$dates$infection
+    )
+    
+    # optimal date and state for reduction in contacts
+    macro_optimum <- which(macro_trends == min(macro_trends), arr.ind = TRUE)[1, , drop = FALSE]
+    
+    # duration in the household increases at optimum
+    h_optimal <- h_t_state(fitted_model$data$dates$infection)[macro_optimum]
+    HD <- HD * h_optimal
+    
+    # number of non-household contacts decreases at optimum
+    OC <- macro_trends[macro_optimum]
+  }
+  
+  if (micro_effect) {
+    
+    # optimal date and state for reduction in contacts
+    micro_trends <- trends_date_state(
+      "outputs/microdistancing_trends.RDS",
+      fitted_model$data$dates$infection
+    )
+    micro_optimum <- which(micro_trends == max(micro_trends), arr.ind = TRUE)[1, , drop = FALSE]
+    
+    # transmission probability is reduced at optimum
+    gamma <- de$gamma_t_state[micro_optimum]
+    
+  }
+  
+  household_infections <- de$HC_0 * (1 - de$p ^ HD)
+  non_household_infections <- OC * infectious_days *
+    (1 - de$p ^ de$OD_0) * gamma
+  
+  household_infections + non_household_infections
+  
+}
+
+# scalar reffs for locally- and overseas-acquired cases under different policy scenarios
+counterfactual_reffs <- function(scenario, fitted_model) {
+  
+  # baseline reff due to household/non-household model
+  baseline_local_reff <- reff_distancing(
+    fitted_model,
+    macro_effect = scenario$mobility_restrictions,
+    micro_effect = scenario$physical_distancing
+  )
+  
+  # reduction in reff due to contact tracing
+  contact_tracing_effect <- switch(
+    scenario$contact_tracing,
+    none = 1,
+    suboptimal = surveillance_effect(as.Date("2020-01-01"), gi_cdf),
+    optimal = surveillance_effect(as.Date("2020-09-01"), gi_cdf)
+  )
+  
+  # overall reff for locally-acquired cases
+  local_reff <- baseline_local_reff * contact_tracing_effect
+  
+  # overall reff for overseas-acquired cases  
+  import_reff <- local_reff
+  if (scenario$overseas_quarantine) {
+    log_q3 <- fitted_model$greta_arrays$log_q[3]
+    import_reff <- exp(log_q3)
+  }
+  
+  # return these scalar greta arrays
+  module(local_reff, import_reff)
+  
+}
+
+# things to do for each:
+# 1. compute Reff C1s under each scenario
+
+# 2. project case counts under Reff trajectory
+#  - function to create greta array for locally-acquired case trajectories based on two reff trajectories, imported case counts, and initial local case counts
+#  - function to set up imported case counts and initial case counts for each phase
+#  - wrapper function to take in scenario config, do calculation of posteriors, and save outputs 
+
+
+# the vectors of case counts to use for each scenario
+scenario_cases <- function(scenario, fitted_model) {
+  
+  all_dates <- fitted_model$data$dates$infection
+  all_imported <- rowSums(fitted_model$data$imported$cases)
+  all_local <- rowSums(fitted_model$data$local$cases)
+  
+  scenario_dates <- scenario_dates(scenario)
+  scenario_start <- min(scenario_dates)
+  n_scenario_dates <- length(scenario_dates)
+  
+  during <- all_dates %in% scenario_dates
+  before <- all_dates < scenario_start & all_dates >= (scenario_start - 21)
+  
+  list(
+    local_cases = c(all_local[before], rep(0, n_scenario_dates)),
+    imported_cases = all_imported[before | during],
+    dates = all_dates[before | during],
+    simulation_start = scenario_start,
+    n_dates = n_scenario_dates
+  )  
+  
+}
+
+# given a fitted reff model and a scenario, simulate Reffs and the numbers of
+# locally-acquired cases nationally
+simulate_scenario <- function (index, scenarios, fitted_model, nsim = 5000) {
+  
+  scenario <- scenarios[index, ]
+  
+  reffs <- counterfactual_reffs(scenario, fitted_model)
+  case_data <- scenario_cases(scenario, fitted_model)
+  one <- ones(length(case_data$local_cases))
+  
+  # need to include 3 weeks of pre-simulation local and imported cases, so pad
+  # dates. pass in a single column matrix of these things to do national simulations
+  simulation <- forecast_locals(
+    local_cases = as.matrix(case_data$local_cases),
+    imported_cases = as.matrix(case_data$imported_cases),
+    Reff_locals = reffs$local_reff * one,
+    Reff_imports = reffs$import_reff * one,
+    dates = case_data$dates,
+    gi_cdf = gi_cdf,
+    simulation_start = case_data$simulation_start
+  )
+  
+  keep <- case_data$dates >= case_data$simulation_start
+  local_cases <- simulation$local_cases[keep]
+  imported_cases <- case_data$imported_cases[keep]
+  dates <- case_data$dates[keep]
+  
+  reff_local <- reffs$local_reff
+  reff_imported <- reffs$import_reff
+  
+  # get posterior samples
+  sims <- calculate(
+    local_cases, reff_local, reff_imported,
+    values = fitted_model$draws,
+    nsim = nsim
+  )
+  
+  # handle the outputting
+  local_cases <- tibble(
+    sim = rep(seq_len(nsim), each = length(dates)),
+    date = rep(dates, nsim),
+    cases = as.vector(t(sims$local_cases[, , 1]))
+  )
+  
+  reffs <- tibble(
+    sim = seq_len(nsim),
+    local = as.vector(sims$reff_local),
+    imported = as.vector(sims$reff_imported),
+  )
+  
+  # save these samples
+  module(scenario, local_cases, reffs) %>%
+    saveRDS(paste0("outputs/counterfactuals/scenario", index, ".RDS"))
+  
 }
 
 # colours for plotting

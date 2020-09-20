@@ -20,17 +20,17 @@ saveRDS(fitted_model, "outputs/fitted_reff_model.RDS")
 # fitted_model <- readRDS("outputs/fitted_reff_model.RDS")
 
 # output Reff trajectory draws for Rob M
-write_reff_sims(fitted_model, dir = "outputs/projection")
+write_reff_sims(fitted_model, dir = "outputs/projection/staging")
 
 # visual checks of model fit
 plot_reff_checks(fitted_model)
 
 # do plots for main period
-reff_plotting(fitted_model, dir = "outputs")
+reff_plotting(fitted_model, dir = "outputs/staging")
 
 # and for projected part
 reff_plotting(fitted_model,
-              dir = "outputs/projection",
+              dir = "outputs/projection/staging",
               max_date = fitted_model$data$dates$latest_project,
               mobility_extrapolation_rectangle = FALSE,
               projection_date = fitted_model$data$dates$latest_mobility)
