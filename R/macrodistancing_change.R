@@ -26,8 +26,14 @@ m <- model(
   params$weekend_coef,
   out$size
 )
-draws <- mcmc(m, chains = 10)
-draws <- extra_samples(draws, 4000)
+
+draws <- mcmc(
+  m,
+  sampler = hmc(Lmin = 10, Lmax = 20),
+  n_samples = 1500,
+  chains = 10
+)
+# draws <- extra_samples(draws, 1000)
 convergence(draws)
 
 nsim <- coda::niter(draws) * coda::nchain(draws)
@@ -127,9 +133,20 @@ states <- unique(data$location_change_trends$state)
 dates <- unique(data$location_change_trends$date)
 n_states <- length(states)
 
+# mock up data object for plotting
+plot_data <- list(
+  dates = list(
+    infection_project = dates,
+    latest_mobility = max(dates)
+  ),
+  states = states,
+  n_states = length(states),
+  n_dates_project = length(dates)
+)
+
 # non-household contacts
 p <- plot_trend(pred_sim,
-                dates = dates,
+                data = plot_data,
                 multistate = TRUE,
                 base_colour = purple,
                 vline_at = intervention_dates()$date,
@@ -226,3 +243,4 @@ pred_summary <- pred_trend %>%
 
 saveRDS(pred_summary,
         file = "outputs/macrodistancing_trend_summary.RDS")
+

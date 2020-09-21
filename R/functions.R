@@ -3135,6 +3135,10 @@ linelist_date_times <- function(dir) {
 
 # copy over all new NNDSS linelist files from the shared drive to an unsynced local store
 sync_nndss <- function(mount_dir = "~/Mounts/nndss", storage_dir = "~/not_synced/nndss") {
+  
+  # mount the drive
+  system("mount_nndss", ignore.stderr = TRUE)
+  
   from_files <- list.files(mount_dir, full.names = TRUE)
   existing_files <- list.files(storage_dir)
   new <- !(basename(from_files) %in% existing_files)
@@ -3477,7 +3481,7 @@ reff_model_data <- function(
     dates = list(
       infection = dates,
       infection_project = dates_project,
-      onset = dates + 1,
+      onset = dates + 5,
       date_nums = date_nums,
       inducing_date_nums = inducing_date_nums,
       mobility = mobility_dates,
@@ -4054,7 +4058,7 @@ fit_reff_model <- function(data, max_tries = 1, iterations_per_step = 2000) {
   # first pass at model fitting  
   draws <- mcmc(
     greta_model,
-    sampler = hmc(Lmin = 30, Lmax = 45),
+    sampler = hmc(Lmin = 25, Lmax = 40),
     chains = 10,
     n_samples = 2000,
     one_by_one = TRUE
