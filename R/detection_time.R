@@ -255,7 +255,7 @@ p <- ggplot(df) +
   coord_cartesian(ylim = c(-5, 30),
                   xlim = c(as.Date("2020-03-01"), max(dates))) +
   scale_y_continuous(position = "right") +
-  scale_x_date(date_breaks = "1 months", date_labels = "%b %d") +
+  scale_x_date(date_breaks = "1 month", date_labels = "%d/%m") +
   scale_alpha(range = c(0, 0.5)) +
   scale_fill_manual(values = c("Nowcast" = base_colour)) +
   
