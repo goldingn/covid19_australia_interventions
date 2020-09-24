@@ -11,10 +11,10 @@ mean.ecdf <- function(x, ...) {
   mean(evalq(rep.int(x, diff(c(0, round(nobs * y)))), environment(x)), ...)
 }
 
-count_in_window <- function(target_date, states, delay_data, window) {
+count_in_window <- function(target_date, states, delay_data, window, date_tabulation) {
   dates <- delay_data %>%
     filter(state %in% states) %>%
-    pull(date_onset)
+    pull(!!date_tabulation)
   diff <- abs(dates - target_date)
   in_window <- diff <= window
   sum(in_window)
@@ -24,6 +24,7 @@ get_window_size <- function(
   target_date,
   states,
   delay_data,
+  date_tabulation,
   n_min = 500,
   window_min = 7,
   window_max = 42
@@ -31,7 +32,7 @@ get_window_size <- function(
   
   dates <- delay_data %>%
     filter(state %in% states) %>%
-    pull(date_onset)
+    pull(!!date_tabulation)
   
   # find the smallest window that yields the required number of counts
   for (window in window_min:window_max) {
@@ -49,12 +50,12 @@ get_window_size <- function(
   
 }
 
-delay_ecdf <- function(target_date, states, window, delay_data) {
+delay_ecdf <- function(target_date, states, window, delay_data, date_tabulation) {
   
   data <- delay_data %>%
     filter(state %in% states)
-  dates <- data$date_onset
-  delays <- data$delay
+  dates <- pull(data, !!date_tabulation)
+  delays <- pull(data, delay)
   
   diff <- abs(dates - target_date)
   in_window <- diff <= window
@@ -132,134 +133,227 @@ weight_ecdf <- function(ecdf_1, ecdf_2, weight) {
 
 }
 
-get_cis <- function(date, state, ecdf, weight, too_low) {
+get_cis <- function(date, state, ecdf, weight, use_national) {
   cis <- quantile(ecdf, deciles)
   names(cis) <- decile_names
   cis
 }
 
+# Calculate time-varying delay distributions for each state, smoothly reverting
+# to the national average when and where there are insufficient records to
+# compute state-level distributions. Return a tibble of empirical CDFs of the
+# distribution by state and date.
+# Parameters:
+
+# linelist: a linelist dataset as returned by load_linelist()
+# dates, states: optional vectors of dates and states for which to compute
+#   delays (taken from linelist if not specified)
+# from, to: strings giving the names of the date columns in the linelist to use
+#   as the start and end of the delays
+# tabulate_by_to: whether to tabulate delays by the 'to' date, rather than by
+#   the 'from' date (the default)
+# right_truncation: the number of days of data to remove (before the linelist
+#   date) to prevent bias due to right-truncation of delay data.
+# import_statuses: which import statuses to use when computing the delays
+# delay_plausible_bounds: a vector of length 2 of plausible delays. Records with
+#   values outside these bounds are assumed to be erroneous and removed.
+# min_records: the minimum number of records required to reliably estimate the delay
+#   distribution within a window
+# absolute_min_records: the absolute minimum number of records to estimate a
+#   state-level delay distribution within a window. If the number of records is
+#   below this (even with the maximum window size), the national estimate is used
+#   instead. If it is between this and 'min_records', the distribution is
+#   estimated as a weighted average of the state and national distributions.
+# min_window: the minimum window size (number of days wide) in which to estimate
+#   the delay distribution
+# max_window: the maximum window size in which to estimate the delay
+#   distribution for each date at the state level. At the national level there is
+#   no maximum applied
+# national_exclusions: a tibble of states, start dates, and end dates denoting
+#   times and places that should not contribute to the national estimate. If
+#   either of the dates are NA, the earliest (or latest) dates in the linelist
+#   are used
+
+estimate_delays <- function(
+  linelist,
+  dates = NULL,
+  states = NULL,
+  from = "date_onset",
+  to = "date_confirmation",
+  tabulate_by_to = FALSE,
+  right_truncation = ifelse(tabulate_by_to, 3, 15),
+  import_statuses = "local",
+  delay_plausible_bounds = c(-5, 42),
+  min_records = 500,
+  absolute_min_records = 100,
+  min_window = 7,
+  max_window = 56,
+  national_exclusions = tibble(state = "VIC", start = as.Date("2020-06-14"), end = NA)
+) {
+  
+  # fill in exclusion periods
+  national_exclusions <- national_exclusions %>%
+    mutate(
+      start = as.Date(start),
+      end = as.Date(end),
+      start = replace_na(start, min(linelist$date_onset)),
+      end = replace_na(end, max(linelist$date_confirmation))
+    )
+  
+  # account for right-truncation when tabulating
+  linelist_date <- linelist$date_linelist[1]
+  truncation_date <- linelist_date - right_truncation
+
+  # which date to tabulate by
+  date_tabulation <- ifelse(tabulate_by_to, "date_to", "date_from")
+  
+  delay_data <- linelist %>%
+    rename(
+      date_from = !!from,
+      date_to = !!to
+    ) %>%
+    filter(
+      !is.na(date_from),
+      !is.na(date_to),
+      import_status %in% import_statuses,
+      date_from <= truncation_date
+    ) %>%
+    select(
+      date_from,
+      date_to,
+      state,
+      import_status
+    ) %>%
+    mutate(
+      delay = as.numeric(date_to - date_from)
+    ) %>%
+    filter(
+      delay <= delay_plausible_bounds[2],
+      delay >= delay_plausible_bounds[1]
+    )
+  
+  if (is.null(dates)) {
+    dates <- seq(
+      min(delay_data$date_from),
+      max(delay_data$date_to),
+      by = 1
+    )
+  }
+  
+  if (is.null(states)) {
+    states <- unique(delay_data$state)
+  }
+  
+  date_state <- expand_grid(
+    date = dates,
+    state = states
+  )
+  
+  # get the half-window size (number of days on either side of the target)
+  absolute_max_window <- as.numeric(diff(range(dates)))
+  min_window <- ceiling((min_window - 1) / 2)
+  max_window <- floor((max_window - 1) / 2)
+  
+  
+  # for each confirmation date, run the algorithm on each date
+  statewide <- date_state %>%
+    group_by(date, state) %>%
+    mutate(
+      window = get_window_size(
+        date,
+        state,
+        delay_data = delay_data,
+        date_tabulation = date_tabulation,
+        n_min = min_records,
+        window_min = min_window,
+        window_max = max_window 
+      ),
+      count = count_in_window(
+        date,
+        state,
+        delay_data = delay_data,
+        date_tabulation = date_tabulation,
+        window = window
+      ),
+      state_ecdf = delay_ecdf(
+        date,
+        state,
+        window = window,
+        delay_data = delay_data,
+        date_tabulation = date_tabulation
+      )
+    )
+  
+  # remove the specified data for estimating the national background distribution
+  for (i in seq_len(nrow(national_exclusions))) {
+    delay_data <- delay_data %>%
+      filter(
+        !(
+          state == national_exclusions$state[i] &
+            date_from >= national_exclusions$start[i] &
+            date_to <= national_exclusions$end[i]
+        )
+      )
+  }
+  
+  nationwide <- date_state %>%
+    filter(state == "ACT") %>%
+    select(-state) %>%
+    group_by(date) %>%
+    mutate(
+      window = get_window_size(
+        date,
+        states,
+        delay_data = delay_data,
+        date_tabulation = date_tabulation,
+        n_min = min_records,
+        window_min = min_window,
+        window_max = absolute_max_window
+      ),
+      national_ecdf = delay_ecdf(
+        date,
+        states,
+        window = window,
+        delay_data = delay_data,
+        date_tabulation = date_tabulation
+      )
+    )
+  
+  # for statewide, replace any invalid ecdfs with the national one
+  state_ecdfs <- statewide %>%
+    right_join(
+      nationwide %>%
+        select(-window)
+    ) %>%
+    mutate(
+      use_national = count < absolute_min_records,
+      weight = pmin(1, count / min_records),
+      weight = ifelse(use_national, 0, weight),
+      ecdf = mapply(
+        FUN = weight_ecdf,
+        state_ecdf,
+        national_ecdf,
+        weight,
+        SIMPLIFY = FALSE
+      )
+    ) %>%
+    select(
+      date, state, ecdf, weight, use_national
+    )
+  
+  
+  state_ecdfs
+  
+}
+
+
+
 source("R/functions.R")
 
 linelist <- load_linelist()
 
-delay_data <- linelist %>%
-  filter(
-    !is.na(date_onset),
-    import_status == "local",
-    # account for potential right-truncation
-    date_onset <= (date_linelist - 20)
-  ) %>%
-  select(
-    date_onset,
-    date_confirmation,
-    state,
-    import_status
-  ) %>%
-  mutate(
-    delay = as.numeric(date_confirmation - date_onset)
-  ) %>%
-  filter(
-    delay <= 6 * 7,
-    delay > -5
-  )
-
-dates <- seq(
-  min(delay_data$date_onset),
-  max(linelist$date_confirmation),
-  by = 1
-)
-states <- unique(delay_data$state)
-
-date_state <- expand_grid(
-  date = dates,
-  state = states
-)
-
-n_absolute_min <- 100
-
-national_window_min <- 3
-national_n_min <- 500
-national_window_max <- as.numeric(diff(range(dates)))
-
-state_window_min <- national_window_min
-state_n_min <- national_n_min
-state_window_max <- 28
-
-
-# for each confirmation date, run the algorithm on each date
-statewide <- date_state %>%
-  group_by(date, state) %>%
-  mutate(
-    window = get_window_size(
-      date,
-      state,
-      delay_data,
-      n_min = state_n_min,
-      window_min = state_window_min,
-      window_max = state_window_max 
-    ),
-    count = count_in_window(
-      date,
-      state,
-      delay_data,
-      window = window
-    ),
-    state_ecdf = delay_ecdf(
-      date,
-      state,
-      window,
-      delay_data
-    )
-  )
+state_ecdfs <- estimate_delays(linelist)
   
-# remove the victorian data for estimating the national background distribution
-delay_sub <- delay_data %>%
-  filter(
-    !(state == "VIC" & date_onset >= as.Date("2020-06-14"))
-  )
-
-nationwide <- date_state %>%
-  filter(state == "ACT") %>%
-  select(-state) %>%
-  group_by(date) %>%
-  mutate(
-    window = get_window_size(
-      date,
-      states,
-      delay_sub,
-      n_min = national_n_min,
-      window_min = national_window_min,
-      window_max = national_window_max
-    ),
-    national_ecdf = delay_ecdf(
-      date,
-      states,
-      window,
-      delay_sub
-    )
-  )
-
-# for statewide, replace any invalid ecdfs with the national one
-state_ecdfs <- statewide %>%
-  right_join(
-    nationwide %>%
-      select(-window)
-  ) %>%
-  mutate(
-    too_low = count < n_absolute_min,
-    weight = pmin(1, count / state_n_min),
-    weight = ifelse(too_low, 0, weight),
-    ecdf = mapply(
-      FUN = weight_ecdf,
-      state_ecdf,
-      national_ecdf,
-      weight,
-      SIMPLIFY = FALSE
-    )
-  ) %>%
-  select(
-    date, state, ecdf, weight, too_low
-  )
 
 # plot these changing distributions
 
@@ -270,9 +364,6 @@ deciles <- c(deciles_lower, deciles_upper)
 decile_names <- paste0("ci_", (1 - 2 * deciles_lower) * 100)
 decile_names <- c(paste0(decile_names, "_lo"),
                   paste0(decile_names, "_hi"))
-
-cis <- quantile(nationwide$national_ecdf[[200]], deciles)
-names(cis) <- decile_names
 
 quantiles <- state_ecdfs %>%
   # plot it as the date of infection, not date of onset!
@@ -311,7 +402,7 @@ p <- quantiles %>%
   
   coord_cartesian(
     ylim = c(0, 20),
-    xlim = c(as.Date("2020-03-01"), max(dates))
+    xlim = c(as.Date("2020-03-01"), max(state_ecdfs$date))
   ) +
   scale_y_continuous(position = "right") +
   scale_x_date(date_breaks = "1 month", date_labels = "%d/%m") +
@@ -351,22 +442,22 @@ p <- quantiles %>%
           subtitle = "Time from symptom onset to notification for locally-acquired cases") +
   ylab("Days")
 
-# add points for true delays
-df_obs <- delay_data %>%
-  mutate(type = "Nowcast")
+# # add points for true delays
+# df_obs <- delay_data %>%
+#   mutate(type = "Nowcast")
+# 
+# p <- p + geom_point(
+#   aes(date_onset, delay),
+#   data = df_obs,
+#   pch = 16,
+#   size = 0.2,
+#   alpha = 0.1
+# )
 
-p <- p + geom_point(
-  aes(date_onset, delay),
-  data = df_obs,
-  pch = 16,
-  size = 0.2,
-  alpha = 0.1
-)
-
-# add shading for regions where the national distribiution is used
+# add shading for regions where the national distribution is used
 p <- p +
   geom_ribbon(
-    aes(ymin = -10, ymax = too_low * 100 - 10),
+    aes(ymin = -10, ymax = use_national * 100 - 10),
     fill = grey(1),
     alpha = 0.5,
     colour = grey(0.9)
@@ -377,5 +468,8 @@ p
 save_ggplot("surveillance_effect_state.png", multi = TRUE)
 
 # to do:
-# use for imputation code (make sure it's from onset date, not confirmation date)
-# compute reff adjustment 
+# output dataset too
+# wrap up plotting code in function
+# run twice, once for imputation (aggregate_by_to = TRUE), and once for other uses
+# compute reff adjustment by state
+# use for GI distribution adjustment by state
