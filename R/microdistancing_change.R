@@ -12,8 +12,9 @@ pred_data <- data$prediction_data
 library(greta)
 
 n_locations <- max(survey_distance$state_id)
+n_inflections <- 2
 
-params <- microdistancing_params(n_locations)
+params <- microdistancing_params(n_locations, n_inflections)
 
 peak <- params$peak
 inflections <- params$inflections

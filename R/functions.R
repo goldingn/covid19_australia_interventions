@@ -2224,8 +2224,8 @@ microdistancing_model <- function(data,
   inflections <- peak + inflections * (1 - peak)
   
   # shapes of inflection effects
-  inflections_vec <- inflections[data$state_id]
-  inflection_shape <- (data$time - inflections_vec) / (1 - inflections_vec)
+  inflections_mat <- inflections[data$state_id, ]
+  inflection_shape <- sweep(-inflections_mat, 1, data$time, FUN = "+") / (1 - inflections_mat)
   
   nullify <- (sign(inflection_shape) + 1) / 2
   inflection_shape <- inflection_shape * nullify
@@ -2233,7 +2233,7 @@ microdistancing_model <- function(data,
   # multiply by coefficients to get trends for each state
   distancing <- data$distancing * distancing_effects[data$state_id]
   waning <- waning_shape * waning_effects[data$state_id]  
-  inflection <- inflection_shape * inflection_effects[data$state_id]  
+  inflection <- rowSums(inflection_shape * inflection_effects[data$state_id, ])
   
   # combine them all
   distancing + waning + inflection
@@ -2772,22 +2772,31 @@ hierarchical_normal <- function(n, index = NULL, mean_sd = 10, sd_sd = 0.5) {
   
 }
 
-microdistancing_params <- function(n_locations = 8) {
+microdistancing_params <- function(n_locations = 8, n_inflections = 1) {
   
   # timing of peak microdistancing between the date of the last intervention and
   # today's date
   peak <- normal(0, 1, truncation = c(0, 1))
   
   # timing of inflections between peak and now
-  inflections <- normal(0, 1, truncation = c(0, 1), dim = n_locations)
+  inflections <- normal(0, 1,
+                        truncation = c(0, 1),
+                        dim = c(n_locations, n_inflections))
+  inflections <- apply(inflections, 1, "cumprod")
+  inflections <- t(inflections)[, rev(seq_len(n_inflections))]
   
   # hierarchical structure on state-level waning
   logit_waning_effects <- hierarchical_normal(n_locations)
   waning_effects <- -ilogit(logit_waning_effects)
   
-  # hierarchical structure on state-level peak effect (proportion adhering) 
-  logit_inflection_effects <- hierarchical_normal(n_locations)
-  inflection_effects <- ilogit(logit_inflection_effects)
+  # parameters for effect of each inflection (independent between states)
+  logit_inflection_effects <- normal(0, 10, dim = c(n_locations, n_inflections))
+  inflection_effects_raw <- ilogit(logit_inflection_effects)
+  inflection_effect_signs <- rep(c(1, -1), n_inflections)[seq_len(n_inflections)]
+  inflection_effects <- sweep(inflection_effects_raw,
+                              2,
+                              inflection_effect_signs,
+                              FUN = "*")
   
   # hierarchical structure on state-level peak effect (proportion adhering) 
   logit_distancing_effects <- hierarchical_normal(n_locations)
