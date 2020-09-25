@@ -10,17 +10,23 @@ library(ggplot2)
 library(ggforce)
 library(RCurl)
 
+# Google dropped a bunch of previous data from the latest file. Pull a cached
+# version from the tidycovid package on GitHub and replace it.
+tidycovid_url <- "https://github.com/joachim-gassen/tidycovid19/raw/e4db3ab3007576f34dcb1e8c3299b235cff6198e/cached_data/google_cmr.RDS"
+
 # load mobility datastreams, keeping only state-level data
 mobility <- all_mobility() %>%
+  append_google_data(tidycovid_url) %>%
   filter(!is.na(state)) %>%
   filter(!is.na(trend)) %>%
   arrange(state, datastream, date) %>%
   mutate(state_datastream = str_c(state, datastream, sep = " "))
+saveRDS(mobility, file = "outputs/cached_mobility.RDS")
 interventions <- intervention_dates()
 holidays <- holiday_dates()
 populations <- state_populations()
 
-vic_second_intervention_dates <- as.Date(c("2020-07-01", "2020-07-08", "2020-08-02"))
+vic_second_intervention_dates <- as.Date(c("2020-07-01", "2020-07-08", "2020-08-03"))
 
 # get vectors of date ranges and datastreams to model
 first_date <- min(mobility$date)
@@ -67,7 +73,7 @@ last_date_num <- n_dates - 1
 last_intervention_date_num <- as.numeric(interventions$date[3] - first_date)
 peak_range <- last_date_num - last_intervention_date_num
 
-  # when was the peak of distancing?
+# when was the peak of distancing?
 peak <- normal(last_intervention_date_num + 7,
                3.5 / 1.96,
                truncation = c(last_intervention_date_num, last_date_num))
@@ -83,8 +89,8 @@ bump <- latent_behavioural_event(date_num, tau_bump, kappa_bump)
 
 # behaviour-switching latent factor for back to work period. schools go back
 # from Jan 28 to Feb 3-5, so set mean to Feb 1
-back_to_school_datenum <- as.numeric(lubridate::date("2020-02-01") - first_date)
-tau_back_to_work <- normal(back_to_school_datenum, 1)
+back_to_work_datenum <- as.numeric(lubridate::date("2020-02-01") - first_date)
+tau_back_to_work <- normal(back_to_work_datenum, 1)
 kappa_back_to_work <- normal(1, 0.25, truncation = c(0, Inf))
 back_to_work <- latent_behaviour_switch(date_num,
                                         tau_back_to_work,
@@ -116,7 +122,7 @@ day_weights <- mobility %>%
 id <- match(state_datastreams, colnames(day_weights))
 day_weights <- day_weights[, id]
 
-# expand out to dates-by-state-datastreams, and apply hierarchical model to loadings so effects are similar beetween states
+# expand out to dates-by-state-datastreams, and apply hierarchical model to loadings so effects are similar between states
 dow <- lubridate::wday(dates)
 dow_latent <- day_weights[dow, ]
 loadings_dow <- hierarchical_normal(n_state_datastreams, datastream_index)
@@ -161,7 +167,7 @@ loadings_ntnl <- means_ntnl[, datastream_index] + loadings_ntnl_raw * sds_ntnl[,
 
 trends_ntnl <- latents_ntnl %*% loadings_ntnl
 
-# get state-level latents (only public holidays for now)
+# get state-level latents (public holidays and VIC interventions)
 
 # IID effect on each state-holiday, 0s elsewhere
 holiday_matrix <- holidays %>%
@@ -205,14 +211,14 @@ inf_infl_date_priors <- tibble::tribble(
   # VIC announced reimposed restrictions on June 20 (to start June 22), and saw
   # an uptick in cases for the week preceding that; expect there may be a change
   # around this time.
-  "Victoria", as.Date("2020-06-20"), 7
+  # "Victoria", as.Date("2020-06-20"), 7
 )
 
 # default uninformative priors
 uninf_infl_date_priors <- expand_grid(
   state = states,
-  mean_date = as.Date("2020-05-07"),
-  sd_days = 7
+  mean_date = as.Date("2020-07-01"),
+  sd_days = 14
 ) 
 
 # in the absence of informative priors, use an uninformative prior with mean
@@ -254,7 +260,20 @@ loadings_inflection <- loadings_inflection_raw * 10
 inflection_latents <- inflection_effect[, state_index]
 trends_inflection <- sweep(inflection_latents, 2, loadings_inflection, FUN = "*")
 
-trends_state <- trends_holiday + trends_inflection + trends_dow
+# trend for VIC due to second phase restrictions
+vic_trigger_date_num <- as.numeric(vic_second_intervention_dates - first_date)
+vic_distancing <- latent_behaviour_switch(date_num, vic_trigger_date_num)
+
+# only need loadings for VIC and different interventions
+loadings_vic_intervention <- normal(0, 1, dim = n_datastreams)
+loadings_state_intervention <- loadings_vic_intervention[datastream_index]
+
+state_distancing <- zeros(n_dates, n_states)
+state_distancing[, states == "Victoria"]  <- vic_distancing
+state_distancing_latents <- state_distancing[, state_index]
+trends_intervention <- sweep(state_distancing_latents, 2, loadings_state_intervention, FUN = "*")
+
+trends_state <- trends_holiday + trends_inflection + trends_dow + trends_intervention
 trends <- trends_ntnl + trends_state
 
 # extract expected trend for each observation and define likelihood
@@ -262,13 +281,6 @@ rows <- match(mobility$date, dates)
 cols <- match(mobility$state_datastream, state_datastreams)
 idx <- cbind(rows, cols)
 
-# hierarchical model on log observation error across state-datastreams; rescaled
-# to help the sampler
-# log_sigma_obs_mean <- normal(0, 10)
-# log_sigma_obs_sd <- normal(0, 0.5, truncation = c(0, Inf))
-# log_sigma_obs_raw <- normal(0, 20, dim = n_state_datastreams)
-# log_sigma_obs <- log_sigma_obs_mean + log_sigma_obs_sd * log_sigma_obs_raw / 20
-# sigma_obs <- exp(log_sigma_obs)
 sigma_obs <- normal(0, 0.5, truncation = c(0, Inf), dim = n_state_datastreams)
 
 distribution(mobility$trend) <- normal(mean = trends[idx],
@@ -854,13 +866,12 @@ waning_amount_params <- list(
 saveRDS(waning_amount_params,
         file = "outputs/waning_amount_parameters.RDS")
 
-
 # save state-level posteriors over % change in google metrics from just-pre-covid period
 datastreams_keep <- grepl("^Google: ", state_datastream_lookup$datastream)
 loadings_keep <- latent_names %in% c("Preparation", "Social distancing", "Waning distancing")
 
 perc_change_google_ntnl <- latents_ntnl[,loadings_keep] %*% loadings_ntnl[loadings_keep, datastreams_keep]
-perc_change_google_state <- trends_inflection[, datastreams_keep]
+perc_change_google_state <- trends_inflection[, datastreams_keep] + trends_intervention[, datastreams_keep]
 perc_change_google <- perc_change_google_ntnl + perc_change_google_state
 change_google <- 1 + (perc_change_google / 100)
 

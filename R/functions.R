@@ -299,6 +299,62 @@ all_mobility <- function() {
   
 }
 
+
+# append any missing google mobility data to mobility data (because Google
+# dropped a bunch of data out this one time)
+append_google_data <- function(mobility_data, url) {
+  
+  # download the previous dataset
+  f <- tempfile(fileext = ".RDS")
+  download.file(url, destfile = f)
+  tmp <- readRDS(f)
+  
+  # get the previous data in the same format
+  previous_data <- tmp$country_region %>%
+    filter(iso3c == "AUS") %>%
+    rename(
+      retail_and_recreation = retail_recreation,
+      grocery_and_pharmacy = grocery_pharmacy,
+      state = region
+    ) %>%
+    pivot_longer(
+      cols = c(
+        "retail_and_recreation",
+        "grocery_and_pharmacy",
+        "parks",
+        "transit_stations",
+        "workplaces",
+        "residential"
+      ),
+      values_to = "trend",
+      names_to = "category"
+    ) %>%
+    mutate(
+      category = str_replace_all(category, "_", " ")
+    ) %>%
+    mutate(
+      datastream = str_c("Google: time at ", category)
+    ) %>%
+    select(
+      state,
+      date,
+      trend,
+      datastream
+    )
+  
+  # find any observations that are missing in the mobility data
+  missing_data <- mobility_data %>%
+    select(state, date, trend, datastream) %>%
+    anti_join(previous_data, .)
+  
+  # add them and return
+  mobility_data %>%
+    bind_rows(missing_data) %>%
+    arrange(datastream, state, date)
+  
+}
+
+
 abbreviate_states <- function(state_names) {
   case_when(
     state_names %in% c("Australian Capital Territory", "ACT") ~ "ACT",
