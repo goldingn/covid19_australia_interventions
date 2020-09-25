@@ -134,6 +134,14 @@ weight_ecdf <- function(ecdf_1, ecdf_2, weight) {
 }
 
 get_cis <- function(date, state, ecdf, weight, use_national) {
+  
+  deciles_lower <- seq(0.05, 0.45, by = 0.05)
+  deciles_upper <- 1 - deciles_lower
+  deciles <- c(deciles_lower, deciles_upper)
+  decile_names <- paste0("ci_", (1 - 2 * deciles_lower) * 100)
+  decile_names <- c(paste0(decile_names, "_lo"),
+                    paste0(decile_names, "_hi"))
+  
   cis <- quantile(ecdf, deciles)
   names(cis) <- decile_names
   cis
@@ -145,16 +153,12 @@ get_cis <- function(date, state, ecdf, weight, use_national) {
 # distribution by state and date.
 # Parameters:
 
-# linelist: a linelist dataset as returned by load_linelist()
-# dates, states: optional vectors of dates and states for which to compute
+# state, date, delay: vectors of equal length giving the data on observed delays
+#   by date and state
+# all_dates, all_states: optional vectors of dates and states for which to compute
 #   delays (taken from linelist if not specified)
-# from, to: strings giving the names of the date columns in the linelist to use
-#   as the start and end of the delays
-# tabulate_by_to: whether to tabulate delays by the 'to' date, rather than by
-#   the 'from' date (the default)
-# right_truncation: the number of days of data to remove (before the linelist
-#   date) to prevent bias due to right-truncation of delay data.
-# import_statuses: which import statuses to use when computing the delays
+# direction: whether to tabulate delays by date in a 'forward' ('date' is at the
+#   start of the delay) or 'backward' ('date' is at the end of the delay) manner
 # delay_plausible_bounds: a vector of length 2 of plausible delays. Records with
 #   values outside these bounds are assumed to be erroneous and removed.
 # min_records: the minimum number of records required to reliably estimate the delay
@@ -173,17 +177,13 @@ get_cis <- function(date, state, ecdf, weight, use_national) {
 #   times and places that should not contribute to the national estimate. If
 #   either of the dates are NA, the earliest (or latest) dates in the linelist
 #   are used
-
 estimate_delays <- function(
-  linelist,
-  dates = NULL,
-  states = NULL,
-  from = "date_onset",
-  to = "date_confirmation",
-  tabulate_by_to = FALSE,
-  right_truncation = ifelse(tabulate_by_to, 3, 15),
-  import_statuses = "local",
-  delay_plausible_bounds = c(-5, 42),
+  state,
+  date,
+  delay,
+  all_dates = NULL,
+  all_states = NULL,
+  direction = c("forward", "backward"),
   min_records = 500,
   absolute_min_records = 100,
   min_window = 7,
@@ -191,69 +191,48 @@ estimate_delays <- function(
   national_exclusions = tibble(state = "VIC", start = as.Date("2020-06-14"), end = NA)
 ) {
   
-  # fill in exclusion periods
-  national_exclusions <- national_exclusions %>%
-    mutate(
-      start = as.Date(start),
-      end = as.Date(end),
-      start = replace_na(start, min(linelist$date_onset)),
-      end = replace_na(end, max(linelist$date_confirmation))
-    )
+  direction <- match.arg(direction)
   
   # account for right-truncation when tabulating
-  linelist_date <- linelist$date_linelist[1]
-  truncation_date <- linelist_date - right_truncation
-
   # which date to tabulate by
-  date_tabulation <- ifelse(tabulate_by_to, "date_to", "date_from")
+  if (direction == "forward") {
+    date_from <- date
+    date_to <- date + delay
+    date_tabulation <- "date_from"
+  } else {
+    date_from <- date - delay
+    date_to <- date
+    date_tabulation <- "date_to"
+  }
   
-  delay_data <- linelist %>%
-    rename(
-      date_from = !!from,
-      date_to = !!to
-    ) %>%
-    filter(
-      !is.na(date_from),
-      !is.na(date_to),
-      import_status %in% import_statuses,
-      date_from <= truncation_date
-    ) %>%
-    select(
-      date_from,
-      date_to,
-      state,
-      import_status
-    ) %>%
-    mutate(
-      delay = as.numeric(date_to - date_from)
-    ) %>%
-    filter(
-      delay <= delay_plausible_bounds[2],
-      delay >= delay_plausible_bounds[1]
-    )
+  delay_data <- tibble(
+    state = state,
+    date_from = date_from,
+    date_to = date_to,
+    delay = delay
+  )
   
-  if (is.null(dates)) {
-    dates <- seq(
+  if (is.null(all_dates)) {
+    all_dates <- seq(
       min(delay_data$date_from),
       max(delay_data$date_to),
       by = 1
     )
   }
   
-  if (is.null(states)) {
-    states <- unique(delay_data$state)
+  if (is.null(all_states)) {
+    all_states <- unique(delay_data$state)
   }
   
   date_state <- expand_grid(
-    date = dates,
-    state = states
+    date = all_dates,
+    state = all_states
   )
   
   # get the half-window size (number of days on either side of the target)
-  absolute_max_window <- as.numeric(diff(range(dates)))
+  absolute_max_window <- as.numeric(diff(range(all_dates)))
   min_window <- ceiling((min_window - 1) / 2)
   max_window <- floor((max_window - 1) / 2)
-  
   
   # for each confirmation date, run the algorithm on each date
   statewide <- date_state %>%
@@ -284,6 +263,15 @@ estimate_delays <- function(
       )
     )
   
+  # fill in exclusion periods
+  national_exclusions <- national_exclusions %>%
+    mutate(
+      start = as.Date(start),
+      end = as.Date(end),
+      start = replace_na(start, min(all_dates)),
+      end = replace_na(end, max(all_dates))
+    )
+  
   # remove the specified data for estimating the national background distribution
   for (i in seq_len(nrow(national_exclusions))) {
     delay_data <- delay_data %>%
@@ -297,13 +285,14 @@ estimate_delays <- function(
   }
   
   nationwide <- date_state %>%
+    # arbitrarily pick one set of dates
     filter(state == "ACT") %>%
     select(-state) %>%
     group_by(date) %>%
     mutate(
       window = get_window_size(
         date,
-        states,
+        all_states,
         delay_data = delay_data,
         date_tabulation = date_tabulation,
         n_min = min_records,
@@ -312,7 +301,7 @@ estimate_delays <- function(
       ),
       national_ecdf = delay_ecdf(
         date,
-        states,
+        all_states,
         window = window,
         delay_data = delay_data,
         date_tabulation = date_tabulation
@@ -346,130 +335,177 @@ estimate_delays <- function(
   
 }
 
+# plot changing delay distributions by state over time
+plot_delays <- function(
+  delay_distributions,
+  date,
+  state,
+  delay,
+  base_colour = yellow
+) {
+  
+  # mutate to output quantiles and then plot them
+  quantiles <- delay_distributions %>%
+    # plot it as the date of infection, not date of onset!
+    mutate(date = date - 5) %>%
+    pmap_dfr(get_cis) %>%
+    bind_cols(delay_distributions, .) %>%
+    mutate(
+      median = vapply(
+        ecdf,
+        quantile,
+        0.5,
+        FUN.VALUE = numeric(1)
+      ),
+      mean = vapply(
+        ecdf,
+        mean,
+        FUN.VALUE = numeric(1)
+      )
+    )
+  
+  p <- quantiles %>%
+    mutate(type = "Nowcast") %>%
+    ggplot() + 
+    
+    aes(date, mean, fill = type) +
+    
+    facet_wrap(~state, ncol = 2) +
+    
+    xlab(element_blank()) +
+    
+    coord_cartesian(
+      ylim = c(0, 20),
+      xlim = c(as.Date("2020-03-01"), max(delay_distributions$date))
+    ) +
+    scale_y_continuous(position = "right") +
+    scale_x_date(date_breaks = "1 month", date_labels = "%d/%m") +
+    scale_alpha(range = c(0, 0.5)) +
+    scale_fill_manual(values = c("Nowcast" = base_colour)) +
+    
+    ci_ribbon("90") +
+    ci_ribbon("80") +
+    ci_ribbon("70") +
+    ci_ribbon("60") +
+    ci_ribbon("50") +
+    ci_ribbon("40") +
+    ci_ribbon("30") +
+    ci_ribbon("20") +
+    ci_ribbon("10") +
+    
+    geom_line(aes(y = ci_90_lo),
+              colour = base_colour,
+              alpha = 0.8) + 
+    geom_line(aes(y = ci_90_hi),
+              colour = base_colour,
+              alpha = 0.8) + 
+    
+    geom_line(aes(y = mean),
+              colour = grey(0.4),
+              alpha = 1,
+              size = 1) +
+    
+    cowplot::theme_cowplot() +
+    cowplot::panel_border(remove = TRUE) +
+    theme(legend.position = "none",
+          strip.background = element_blank(),
+          strip.text = element_text(hjust = 0, face = "bold"),
+          axis.title.y.right = element_text(vjust = 0.5, angle = 90),
+          panel.spacing = unit(1.2, "lines")) +
+    ggtitle(label = "Surveillance trend",
+            subtitle = "Time from symptom onset to notification for locally-acquired cases") +
+    ylab("Days")
+  
+  # add points for true delays
+  df_obs <- tibble(
+    date = date,
+    state = state,
+    delay = delay,
+    type = "Nowcast"
+  )
+  
+  p <- p + geom_point(
+    aes(date, delay),
+    data = df_obs,
+    pch = 16,
+    size = 0.2,
+    alpha = 0.1
+  )
+  
+  # add shading for regions where the national distribution is used
+  p <- p +
+    geom_ribbon(
+      aes(ymin = -10, ymax = use_national * 100 - 10),
+      fill = grey(1),
+      alpha = 0.5,
+      colour = grey(0.9)
+    )
+  
+  p
+}
 
 
 source("R/functions.R")
 
 linelist <- load_linelist()
+linelist_date <- linelist$date_linelist[1]
 
-state_ecdfs <- estimate_delays(linelist)
-  
-
-# plot these changing distributions
-
-# mutate to output quantiles and then plot them
-deciles_lower <- seq(0.05, 0.45, by = 0.05)
-deciles_upper <- 1 - deciles_lower
-deciles <- c(deciles_lower, deciles_upper)
-decile_names <- paste0("ci_", (1 - 2 * deciles_lower) * 100)
-decile_names <- c(paste0(decile_names, "_lo"),
-                  paste0(decile_names, "_hi"))
-
-quantiles <- state_ecdfs %>%
-  # plot it as the date of infection, not date of onset!
-  mutate(date = date - 5) %>%
-  pmap_dfr(get_cis) %>%
-  bind_cols(state_ecdfs, .) %>%
+# get delays for locally-acquired infections, truncated differently for forward/backward delays 
+detection_delay_data <- linelist %>%
   mutate(
-    median = vapply(
-      ecdf,
-      quantile,
-      0.5,
-      FUN.VALUE = numeric(1)
-    ),
-    mean = vapply(
-      ecdf,
-      mean,
-      FUN.VALUE = numeric(1)
-    )
+    delay = as.numeric(date_confirmation - date_onset)
+  ) %>%
+  filter(
+    import_status == "local",
+    !is.na(date_onset),
+    delay <= 42,
+    delay >= -5
   )
 
-# use this in the imputation code
-
-
-library(ggplot2)
-base_colour <- yellow
-
-p <- quantiles %>%
-  mutate(type = "Nowcast") %>%
-  ggplot() + 
-  
-  aes(date, mean, fill = type) +
-  
-  facet_wrap(~state, ncol = 2) +
-  
-  xlab(element_blank()) +
-  
-  coord_cartesian(
-    ylim = c(0, 20),
-    xlim = c(as.Date("2020-03-01"), max(state_ecdfs$date))
-  ) +
-  scale_y_continuous(position = "right") +
-  scale_x_date(date_breaks = "1 month", date_labels = "%d/%m") +
-  scale_alpha(range = c(0, 0.5)) +
-  scale_fill_manual(values = c("Nowcast" = base_colour)) +
-  
-  ci_ribbon("90") +
-  ci_ribbon("80") +
-  ci_ribbon("70") +
-  ci_ribbon("60") +
-  ci_ribbon("50") +
-  ci_ribbon("40") +
-  ci_ribbon("30") +
-  ci_ribbon("20") +
-  ci_ribbon("10") +
-  
-  geom_line(aes(y = ci_90_lo),
-            colour = base_colour,
-            alpha = 0.8) + 
-  geom_line(aes(y = ci_90_hi),
-            colour = base_colour,
-            alpha = 0.8) + 
-  
-  geom_line(aes(y = mean),
-            colour = grey(0.4),
-            alpha = 1,
-            size = 1) +
-
-  cowplot::theme_cowplot() +
-  cowplot::panel_border(remove = TRUE) +
-  theme(legend.position = "none",
-        strip.background = element_blank(),
-        strip.text = element_text(hjust = 0, face = "bold"),
-        axis.title.y.right = element_text(vjust = 0.5, angle = 90),
-        panel.spacing = unit(1.2, "lines")) +
-  ggtitle(label = "Surveillance trend",
-          subtitle = "Time from symptom onset to notification for locally-acquired cases") +
-  ylab("Days")
-
-# # add points for true delays
-# df_obs <- delay_data %>%
-#   mutate(type = "Nowcast")
-# 
-# p <- p + geom_point(
-#   aes(date_onset, delay),
-#   data = df_obs,
-#   pch = 16,
-#   size = 0.2,
-#   alpha = 0.1
-# )
-
-# add shading for regions where the national distribution is used
-p <- p +
-  geom_ribbon(
-    aes(ymin = -10, ymax = use_national * 100 - 10),
-    fill = grey(1),
-    alpha = 0.5,
-    colour = grey(0.9)
+delay_data_from_onset <- detection_delay_data %>%
+  filter(
+    date_onset <= (linelist_date - 15)
   )
+
+delay_data_to_confirmation <- detection_delay_data %>%
+  filter(
+    date_confirmation <= (linelist_date - 3)
+  )
+  
+delays_from_onset <- estimate_delays(
+  state = delay_data_from_onset$state,
+  date = delay_data_from_onset$date_onset,
+  delay = delay_data_from_onset$delay,
+  direction = "forward"
+)
+
+delays_to_confirmation <- estimate_delays(
+  state = delay_data_from_onset$state,
+  date = delay_data_from_onset$date_confirmation,
+  delay = delay_data_from_onset$delay,
+  direction = "backward"
+)
+  
+p <- plot_delays(
+  delay_distributions = delays_from_onset,
+  date = delay_data_from_onset$date_onset,
+  state = delay_data_from_onset$state,
+  delay = delay_data_from_onset$delay
+)
 
 p
 
 save_ggplot("surveillance_effect_state.png", multi = TRUE)
 
+p2 <- plot_delays(
+  delay_distributions = delays_to_confirmation,
+  date = delay_data_to_confirmation$date_confirmation,
+  state = delay_data_to_confirmation$state,
+  delay = delay_data_to_confirmation$delay
+)
+p2
+
+
 # to do:
-# output dataset too
-# wrap up plotting code in function
-# run twice, once for imputation (aggregate_by_to = TRUE), and once for other uses
 # compute reff adjustment by state
 # use for GI distribution adjustment by state

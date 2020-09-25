@@ -6,7 +6,6 @@ library(dplyr)
 library(lubridate)
 library(greta)
 library(RColorBrewer)
-library(ggplot2)
 library(ggforce)
 library(RCurl)
 

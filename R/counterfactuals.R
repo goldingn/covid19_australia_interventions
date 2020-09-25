@@ -105,8 +105,6 @@ add_scenario_ribbon <- function(base_plot, data, colour = "black") {
 }
 
 # set up plotting of different scenarios
-library(ggplot2)
-
 # optimal scenario
 sc_optimal <- list(
   summarise_scenario(70),

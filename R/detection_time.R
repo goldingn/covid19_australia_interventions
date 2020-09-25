@@ -243,7 +243,6 @@ ci_ribbon <- function(ci) {
 }
 
 
-library(ggplot2)
 base_colour <- yellow
 
 p <- ggplot(df) + 

@@ -9,6 +9,7 @@ library(readxl)
 library(RColorBrewer)
 library(tensorflow)
 library(purrr)
+library(ggplot2)
 
 tfp <- reticulate::import("tensorflow_probability")
 
@@ -1335,8 +1336,6 @@ plot_trend <- function(simulations,
                        keep_only_rows = NULL,
                        max_date = data$dates$latest_mobility,
                        min_date = as.Date("2020-03-01")) {
-  
-  library(ggplot2)
   
   mean <- colMeans(simulations)
   ci_90 <- apply(simulations, 2, quantile, c(0.05, 0.95))

@@ -4,7 +4,6 @@
 source("R/functions.R")
 
 library(sf)
-library(ggplot2)
 
 # random truncated normal samples
 rtnorm <- function(n, mean = 0, sd = 1, lower = -Inf, upper = Inf) {
@@ -976,7 +975,6 @@ df <- bind_rows(
   summarise_statewide(results_no_response, "Melbourne & Mitchell only")
 )
 
-library(ggplot2)
 base_colour <- blue
 
 p <- df %>%

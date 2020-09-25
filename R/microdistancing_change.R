@@ -63,7 +63,6 @@ pred_plot <- pred_data %>%
   mutate(mean = colMeans(prob_pred_sim)) %>%
   bind_cols(as_tibble(quants))
   
-library(ggplot2)
 line_df <- pred_plot %>%
   mutate_at(
     vars(mean, ci_90_lo, ci_90_hi, ci_50_lo, ci_50_hi),
