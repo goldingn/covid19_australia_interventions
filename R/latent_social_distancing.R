@@ -264,7 +264,8 @@ vic_trigger_date_num <- as.numeric(vic_second_intervention_dates - first_date)
 vic_distancing <- latent_behaviour_switch(date_num, vic_trigger_date_num)
 
 # only need loadings for VIC and different interventions
-loadings_vic_intervention <- normal(0, 1, dim = n_datastreams)
+loadings_vic_intervention_raw <- normal(0, 1, dim = n_datastreams)
+loadings_vic_intervention <- loadings_vic_intervention_raw * 10
 loadings_state_intervention <- loadings_vic_intervention[datastream_index]
 
 state_distancing <- zeros(n_dates, n_states)

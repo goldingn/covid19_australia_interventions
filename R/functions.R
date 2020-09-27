@@ -2827,7 +2827,7 @@ hierarchical_normal <- function(n, index = NULL, mean_sd = 10, sd_sd = 0.5) {
   
 }
 
-microdistancing_params <- function(n_locations = 8, n_inflections = 1) {
+microdistancing_params <- function(n_locations = 8, n_inflections = 1, inflection_max = 1) {
   
   # timing of peak microdistancing between the date of the last intervention and
   # today's date
@@ -2839,6 +2839,8 @@ microdistancing_params <- function(n_locations = 8, n_inflections = 1) {
                         dim = c(n_locations, n_inflections))
   inflections <- apply(inflections, 1, "cumprod")
   inflections <- t(inflections)[, rev(seq_len(n_inflections))]
+  # constrain to below a maximum value
+  inflections <- inflections * inflection_max
   
   # hierarchical structure on state-level waning
   logit_waning_effects <- hierarchical_normal(n_locations)

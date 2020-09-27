@@ -14,7 +14,17 @@ library(greta)
 n_locations <- max(survey_distance$state_id)
 n_inflections <- 2
 
-params <- microdistancing_params(n_locations, n_inflections)
+# how late can the latest inflection be (not after two weeks before the latest
+# survey date) convert that into a fraction of time between the peak and last datapoint
+post_peak_days <- as.numeric(max(survey_distance$date) - as.Date("2020-04-12"))
+inflection_max <- 1 - 14 / post_peak_days
+
+# get model parameters
+params <- microdistancing_params(
+  n_locations = n_locations,
+  n_inflections = n_inflections,
+  inflection_max = inflection_max
+)
 
 peak <- params$peak
 inflections <- params$inflections
