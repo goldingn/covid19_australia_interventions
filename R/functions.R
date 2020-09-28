@@ -2427,8 +2427,7 @@ check_projection <- function(fitted_model, start_date = as.Date("2020-02-28")) {
   
   R_eff_local <- fitted_model$greta_arrays$R_eff_loc_12
   R_eff_imported <- fitted_model$greta_arrays$R_eff_imp_12
-  gi_mat <- fitted_model$data$gi_mat
-  gi_vec <- gi_vector(gi_cdf, fitted_model$data$dates$latest)
+  gi_vec <- gi_vector(gi_cdf, fitted_model$data$dates$latest, state = "ACT")
   local_infectiousness <- fitted_model$data$local$infectiousness
   imported_infectiousness <- fitted_model$data$imported$infectiousnes
   local_cases <- fitted_model$data$local$cases
@@ -2466,9 +2465,15 @@ check_projection <- function(fitted_model, start_date = as.Date("2020-02-28")) {
   # simulation
   
   # locally-acquired infections present prior to the start of the simulation
-  previous_local_cases <- rowSums(local_cases)
-  previous_local_cases[sub_idx] <- 0
-  previous_local_infectiousness <- gi_mat %*% as.matrix(previous_local_cases)
+  previous_local_cases <- local_cases
+  previous_local_cases[sub_idx, ] <- 0
+  previous_local_infectiousness <- gi_convolution(
+    cases = previous_local_cases,
+    dates = dates,
+    states = data$states,
+    gi_cdf = gi_cdf
+  )
+  # previous_local_infectiousness <- rowSums(previous_local_infectiousness)
   
   # compute infectious forcing from local cases emerging during this period that
   # were directly infected by imported cases (can't just include the import
@@ -2478,8 +2483,14 @@ check_projection <- function(fitted_model, start_date = as.Date("2020-02-28")) {
   
   # expected number of new locally-acquired cases during the simulation period due
   # to infection from imports
-  import_local_cases <- rowSums(imported_infectiousness) * R_eff_imp_ntnl[seq_len(n_dates)]
-  import_local_infectiousness <- gi_mat %*% import_local_cases
+  import_local_cases <- sweep(imported_infectiousness, 1, R_eff_imp_ntnl[seq_len(n_dates)], FUN = "*")
+  import_local_cases_ntnl <- rowSums(import_local_cases)
+  import_local_infectiousness <- gi_convolution(
+    cases = import_local_cases,
+    dates = dates,
+    states = data$states,
+    gi_cdf = gi_cdf
+  )
   
   # combine these to get forcing from existing and import-associated local cases,
   # and disaggregate to get infectiousness of these
@@ -2489,13 +2500,13 @@ check_projection <- function(fitted_model, start_date = as.Date("2020-02-28")) {
   # no clusters), and the infectiousness profile, iterate the dynamics to compute
   # the numbers of local cases
   secondary_locals <- project_local_cases(
-    infectiousness = local_infectiousness[sub_idx],
+    infectiousness = rowSums(local_infectiousness)[sub_idx],
     R_local = R_eff_loc_ntnl[sub_idx],
     disaggregation_probs = gi_vec
   )
   
   # compute locally-acquired cases
-  local_cases_project_ntnl <- import_local_cases[sub_idx] + secondary_locals
+  local_cases_project_ntnl <- import_local_cases_ntnl[sub_idx] + secondary_locals
   local_cases_project_ntnl_sim <- calculate(local_cases_project_ntnl,
                                             values = fitted_model$draws,
                                             nsim = 1000)[[1]]
@@ -4557,6 +4568,7 @@ forecast_locals <- function (local_cases, imported_cases,
   
   n_dates <- length(dates)
   n_states <- ncol(Reff_locals)
+  states <- c("ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA")
   
   # check inputs
   if (nrow(Reff_locals) != n_dates |
@@ -4582,20 +4594,38 @@ forecast_locals <- function (local_cases, imported_cases,
   imported_cases <- pad_cases_matrix(imported_cases, n_dates, which = "after")
   
   # create the generation interval matrix and vector
-  gi_mat <- gi_matrix(gi_cdf, dates, gi_bounds = gi_bounds)
+  # gi_mat <- gi_matrix(gi_cdf, dates, gi_bounds = gi_bounds)
   gi_vec <- gi_vector(gi_cdf, max(dates), gi_bounds = gi_bounds)
   
   # infectiousness of imported cases over time
-  imported_infectious <- gi_mat %*% imported_cases
+  imported_infectious <- gi_convolution(
+    cases = imported_cases,
+    dates = dates,
+    states = states,
+    gi_cdf = gi_cdf,
+    gi_bounds = gi_bounds
+  )
   
   # expected number of primary (import-local) locally-acquired cases
   primary_local_cases <- imported_infectious * Reff_imports
   
   # infectiousness of primary locally-acquired cases
-  primary_local_infectiousness <- gi_mat %*% primary_local_cases
+  primary_local_infectiousness <- gi_convolution(
+    cases = primary_local_cases,
+    dates = dates,
+    states = states,
+    gi_cdf = gi_cdf,
+    gi_bounds = gi_bounds
+  )
   
   # infectiousness of observed (or assumed) locally-acquired cases
-  existing_local_infectiousness <- gi_mat %*% local_cases
+  existing_local_infectiousness <- gi_convolution(
+    cases = local_cases,
+    dates = dates,
+    states = states,
+    gi_cdf = gi_cdf,
+    gi_bounds = gi_bounds
+  )
   
   # sum get local infectiousness not caused by dynamic cases
   local_infectiousness <- existing_local_infectiousness +
@@ -4627,8 +4657,15 @@ forecast_locals <- function (local_cases, imported_cases,
   
   # get the probability (poisson assumption) of one for more new
   # locally-acquired cases
-  forecast_local_infectious <- gi_mat %*% forecast_local_cases
-  expected_transmission <- forecast_local_infectious * Reff_locals + 
+  forecast_local_infectious <- gi_convolution(
+    cases = forecast_local_cases,
+    dates = dates,
+    states = states,
+    gi_cdf = gi_cdf,
+    gi_bounds = gi_bounds
+  )
+  
+  expected_transmission <- forecast_local_infectious * Reff_locals +
     primary_local_cases
   p_cases <- 1 - exp(-expected_transmission)
   
