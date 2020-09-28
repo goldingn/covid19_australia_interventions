@@ -1135,92 +1135,6 @@ gi_probability <- function(cdf,
   
 }
 
-# given a positive integer vector (of days between a case becoming symptomatic
-# and being reported) compute the probability that the delay falls in that day
-delay_probability <- function(days) {
-  
-  # define the parameter of the exponential distribution via samples provided by
-  # David
-  delay_samples <- read_csv("data/cases/sampled_report_delay.csv",
-                            col_types = cols(x = col_double())) %>%
-    pull(x)
-  
-  rate <- lognormal(0, 1)
-  distribution(delay_samples) <- exponential(rate)
-  
-  # compute the CDF of the lognormal distribution, for this and the next day
-  days_lower <- days
-  days_upper <- days + 1
-  
-  # get the integral of the density over this day
-  p_upper <- exponential_cdf(days_upper, rate)
-  p_lower <- exponential_cdf(days_lower, rate)
-  p_upper - p_lower
-  
-}
-
-fake_linelist <- function() {
-  
-  library(readr)
-  library(dplyr)
-  library(lubridate)
-  library(tidyr)
-  
-  # create a synthetic linelist from data provided by David and Freya
-  cases <- read_csv(
-    file = "data/cases/cases.csv",
-    col_types = cols(
-      date = col_date(format = ""),
-      import_status = col_character(),
-      region = col_character(),
-      cases = col_double()
-    )
-  ) %>%
-    mutate(
-      date = ymd(date),
-      import_status = recode(
-        import_status, 
-        "Unknown origin" = "local",  # conservative approach assuming all unknown cases are locally acquired
-        "Locally acquired" = "local",
-        "Overseas acquired" = "imported"
-      )
-    ) %>% 
-    group_by(date, region, import_status) %>%
-    tally(wt = cases) %>%
-    rename(cases = n) %>%
-    ungroup()
-  
-  # Load gamma distributed reporting delays
-  delay_samples <- read_csv(
-    file = "data/cases/sampled_report_delay.csv",
-    col_types = cols(x = col_integer())
-  ) %>%
-    pull(x)
-  
-  # Create a "linelist" from the data, as input into EpiNow::regional_rt_pipeline
-  linelist <- cases %>%
-    group_by(date, import_status, region) %>% 
-    expand(count = seq(1:cases)) %>%
-    select(-count) %>% 
-    ungroup() %>% 
-    mutate(
-      report_delay = sample(
-        x = delay_samples,
-        size = nrow(.),
-        replace = TRUE)
-    ) %>% 
-    mutate(date_onset = ymd(date) - report_delay) %>% 
-    rename(date_confirmation = date)
-  
-  # throw away some of the true onset dates
-  n_cases <- nrow(linelist)
-  remove <- sample.int(n_cases, floor(n_cases * 0.06))
-  linelist$date_onset[remove] <- NA
-  
-  linelist
-  
-}
-
 # build an upper-triangular circulant matrix of the number of days from one set
 # of times to another, set to -999 if the difference is not supported (negative
 # or exceeds max_days)
@@ -3000,54 +2914,69 @@ microdistancing_data <- function(dates = NULL) {
   
 }
 
-# given vectors of dates and numbers of days post infection, return the fraction
-# of cases not being detected by that point
-ttd_survival <- function(days, dates) {
+# given vectors of dates and numbers of days post infection, and a single state,
+# return the fraction of cases *not* being detected by that point
+ttd_survival <- function(days, dates, target_state) {
   
-  # load fitted CDFs over time
-  cdf <- readRDS("outputs/time_to_detection_cdf.RDS")
-  ttd_dates <- cdf$date
-  cdf_mat <- cdf %>%
-    select(-date) %>%
-    as.matrix()
+  # filter to this state,
+  # loop through dates running ecdfs on days (accounting for change of dates from onset to infection!)
+  
+  # will need to line up dates, but shouldn't need to line up days_idx (ecdf()
+  # will take care of it)
+  
+  # load empirical CDFs of delay from onset to notificiation (aggregated from date of onset) over time
+  cdfs <- readRDS("outputs/delay_from_onset_cdfs.RDS") %>%
+    filter(state == target_state)
   
   # line up dates
-  dates <- pmin(dates, max(ttd_dates))
-  dates <- pmax(dates, min(ttd_dates))
-  dates_idx <- match(dates, ttd_dates)
+  dates <- pmin(dates, max(cdfs$date))
+  dates <- pmax(dates, min(cdfs$date))
+  dates_idx <- match(dates, cdfs$date)
   
-  # line up days (direct index against ttd elements since we're counting from
-  # infection, not symptom onset)
-  days_idx <- days + 1
-  days_idx <- pmax(days_idx, 1)
-  days_idx <- pmin(days_idx, ncol(cdf_mat))
-  
-  # pull out elements of CDF
-  idx <- cbind(dates_idx, days_idx)
-  cdf_vec <- cdf_mat[idx]
+  # convert from days post infection to days post onset (can be up to 5 days
+  # negative)
+  days_onset <- days - 5
+  days_onset_list <- lapply(days_onset, list)
+
+  # apply relevant CDF to each number of days
+  ecdfs <- cdfs$ecdf[dates_idx]
+  cdf_vec <- mapply(do.call, ecdfs, days_onset_list)
   
   # return probability of not being detected by this point
   1 - cdf_vec
   
 }
 
-# reduction in R due to faster detection of cases
-surveillance_effect <- function(dates, cdf, gi_bounds = c(0, 20)) {
+# returna date-by-state matrix of reduction in R due to faster detection of cases
+surveillance_effect <- function(dates, states, cdf, gi_bounds = c(0, 20)) {
   
   n_dates <- length(dates)
+  n_states <- length(states)
   gi_range <- diff(gi_bounds) + 1
   day_vec <- seq_len(gi_range) - 1 + gi_bounds[1]
   day_mat <- col(matrix(0, n_dates, gi_range)) - 1
   
-  # times to detection for each date  
-  ttd_days <- day_mat
-  ttd_days[] <- ttd_survival(c(day_mat), rep(dates, gi_range))
-  
   # generation interval probability on each day post-infection
   gi_days <- gi_probability(cdf, day_vec, bounds = gi_bounds)
   
-  # weighted sum to get reduction due to impeded transmission
-  c(ttd_days %*% gi_days)
+  date_state_mat <- matrix(1, n_dates, n_states)
+  
+  for (i in seq_along(states)) {
+    
+    # times to detection for each date in this states
+    ttd_days <- day_mat
+    ttd_days[] <- ttd_survival(
+      c(day_mat),
+      rep(dates, gi_range),
+      target_state = states[i]
+    )
+    
+    # weighted sum to get reduction due to impeded transmission
+    date_state_mat[, i] <- c(ttd_days %*% gi_days)
+    
+  }
+  
+  date_state_mat
   
 }
 
@@ -3424,6 +3353,42 @@ get_vic_linelist <- function(file) {
   
 }
 
+# given a date-by-state matrix of case counts by date of infection,
+# corresponding vectors of dates and states, and a function got the CDF of the
+# continous version of a generation interval distribution, adjust the GI
+# distribution by surveillance effectiveness (fraction of cases detected and
+# isolated by each day post infection) and convolve the cases to get the
+# combined infectiousness in each date and state.
+gi_convolution <- function(cases, dates, states, gi_cdf, gi_bounds = c(0, 20)) {
+  
+  n_dates <- length(dates)
+  n_states <- length(states)
+  if (dim(cases) != c(n_dates, n_states)) {
+    stop ("cases does not match dates and states", call. = FALSE)
+  }
+  
+  convolved <- cases * 0
+  for (i in seq_len(n_states)) {
+    # Circulant matrices of generation interval discrete probabilities
+    # use Nishiura's serial interval as a generation interval
+    # gi_cdf <- nishiura_cdf()
+    gi_mat <- gi_matrix(
+        gi_cdf = gi_cdf,
+        dates = dates,
+        state = states[i],
+        gi_bounds = gi_bounds
+      )
+    
+    convolved[, i] <- gi_mat %*% cases[, i]
+    
+  }
+  
+  convolved
+  
+  
+}
+
+
 # given a raw (unimputed) linelist, prepare all the data needed for modelling
 reff_model_data <- function(
   linelist_raw = load_linelist(),
@@ -3507,11 +3472,6 @@ reff_model_data <- function(
       case_type = "imported"
     )
   
-  # Circulant matrix of generation interval discrete probabilities
-  # use Nishiura's serial interval as a generation interval
-  # gi_cdf <- nishiura_cdf()
-  gi_mat <- gi_matrix(gi_cdf, dates, gi_bounds = c(0, 20))
-  
   # correct Reff denominator for right-truncation (infectors not yet detected) by
   # expectation (resolving divide-by-zero error)
   detection_prob_mat[] <- pmax(detection_prob_mat, 1e-6)
@@ -3521,8 +3481,19 @@ reff_model_data <- function(
   # disaggregate imported and local cases according to the generation interval
   # probabilities to get the expected number of infectious people in each state
   # and time
-  local_infectiousness <- gi_mat %*% local_cases_infectious_corrected
-  imported_infectiousness <- gi_mat %*% imported_cases_corrected  
+  local_infectiousness <- gi_convolution(
+    local_cases_infectious_corrected,
+    dates = dates,
+    states = states,
+    gi_cdf = gi_cdf
+  )
+  
+  imported_infectiousness <- gi_convolution(
+    imported_cases_corrected,
+    dates = dates,
+    states = states,
+    gi_cdf = gi_cdf
+  )
   
   # elements to exclude due to a lack of infectiousness
   local_valid <- is.finite(local_infectiousness) & local_infectiousness > 0
@@ -3541,7 +3512,6 @@ reff_model_data <- function(
       infectiousness = imported_infectiousness
     ),
     detection_prob_mat = detection_prob_mat,
-    gi_mat = gi_mat,
     valid_mat = valid_mat,
     states = states,
     dates = list(
@@ -3572,7 +3542,8 @@ reff_model <- function(data) {
   # reduction in R due to surveillance detecting and isolating infectious people
   surveillance_reff_local_reduction <- surveillance_effect(
     dates = data$dates$infection_project,
-    cdf = gi_cdf
+    cdf = gi_cdf,
+    states = data$states
   )
   
   # the reduction from R0 down to R_eff for imported cases due to different
@@ -3604,12 +3575,7 @@ reff_model <- function(data) {
   R_eff_loc_1_no_surv <- extend(distancing_effect$R_t, data$n_dates_project)
   
   # multiply by the surveillance effect
-  R_eff_loc_1 <- sweep(
-    R_eff_loc_1_no_surv,
-    1,
-    surveillance_reff_local_reduction,
-    FUN = "*"
-  )
+  R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_reff_local_reduction
   
   log_R_eff_loc_1 <- log(R_eff_loc_1)
   
@@ -3877,7 +3843,7 @@ reff_plotting <- function(
   plot_trend(sims$R_eff_loc_1_surv,
              data = fitted_model$data,
              max_date = max_date,
-             multistate = FALSE,
+             multistate = TRUE,
              base_colour = yellow,
              vline_at = intervention_dates()$date,
              vline2_at = projection_date) + 
@@ -4672,9 +4638,10 @@ pad_cases_matrix <- function(cases, n_dates, which = c("after", "before")) {
   
 }
 
-# build a convolution matrix for the discrete generation interval, applying the
-# effect of improving surveillance and normalising to integrate to 1
-gi_matrix <- function(gi_cdf, dates, gi_bounds = c(0, 20)) {
+# build a convolution matrix for the discrete generation interval for a single
+# state, applying the effect of improving surveillance and normalising to
+# integrate to 1
+gi_matrix <- function(gi_cdf, dates, state, gi_bounds = c(0, 20)) {
   
   n_dates <- length(dates)
   
@@ -4685,14 +4652,18 @@ gi_matrix <- function(gi_cdf, dates, gi_bounds = c(0, 20)) {
   # compute fraction surviving without detection in circulant matrix format,
   # multiply by GI matrix and rescale to get new GI distribution on each day
   ttd_mat <- day_diff
-  ttd_mat[] <- ttd_survival(days = c(day_diff),
-                            dates = rep(dates, each = n_dates))
-  rel_gi_mat <- gi_mat_naive * ttd_mat
+  ttd_mat[] <- ttd_survival(
+    days = c(day_diff),
+    dates = rep(dates, each = n_dates),
+    target_state = state
+  )
   scaling <- surveillance_effect(
     dates = dates,
     cdf = gi_cdf,
+    state = state,
     gi_bounds = gi_bounds
   )
+  rel_gi_mat <- gi_mat_naive * ttd_mat
   gi_mat <- sweep(rel_gi_mat, 2, scaling, FUN = "/")
   
   gi_mat
@@ -4702,7 +4673,7 @@ gi_matrix <- function(gi_cdf, dates, gi_bounds = c(0, 20)) {
 # build a vector of discrete generation interval probability masses for a given
 # date, applying the effect of improving surveillance and normalising to
 # integrate to 1
-gi_vector <- function(gi_cdf, date, gi_bounds = c(0, 20)) {
+gi_vector <- function(gi_cdf, date, state, gi_bounds = c(0, 20)) {
   
   # baseline GI vector, without effects of improved surveillance
   days <- seq(gi_bounds[1], gi_bounds[2])
@@ -4710,13 +4681,18 @@ gi_vector <- function(gi_cdf, date, gi_bounds = c(0, 20)) {
   
   # compute fraction surviving without detection in circulant matrix format,
   # multiply by GI matrix and rescale to get new GI distribution on each day
-  ttd_vec <- ttd_survival(days = days, dates = rep(date, each = length(days)))
-  rel_gi_vec <- gi_vec_naive * ttd_vec
+  ttd_vec <- ttd_survival(
+    days = days,
+    dates = rep(date, each = length(days)),
+    target_state = state
+  )
   scaling <- surveillance_effect(
     dates = date,
     cdf = gi_cdf,
+    state = state,
     gi_bounds = gi_bounds
   )
+  rel_gi_vec <- gi_vec_naive * ttd_vec
   gi_vec <- rel_gi_vec / scaling
   
   gi_vec
@@ -5410,6 +5386,445 @@ simulate_scenario <- function (index, scenarios, fitted_model, nsim = 5000) {
     saveRDS(paste0("outputs/counterfactuals/scenario", index, ".RDS"))
   
 }
+
+
+mean.ecdf <- function(x, ...) {
+  mean(evalq(rep.int(x, diff(c(0, round(nobs * y)))), environment(x)), ...)
+}
+
+count_in_window <- function(target_date, states, delay_data, window, date_tabulation) {
+  dates <- delay_data %>%
+    filter(state %in% states) %>%
+    pull(!!date_tabulation)
+  diff <- abs(dates - target_date)
+  in_window <- diff <= window
+  sum(in_window)
+}
+
+get_window_size <- function(
+  target_date,
+  states,
+  delay_data,
+  date_tabulation,
+  n_min = 500,
+  window_min = 7,
+  window_max = 42
+) {
+  
+  dates <- delay_data %>%
+    filter(state %in% states) %>%
+    pull(!!date_tabulation)
+  
+  # find the smallest window that yields the required number of counts
+  for (window in window_min:window_max) {
+    
+    diff <- abs(dates - target_date)
+    in_window <- diff <= window
+    
+    if (sum(in_window) >= n_min) {
+      break()
+    }
+    
+  }
+  
+  window
+  
+}
+
+delay_ecdf <- function(target_date, states, window, delay_data, date_tabulation) {
+  
+  data <- delay_data %>%
+    filter(state %in% states)
+  dates <- pull(data, !!date_tabulation)
+  delays <- pull(data, delay)
+  
+  diff <- abs(dates - target_date)
+  in_window <- diff <= window
+  
+  valid_delays <- delays[in_window]
+  
+  if (length(valid_delays) > 0) {
+    distribution <- ecdf(valid_delays)
+  } else {
+    distribution <- NULL
+  }
+  
+  list(distribution)
+  
+}
+
+ci_ribbon <- function(ci) {
+  
+  lo <- paste0("ci_", ci, "_lo")
+  hi <- paste0("ci_", ci, "_hi")
+  
+  geom_ribbon(
+    aes_string(ymin = lo,
+               ymax = hi),
+    alpha = 1/9
+  )
+}
+
+# calculate a weighted average ecdf out of two (weight is the probability of the first)
+weight_ecdf <- function(ecdf_1, ecdf_2, weight) {
+  
+  if (is.null(ecdf_1) | weight == 0) {
+    return(ecdf_2)
+  }
+  if (is.null(ecdf_2) | weight == 1) {
+    return(ecdf_1)
+  }
+  
+  e1 <- environment(ecdf_1)
+  e2 <- environment(ecdf_2)
+  
+  # reconcile the xs
+  x_1 <- e1$x
+  x_2 <- e2$x
+  
+  x <- sort(unique(c(x_1, x_2)))
+  
+  # get the two CDFs
+  y_1 <- ecdf_1(x)
+  y_2 <- ecdf_2(x)
+  
+  # get the two pdfs
+  pdf_1 <- diff(c(0, y_1))
+  pdf_2 <- diff(c(0, y_2))
+  
+  # get a weighted average of them
+  pdf <- pdf_1 * weight + pdf_2 * (1 - weight)
+  
+  # convert back to a CDF
+  y <- cumsum(pdf)
+  
+  # rebuild an ecdf object, the slow way
+  method <- 2L
+  yleft <- 0
+  yright <- 1
+  f <- e1$f
+  n <- e1$nobs
+  rval <- function (v) {
+    stats:::.approxfun(x, y, v, method, yleft, yright, f)
+  }
+  class(rval) <- c("ecdf", "stepfun", class(rval))
+  assign("nobs", n, envir = environment(rval))
+  attr(rval, "call") <- attr(ecdf_1, "call")
+  rval
+  
+}
+
+get_cis <- function(date, state, ecdf, weight, use_national) {
+  
+  deciles_lower <- seq(0.05, 0.45, by = 0.05)
+  deciles_upper <- 1 - deciles_lower
+  deciles <- c(deciles_lower, deciles_upper)
+  decile_names <- paste0("ci_", (1 - 2 * deciles_lower) * 100)
+  decile_names <- c(paste0(decile_names, "_lo"),
+                    paste0(decile_names, "_hi"))
+  
+  cis <- quantile(ecdf, deciles)
+  names(cis) <- decile_names
+  cis
+}
+
+# Calculate time-varying delay distributions for each state, smoothly reverting
+# to the national average when and where there are insufficient records to
+# compute state-level distributions. Return a tibble of empirical CDFs of the
+# distribution by state and date.
+# Parameters:
+
+# state, date, delay: vectors of equal length giving the data on observed delays
+#   by date and state
+# all_dates, all_states: optional vectors of dates and states for which to compute
+#   delays (taken from linelist if not specified)
+# direction: whether to tabulate delays by date in a 'forward' ('date' is at the
+#   start of the delay) or 'backward' ('date' is at the end of the delay) manner
+# delay_plausible_bounds: a vector of length 2 of plausible delays. Records with
+#   values outside these bounds are assumed to be erroneous and removed.
+# min_records: the minimum number of records required to reliably estimate the delay
+#   distribution within a window
+# absolute_min_records: the absolute minimum number of records to estimate a
+#   state-level delay distribution within a window. If the number of records is
+#   below this (even with the maximum window size), the national estimate is used
+#   instead. If it is between this and 'min_records', the distribution is
+#   estimated as a weighted average of the state and national distributions.
+# min_window: the minimum window size (number of days wide) in which to estimate
+#   the delay distribution
+# max_window: the maximum window size in which to estimate the delay
+#   distribution for each date at the state level. At the national level there is
+#   no maximum applied
+# national_exclusions: a tibble of states, start dates, and end dates denoting
+#   times and places that should not contribute to the national estimate. If
+#   either of the dates are NA, the earliest (or latest) dates in the linelist
+#   are used
+estimate_delays <- function(
+  state,
+  date,
+  delay,
+  all_dates = NULL,
+  all_states = NULL,
+  direction = c("forward", "backward"),
+  min_records = 500,
+  absolute_min_records = 100,
+  min_window = 7,
+  max_window = 56,
+  national_exclusions = tibble(state = "VIC", start = as.Date("2020-06-14"), end = NA)
+) {
+  
+  direction <- match.arg(direction)
+  
+  # account for right-truncation when tabulating
+  # which date to tabulate by
+  if (direction == "forward") {
+    date_from <- date
+    date_to <- date + delay
+    date_tabulation <- "date_from"
+  } else {
+    date_from <- date - delay
+    date_to <- date
+    date_tabulation <- "date_to"
+  }
+  
+  delay_data <- tibble(
+    state = state,
+    date_from = date_from,
+    date_to = date_to,
+    delay = delay
+  )
+  
+  if (is.null(all_dates)) {
+    all_dates <- seq(
+      min(delay_data$date_from),
+      max(delay_data$date_to),
+      by = 1
+    )
+  }
+  
+  if (is.null(all_states)) {
+    all_states <- unique(delay_data$state)
+  }
+  
+  date_state <- expand_grid(
+    date = all_dates,
+    state = all_states
+  )
+  
+  # get the half-window size (number of days on either side of the target)
+  absolute_max_window <- as.numeric(diff(range(all_dates)))
+  min_window <- ceiling((min_window - 1) / 2)
+  max_window <- floor((max_window - 1) / 2)
+  
+  # for each confirmation date, run the algorithm on each date
+  statewide <- date_state %>%
+    group_by(date, state) %>%
+    mutate(
+      window = get_window_size(
+        date,
+        state,
+        delay_data = delay_data,
+        date_tabulation = date_tabulation,
+        n_min = min_records,
+        window_min = min_window,
+        window_max = max_window 
+      ),
+      count = count_in_window(
+        date,
+        state,
+        delay_data = delay_data,
+        date_tabulation = date_tabulation,
+        window = window
+      ),
+      state_ecdf = delay_ecdf(
+        date,
+        state,
+        window = window,
+        delay_data = delay_data,
+        date_tabulation = date_tabulation
+      )
+    )
+  
+  # fill in exclusion periods
+  national_exclusions <- national_exclusions %>%
+    mutate(
+      start = as.Date(start),
+      end = as.Date(end),
+      start = replace_na(start, min(all_dates)),
+      end = replace_na(end, max(all_dates))
+    )
+  
+  # remove the specified data for estimating the national background distribution
+  for (i in seq_len(nrow(national_exclusions))) {
+    delay_data <- delay_data %>%
+      filter(
+        !(
+          state == national_exclusions$state[i] &
+            date_from >= national_exclusions$start[i] &
+            date_to <= national_exclusions$end[i]
+        )
+      )
+  }
+  
+  nationwide <- date_state %>%
+    # arbitrarily pick one set of dates
+    filter(state == "ACT") %>%
+    select(-state) %>%
+    group_by(date) %>%
+    mutate(
+      window = get_window_size(
+        date,
+        all_states,
+        delay_data = delay_data,
+        date_tabulation = date_tabulation,
+        n_min = min_records,
+        window_min = min_window,
+        window_max = absolute_max_window
+      ),
+      national_ecdf = delay_ecdf(
+        date,
+        all_states,
+        window = window,
+        delay_data = delay_data,
+        date_tabulation = date_tabulation
+      )
+    )
+  
+  # for statewide, replace any invalid ecdfs with the national one
+  state_ecdfs <- statewide %>%
+    right_join(
+      nationwide %>%
+        select(-window)
+    ) %>%
+    mutate(
+      use_national = count < absolute_min_records,
+      weight = pmin(1, count / min_records),
+      weight = ifelse(use_national, 0, weight),
+      ecdf = mapply(
+        FUN = weight_ecdf,
+        state_ecdf,
+        national_ecdf,
+        weight,
+        SIMPLIFY = FALSE
+      )
+    ) %>%
+    select(
+      date, state, ecdf, weight, use_national
+    )
+  
+  
+  state_ecdfs
+  
+}
+
+# plot changing delay distributions by state over time
+plot_delays <- function(
+  delay_distributions,
+  date,
+  state,
+  delay,
+  base_colour = yellow
+) {
+  
+  # mutate to output quantiles and then plot them
+  quantiles <- delay_distributions %>%
+    # plot it as the date of infection, not date of onset!
+    mutate(date = date - 5) %>%
+    pmap_dfr(get_cis) %>%
+    bind_cols(delay_distributions, .) %>%
+    mutate(
+      median = vapply(
+        ecdf,
+        quantile,
+        0.5,
+        FUN.VALUE = numeric(1)
+      ),
+      mean = vapply(
+        ecdf,
+        mean,
+        FUN.VALUE = numeric(1)
+      )
+    )
+  
+  p <- quantiles %>%
+    mutate(type = "Nowcast") %>%
+    ggplot() + 
+    
+    aes(date, mean, fill = type) +
+    
+    facet_wrap(~state, ncol = 2) +
+    
+    xlab(element_blank()) +
+    
+    coord_cartesian(
+      ylim = c(0, 20),
+      xlim = c(as.Date("2020-03-01"), max(delay_distributions$date))
+    ) +
+    scale_y_continuous(position = "right") +
+    scale_x_date(date_breaks = "1 month", date_labels = "%d/%m") +
+    scale_alpha(range = c(0, 0.5)) +
+    scale_fill_manual(values = c("Nowcast" = base_colour)) +
+    
+    ci_ribbon("90") +
+    ci_ribbon("80") +
+    ci_ribbon("70") +
+    ci_ribbon("60") +
+    ci_ribbon("50") +
+    ci_ribbon("40") +
+    ci_ribbon("30") +
+    ci_ribbon("20") +
+    ci_ribbon("10") +
+    
+    geom_line(aes(y = ci_90_lo),
+              colour = base_colour,
+              alpha = 0.8) + 
+    geom_line(aes(y = ci_90_hi),
+              colour = base_colour,
+              alpha = 0.8) + 
+    
+    geom_line(aes(y = mean),
+              colour = grey(0.4),
+              alpha = 1,
+              size = 1) +
+    
+    cowplot::theme_cowplot() +
+    cowplot::panel_border(remove = TRUE) +
+    theme(legend.position = "none",
+          strip.background = element_blank(),
+          strip.text = element_text(hjust = 0, face = "bold"),
+          axis.title.y.right = element_text(vjust = 0.5, angle = 90),
+          panel.spacing = unit(1.2, "lines")) +
+    ggtitle(label = "Surveillance trend",
+            subtitle = "Time from symptom onset to notification for locally-acquired cases") +
+    ylab("Days")
+  
+  # add points for true delays
+  df_obs <- tibble(
+    date = date,
+    state = state,
+    delay = delay,
+    type = "Nowcast"
+  )
+  
+  p <- p + geom_point(
+    aes(date, delay),
+    data = df_obs,
+    pch = 16,
+    size = 0.2,
+    alpha = 0.1
+  )
+  
+  # add shading for regions where the national distribution is used
+  p <- p +
+    geom_ribbon(
+      aes(ymin = -10, ymax = use_national * 100 - 10),
+      fill = grey(1),
+      alpha = 0.5,
+      colour = grey(0.9)
+    )
+  
+  p
+}
+
 
 # colours for plotting
 blue <- "steelblue3"

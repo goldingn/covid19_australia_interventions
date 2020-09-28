@@ -10,6 +10,8 @@ sync_nndss()
 # prepare data for Reff modelling
 data <- reff_model_data()
 
+data$dates$linelist
+
 # save the key dates for Freya and David to read in, and tabulated local cases
 # data for the Robs
 write_reff_key_dates(data)
