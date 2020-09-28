@@ -21,11 +21,10 @@ mobility <- all_mobility() %>%
   arrange(state, datastream, date) %>%
   mutate(state_datastream = str_c(state, datastream, sep = " "))
 saveRDS(mobility, file = "outputs/cached_mobility.RDS")
-interventions <- intervention_dates()
 holidays <- holiday_dates()
 populations <- state_populations()
-
-vic_second_intervention_dates <- as.Date(c("2020-07-01", "2020-07-08", "2020-08-03"))
+intervention_dates_ntnl <- intervention_dates("national")
+intervention_dates_vic <- intervention_dates("VIC")
 
 # get vectors of date ranges and datastreams to model
 first_date <- min(mobility$date)
@@ -61,7 +60,7 @@ state_index <- state_datastream_lookup %>%
 # social distancing latent factor as a function of behavioural switches
 # triggered by the major interventions
 date_num <- as.numeric(dates - first_date)
-trigger_date_num <- as.numeric(interventions$date[1:3] - first_date)
+trigger_date_num <- as.numeric(intervention_dates_ntnl - first_date)
 distancing <- latent_behaviour_switch(date_num, trigger_date_num)
 
 # add term for recent change to social distancing (some proportion either
@@ -69,7 +68,7 @@ distancing <- latent_behaviour_switch(date_num, trigger_date_num)
 # make this a linear increase since a peak (with prior mean one week after the
 # last intervention, 95% interval in the week around that)
 last_date_num <- n_dates - 1
-last_intervention_date_num <- as.numeric(interventions$date[3] - first_date)
+last_intervention_date_num <- as.numeric(intervention_dates_ntnl[3] - first_date)
 peak_range <- last_date_num - last_intervention_date_num
 
 # when was the peak of distancing?
@@ -260,7 +259,7 @@ inflection_latents <- inflection_effect[, state_index]
 trends_inflection <- sweep(inflection_latents, 2, loadings_inflection, FUN = "*")
 
 # trend for VIC due to second phase restrictions
-vic_trigger_date_num <- as.numeric(vic_second_intervention_dates - first_date)
+vic_trigger_date_num <- as.numeric(intervention_dates_vic - first_date)
 vic_distancing <- latent_behaviour_switch(date_num, vic_trigger_date_num)
 
 # only need loadings for VIC and different interventions
@@ -337,7 +336,7 @@ for (i in 1:4) {
     factor = latents_ntnl[, i],
     draws = draws,
     dates = dates,
-    key_dates = interventions$date,
+    key_dates = intervention_dates_ntnl,
     cols = pal(colours[i]),
     latent_names[i]
   )
@@ -409,13 +408,10 @@ for (j in seq_len(n_states)) {
     
     # add extra intervention lines for VIC
     if (states[j] == "Victoria") {
-      add_gridlines(
-        c(interventions$date, vic_second_intervention_dates)
-      )
-    } else {
-      add_gridlines(interventions$date)
+      add_gridlines(intervention_dates_vic)
     }
-    
+
+    add_gridlines(intervention_dates_ntnl)
     add_mean_ci(est, dates_plot,
                 col = grey(0.9),
                 border_col = grey(0.8),
@@ -507,14 +503,10 @@ for(this_state in states) {
       axis(4)
       # add extra intervention lines for VIC
       if (this_state == "Victoria") {
-        add_gridlines(
-          c(interventions$date, vic_second_intervention_dates)
-        )
-      } else {
-        add_gridlines(interventions$date)
+        add_gridlines(intervention_dates_vic)
       }
       
-      add_gridlines(interventions$date)
+      add_gridlines(intervention_dates_ntnl)
       add_mean_ci(est, dates_plot,
                   col = grey(0.9),
                   border_col = grey(0.8),

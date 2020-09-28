@@ -393,16 +393,48 @@ ideal_regions <- function() {
   )
 }
 
-intervention_dates <- function() {
-  tibble::tribble(~date, ~stage, ~text,
-                  "2020-03-16", 1, "public gatherings <= 500 people",
-                  "2020-03-24", 2, "venues closed, advised to stay home",
-                  "2020-03-29", 3, "public gatherings <= 2 people") %>%
-    mutate(date = lubridate::date(date))
+interventions <- function(which = c("all", "national", "VIC")) {
+  
+  which <- match.arg(which)
+  
+  vic_interventions <- tibble::tribble(
+    ~date, ~state,
+    "2020-07-01", "VIC",
+    "2020-07-08", "VIC",
+    "2020-08-02", "VIC"
+  )
+  
+  national_interventions <- expand_grid(
+    date = c("2020-03-16", "2020-03-24", "2020-03-29"),
+    state = c("ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA")
+  )
+  
+  interventions <- switch(
+    which,
+    national = national_interventions,
+    vic = vic_interventions,
+    all = bind_rows(national_interventions, vic_interventions)
+  )
+  
+  interventions %>%
+    mutate(
+      date = as.Date(date),
+      state = factor(state)
+    )
+  
+  
 }
 
 quarantine_dates <- function() {
-  as.Date(c("2020-03-15", "2020-03-28"))
+  expand_grid(
+    date = c("2020-03-15", "2020-03-28"),
+    state = c("ACT", "NSW", "NT", "QLD", "SA", "TAS", 
+      "VIC", "WA")
+  ) %>%
+    mutate(
+      date = as.Date(date),
+      state = factor(state)
+    )
 }
 
 # dates of public holidays by state, from:
@@ -1245,8 +1277,8 @@ plot_trend <- function(simulations,
                        multistate = FALSE,
                        hline_at = 1,
                        ylim = c(0, 3),
-                       vline_at = NA,
-                       vline2_at = NA,
+                       intervention_at = interventions(),
+                       projection_at = NA,
                        keep_only_rows = NULL,
                        max_date = data$dates$latest_mobility,
                        min_date = as.Date("2020-03-01")) {
@@ -1294,12 +1326,11 @@ plot_trend <- function(simulations,
     
     coord_cartesian(ylim = ylim) +
     scale_y_continuous(position = "right") +
-    scale_x_date(date_breaks = "1 month", date_labels = "%d/%m") +
+    scale_x_date(date_breaks = "1 month", date_labels = "%e/%m") +
     scale_alpha(range = c(0, 0.5)) +
     scale_fill_manual(values = c("Nowcast" = base_colour)) +
     
-    geom_vline(xintercept = vline_at, colour = "grey80") +
-    geom_vline(xintercept = vline2_at, linetype = "dashed", colour = "grey60") +
+    geom_vline(aes(xintercept = date), data = intervention_at, colour = "grey80") +
     
     geom_ribbon(aes(ymin = ci_90_lo,
                     ymax = ci_90_hi),
@@ -1329,15 +1360,16 @@ plot_trend <- function(simulations,
     p <- p + facet_wrap(~ state, ncol = 2, scales = "free")
   }
   
-  if (!is.na(vline2_at)) {
+  if (!is.na(projection_at)) {
     p <- p +
+      geom_vline(xintercept = projection_at, linetype = "dashed", colour = "grey60") +
       annotate("rect",
-               xmin = vline2_at,
+               xmin = projection_at,
                xmax = max(df$date),
                ymin = -Inf,
                ymax = Inf,
                fill = grey(0.5), alpha = 0.1) +
-      geom_text(aes(x = vline2_at, y = 3, label = "projection"),
+      geom_text(aes(x = projection_at, y = 3, label = "projection"),
                 hjust = -0.1, size = 3, colour = grey(0.6))
   }
   
@@ -2479,8 +2511,7 @@ check_projection <- function(fitted_model, start_date = as.Date("2020-02-28")) {
              ylim = c(0, 2 * max(local_cases_ntnl)),
              hline_at = NULL,
              min_date = start_date,
-             base_colour = green,
-             vline_at = intervention_dates()$date) +
+             base_colour = green) +
     ggtitle("Projected national locally-acquired cases") +
     ylab("daily infections") +
     geom_line(data = data.frame(mean = local_cases_ntnl,
@@ -2897,7 +2928,7 @@ microdistancing_data <- function(dates = NULL) {
     replace_na(list(distancing = 0)) %>%
     mutate(
       state_id = match(state, unique(state)),
-      time = as.numeric(date - intervention_dates()$date[3]),
+      time = as.numeric(date - interventions("national")$date[3]),
       time = time / max(time)
     ) %>%
     arrange(state, date)
@@ -3551,8 +3582,8 @@ reff_model <- function(data) {
   # R_eff_t / R0 for each time t, modelled as a monotone decreasing step function
   # over three periods with increasingly strict policies
   q_index <- case_when(
-    data$dates$infection < quarantine_dates()[1] ~ 1,
-    data$dates$infection < quarantine_dates()[2] ~ 2,
+    data$dates$infection < quarantine_dates()$date[1] ~ 1,
+    data$dates$infection < quarantine_dates()$date[2] ~ 2,
     TRUE ~ 3,
   )
   q_index <- c(q_index, rep(3, data$n_date_nums - data$n_dates))
@@ -3817,8 +3848,7 @@ reff_plotting <- function(
              max_date = max_date,
              multistate = TRUE,
              base_colour = purple,
-             vline_at = intervention_dates()$date,
-             vline2_at = projection_date) + 
+             projection_at = projection_date) + 
     ggtitle(label = "Impact of micro-distancing",
             subtitle = expression(R["eff"]~"if"~only~"micro-distancing"~behaviour~had~changed)) +
     ylab(expression(R["eff"]~component))
@@ -3831,8 +3861,7 @@ reff_plotting <- function(
              max_date = max_date,
              multistate = TRUE,
              base_colour = blue,
-             vline_at = intervention_dates()$date,
-             vline2_at = projection_date) + 
+             projection_at = projection_date) + 
     ggtitle(label = "Impact of macro-distancing",
             subtitle = expression(R["eff"]~"if"~only~"macro-distancing"~behaviour~had~changed)) +
     ylab(expression(R["eff"]~component))
@@ -3845,13 +3874,12 @@ reff_plotting <- function(
              max_date = max_date,
              multistate = TRUE,
              base_colour = yellow,
-             vline_at = intervention_dates()$date,
-             vline2_at = projection_date) + 
+             projection_at = projection_date) + 
     ggtitle(label = "Impact of improved surveillance",
             subtitle = expression(R["eff"]~"if"~only~surveillance~effectiveness~had~changed)) +
     ylab(expression(R["eff"]~component))
   
-  save_ggplot("R_eff_1_local_surv.png", dir, multi = FALSE)
+  save_ggplot("R_eff_1_local_surv.png", dir)
   
   # Component 1 for national / state populations
   plot_trend(sims$R_eff_loc_1,
@@ -3859,8 +3887,7 @@ reff_plotting <- function(
              max_date = max_date,
              multistate = TRUE,
              base_colour = green,
-             vline_at = intervention_dates()$date,
-             vline2_at = projection_date) + 
+             projection_at = projection_date) + 
     ggtitle(label = "Impact of social distancing",
             subtitle = expression(Component~of~R["eff"]~due~to~social~distancing)) +
     ylab(expression(R["eff"]~component))
@@ -3873,8 +3900,8 @@ reff_plotting <- function(
              multistate = FALSE,
              base_colour = orange,
              ylim = c(0, 0.4),
-             vline_at = quarantine_dates(),
-             vline2_at = projection_date) + 
+             intervention_at = quarantine_dates(),
+             projection_at = projection_date) + 
     ggtitle(label = "Impact of quarantine of overseas arrivals",
             subtitle = expression(Component~of~R["eff"]~due~to~quarantine~of~overseas~arrivals)) +
     ylab(expression(R["eff"]~component))
@@ -3887,8 +3914,7 @@ reff_plotting <- function(
                   max_date = max_date,
                   multistate = TRUE,
                   base_colour = green,
-                  vline_at = intervention_dates()$date,
-                  vline2_at = projection_date) +
+                  projection_at = projection_date) +
     ggtitle(label = "Local to local transmission potential",
             subtitle = "Average across active cases") +
     ylab(expression(R["eff"]~from~"locally-acquired"~cases))
@@ -3913,8 +3939,8 @@ reff_plotting <- function(
              multistate = TRUE,
              base_colour = orange,
              ylim = c(0, 0.4),
-             vline_at = quarantine_dates(),
-             vline2_at = projection_date) +
+             intervention_at = quarantine_dates(),
+             projection_at = projection_date) +
     ggtitle(label = "Import to local transmission potential",
             subtitle = "Average across active cases") +
     ylab(expression(R["eff"]~from~"overseas-acquired"~cases))
@@ -3928,8 +3954,7 @@ reff_plotting <- function(
                   multistate = TRUE,
                   base_colour = pink,
                   hline_at = 0,
-                  vline_at = intervention_dates()$date,
-                  vline2_at = projection_date,
+                  projection_at = projection_date,
                   ylim = NULL) + 
     ggtitle(label = "Short-term variation in local to local transmission rates",
             subtitle = expression(Deviation~from~log(R["eff"])~of~"local-local"~transmission)) +
@@ -3955,8 +3980,8 @@ reff_plotting <- function(
              multistate = TRUE,
              base_colour = pink,
              hline_at = 0,
-             vline_at = quarantine_dates(),
-             vline2_at = projection_date,
+             intervention_at = quarantine_dates(),
+             projection_at = projection_date,
              ylim = NULL) + 
     ggtitle(label = "Short-term variation in import to local transmission rates",
             subtitle = expression(Deviation~from~log(R["eff"])~of~"import-local"~transmission)) +

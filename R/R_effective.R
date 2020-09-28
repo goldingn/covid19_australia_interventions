@@ -39,4 +39,3 @@ reff_plotting(fitted_model,
               max_date = fitted_model$data$dates$latest_project,
               mobility_extrapolation_rectangle = FALSE,
               projection_date = fitted_model$data$dates$latest_mobility)
-
