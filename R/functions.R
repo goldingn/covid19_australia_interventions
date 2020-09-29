@@ -1330,7 +1330,11 @@ plot_trend <- function(simulations,
     scale_alpha(range = c(0, 0.5)) +
     scale_fill_manual(values = c("Nowcast" = base_colour)) +
     
-    geom_vline(aes(xintercept = date), data = intervention_at, colour = "grey80") +
+    geom_vline(
+      aes(xintercept = date),
+      data = intervention_at,
+      colour = "grey80"
+    ) +
     
     geom_ribbon(aes(ymin = ci_90_lo,
                     ymax = ci_90_hi),
@@ -1344,7 +1348,6 @@ plot_trend <- function(simulations,
     geom_line(aes(y = ci_90_hi),
               colour = base_colour,
               alpha = 0.8) + 
-    
     
     geom_hline(yintercept = hline_at, linetype = "dotted") +
     
@@ -5784,6 +5787,9 @@ plot_delays <- function(
   date,
   state,
   delay,
+  ylim = c(0, 20),
+  hline_at = 0,
+  intervention_at = interventions(), 
   base_colour = yellow
 ) {
   
@@ -5807,6 +5813,14 @@ plot_delays <- function(
       )
     )
   
+  # observed delays
+  df_obs <- tibble(
+    date = date,
+    state = state,
+    delay = delay,
+    type = "Nowcast"
+  )
+  
   p <- quantiles %>%
     mutate(type = "Nowcast") %>%
     ggplot() + 
@@ -5818,11 +5832,11 @@ plot_delays <- function(
     xlab(element_blank()) +
     
     coord_cartesian(
-      ylim = c(0, 20),
+      ylim = ylim,
       xlim = c(as.Date("2020-03-01"), max(delay_distributions$date))
     ) +
     scale_y_continuous(position = "right") +
-    scale_x_date(date_breaks = "1 month", date_labels = "%d/%m") +
+    scale_x_date(date_breaks = "1 month", date_labels = "%e/%m") +
     scale_alpha(range = c(0, 0.5)) +
     scale_fill_manual(values = c("Nowcast" = base_colour)) +
     
@@ -5848,43 +5862,46 @@ plot_delays <- function(
               alpha = 1,
               size = 1) +
     
+    # add points for true delays
+    geom_point(
+      aes(date, delay),
+      data = df_obs,
+      pch = 16,
+      size = 0.2,
+      alpha = 0.1
+    ) +
+    
+    # add shading for regions where the national distribution is used
+    geom_ribbon(
+      aes(ymin = -10, ymax = use_national * 100 - 10),
+      fill = grey(1),
+      alpha = 0.5,
+      colour = grey(0.9),
+      linetype = 3
+    ) +
+    
+    # add horizontal and vertical lines for context
+    geom_vline(
+      aes(xintercept = date),
+      data = intervention_at,
+      colour = "grey80"
+    ) +
+    
+    geom_hline(
+      yintercept = hline_at,
+      linetype = "dotted"
+    ) +
+    
     cowplot::theme_cowplot() +
     cowplot::panel_border(remove = TRUE) +
     theme(legend.position = "none",
           strip.background = element_blank(),
           strip.text = element_text(hjust = 0, face = "bold"),
           axis.title.y.right = element_text(vjust = 0.5, angle = 90),
-          panel.spacing = unit(1.2, "lines")) +
-    ggtitle(label = "Surveillance trend",
-            subtitle = "Time from symptom onset to notification for locally-acquired cases") +
-    ylab("Days")
-  
-  # add points for true delays
-  df_obs <- tibble(
-    date = date,
-    state = state,
-    delay = delay,
-    type = "Nowcast"
-  )
-  
-  p <- p + geom_point(
-    aes(date, delay),
-    data = df_obs,
-    pch = 16,
-    size = 0.2,
-    alpha = 0.1
-  )
-  
-  # add shading for regions where the national distribution is used
-  p <- p +
-    geom_ribbon(
-      aes(ymin = -10, ymax = use_national * 100 - 10),
-      fill = grey(1),
-      alpha = 0.5,
-      colour = grey(0.9)
-    )
+          panel.spacing = unit(1.2, "lines"))
   
   p
+  
 }
 
 

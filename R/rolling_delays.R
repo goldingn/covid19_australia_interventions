@@ -44,13 +44,19 @@ delays_to_confirmation <- estimate_delays(
 saveRDS(delays_from_onset, "outputs/delay_from_onset_cdfs.RDS")
 saveRDS(delays_to_confirmation, "outputs/delay_to_confirmation_cdfs.RDS")
 
-  
 p <- plot_delays(
   delay_distributions = delays_from_onset,
   date = delay_data_from_onset$date_onset,
   state = delay_data_from_onset$state,
-  delay = delay_data_from_onset$delay
-)
+  delay = delay_data_from_onset$delay,
+  ylim = c(-2, 20)
+) +
+  ggtitle(
+    label = "Surveillance trend",
+    subtitle = "Time from symptom onset to notification for locally-acquired cases"
+  ) +
+  xlab("Symptom onset date") +
+  ylab("Days to case notification")
 
 p
 
@@ -63,5 +69,14 @@ p2 <- plot_delays(
   state = delay_data_to_confirmation$state,
   delay = delay_data_to_confirmation$delay,
   base_colour = grey(0.4)
-)
+) +
+  ggtitle(
+    label = "Notification delay",
+    subtitle = "Time from symptom onset to notification for locally-acquired cases"
+  ) +
+  xlab("Notification date") +
+  ylab("Days since symptom onset")
+
 p2
+
+save_ggplot("notification_delays.png", multi = TRUE)

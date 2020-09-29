@@ -149,10 +149,8 @@ p <- plot_trend(pred_sim,
                 data = plot_data,
                 multistate = TRUE,
                 base_colour = purple,
-                vline_at = intervention_dates()$date,
                 ylim = c(0, 15),
-                hline_at = NULL,
-                vline2_at = NA) + 
+                hline_at = NULL) + 
   ggtitle(label = "Macro-distancing trend",
           subtitle = "Rate of non-household contacts") +
   ylab("Estimated mean number of non-household contacts per day") + 

@@ -142,7 +142,8 @@ p <- ggplot(line_df) +
   scale_fill_manual(values = c("Nowcast" = base_colour)) +
   
   geom_vline(
-    xintercept = intervention_dates()$date,
+    aes(xintercept = date),
+    data = interventions(),
     colour = "grey80"
   ) +
   
