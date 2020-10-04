@@ -5,6 +5,7 @@
 
 set.seed(2020-09-16)
 source("R/functions.R")
+library(cowplot)
 
 # counterfactuals to consider:
 # 
@@ -53,7 +54,7 @@ for(index in seq_len(nrow(scenarios))) {
   
 }
 
-sc <- readRDS("outputs/counterfactuals/scenario34.RDS")
+# sc <- readRDS("outputs/counterfactuals/scenario34.RDS")
 
 
 summarise_scenario <- function(scenario) {
@@ -161,7 +162,7 @@ base <- observed %>%
   #   data = observed,
   #   lty = 2
   # ) +
-  theme_minimal() +
+  theme_cowplot() +
   ylab("new locally-acquired infections") +
   xlab("date of infection")
 
@@ -193,14 +194,18 @@ distancing <- mapply(make_plot,
                      sc_no_macro,
                      MoreArgs = list(
                        base_plot = base,
-                       colours = c(grey(0.4), purple, blue)),
+                       colours = c(grey(0.4), purple, blue)
+                     ),
                      SIMPLIFY = FALSE)
 
 contacts <- mapply(make_plot,
                      sc_optimal,
                      sc_no_contacts,
                      sc_some_contacts,
-                     MoreArgs = list(base_plot = base),
+                     MoreArgs = list(
+                       base_plot = base,
+                       colours = c(grey(0.4), yellow, yellow)
+                     ),
                      SIMPLIFY = FALSE)
 
 library(patchwork)
