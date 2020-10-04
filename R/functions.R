@@ -393,7 +393,7 @@ ideal_regions <- function() {
   )
 }
 
-interventions <- function(which = c("all", "national", "VIC")) {
+interventions <- function(which = c("all", "national", "vic")) {
   
   which <- match.arg(which)
   
@@ -411,7 +411,9 @@ interventions <- function(which = c("all", "national", "VIC")) {
   
   interventions <- switch(
     which,
-    national = national_interventions,
+    national = national_interventions %>%
+      filter(state == "ACT") %>%
+      mutate(state = "all"),
     vic = vic_interventions,
     all = bind_rows(national_interventions, vic_interventions)
   )

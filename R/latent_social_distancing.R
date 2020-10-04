@@ -23,8 +23,8 @@ mobility <- all_mobility() %>%
 saveRDS(mobility, file = "outputs/cached_mobility.RDS")
 holidays <- holiday_dates()
 populations <- state_populations()
-intervention_dates_ntnl <- intervention_dates("national")
-intervention_dates_vic <- intervention_dates("VIC")
+intervention_dates_ntnl <- interventions("national")$date
+intervention_dates_vic <- interventions("vic")$date
 
 # get vectors of date ranges and datastreams to model
 first_date <- min(mobility$date)
