@@ -5862,15 +5862,6 @@ plot_delays <- function(
               alpha = 1,
               size = 1) +
     
-    # add points for true delays
-    geom_point(
-      aes(date, delay),
-      data = df_obs,
-      pch = 16,
-      size = 0.2,
-      alpha = 0.1
-    ) +
-    
     # add shading for regions where the national distribution is used
     geom_ribbon(
       aes(ymin = -10, ymax = use_national * 100 - 10),
@@ -5889,7 +5880,16 @@ plot_delays <- function(
     
     geom_hline(
       yintercept = hline_at,
-      linetype = "dotted"
+      colour = "grey80"
+    ) +
+    
+    # add points for true delays
+    geom_point(
+      aes(date, delay),
+      data = df_obs,
+      pch = 16,
+      size = 0.2,
+      alpha = 0.1
     ) +
     
     cowplot::theme_cowplot() +
