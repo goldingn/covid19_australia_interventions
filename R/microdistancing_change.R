@@ -12,7 +12,7 @@ pred_data <- data$prediction_data
 library(greta)
 
 n_locations <- max(survey_distance$state_id)
-n_inflections <- 2
+n_inflections <- 3
 
 # how late can the latest inflection be (not after two weeks before the latest
 # survey date) convert that into a fraction of time between the peak and last datapoint
@@ -26,41 +26,24 @@ params <- microdistancing_params(
   inflection_max = inflection_max
 )
 
-peak <- params$peak
 inflections <- params$inflections
-distancing_effects <- params$distancing_effects
-waning_effects <- params$waning_effects
-inflection_effects <- params$inflection_effects
+heights <- params$heights
 
-prob <- microdistancing_model(
-  data = survey_distance,
-  peak = peak,
-  inflections = inflections,
-  distancing_effects = distancing_effects,
-  waning_effects = waning_effects,
-  inflection_effects = inflection_effects
-)
+prob <- microdistancing_model(data = survey_distance, parameters = params)
 
 distribution(survey_distance$count) <- binomial(
   survey_distance$respondents,
   prob
 )
 
-m <- model(waning_effects, distancing_effects, peak)
+m <- model(inflections, heights)
 
 set.seed(2020-05-30)
 draws <- mcmc(m, chains = 10)
 draws <- extra_samples(draws, 3000)
 convergence(draws)
 
-prob_pred <- microdistancing_model(
-  data = pred_data,
-  peak = peak,
-  inflections = inflections,
-  distancing_effects = distancing_effects,
-  waning_effects = waning_effects,
-  inflection_effects = inflection_effects
-)
+prob_pred <- microdistancing_model(data = pred_data, parameters = params)
 
 prob_pred_sim <- calculate(prob_pred, values = draws, nsim = 5000)[[1]][, , 1]
 quants <- t(apply(prob_pred_sim, 2, quantile, c(0.05, 0.25, 0.75, 0.95)))

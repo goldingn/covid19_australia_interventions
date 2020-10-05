@@ -2209,40 +2209,57 @@ barometer_results <- function() {
   
 }
 
+
+# create a series of hinge features, given a matrix (observations on rows by
+# feature numbers  on columns) of inflection points and a vector of times
+hinges <- function(inflections, time) {
+  denom <- 1 - inflections
+  num <- sweep(-inflections, 1, time, FUN = "+")
+  shape <- num / denom 
+  nullify <- (sign(shape) + 1) / 2
+  shape * nullify
+}
+
+next_column <- function(x) {
+  cbind(x[, -1], rep(1, nrow(x)))
+}
+
 # model for the trend in microdistancing
 # compared to the macrodistancing effect, this has a linear transform of the
 # distancing coefficient on the logit scale - corresponding to a different
-# spread in adoption of microdistancing behaviour - and a different date of peak
-# microdistancing and therefore different waning shape
-microdistancing_model <- function(data,
-                                  peak,
-                                  inflections,
-                                  distancing_effects,
-                                  waning_effects,
-                                  inflection_effects) {
-  
-  # shape of unscaled waning effect (0 at/before peak, to 1 at latest date)
-  waning_shape <- (data$time - peak) / (1 - peak)
-  nullify <- (sign(waning_shape) + 1) / 2
-  waning_shape <- waning_shape * nullify
-  
-  # convert inflections to be after peak
-  inflections <- peak + inflections * (1 - peak)
+# spread in adoption of microdistancing behaviour - and different dates of peak
+# microdistancing and subsequent inflections
+microdistancing_model <- function(data, parameters) {
   
   # shapes of inflection effects
-  inflections_mat <- inflections[data$state_id, ]
-  inflection_shape <- sweep(-inflections_mat, 1, data$time, FUN = "+") / (1 - inflections_mat)
+  # timing of inflections in each state
+  n_states <- nrow(parameters$inflections)
+  segment_ends <- cbind(parameters$inflections, ones(n_states))
+  denoms <- next_column(parameters$inflections) - parameters$inflections
   
-  nullify <- (sign(inflection_shape) + 1) / 2
-  inflection_shape <- inflection_shape * nullify
+  inflections_long <- parameters$inflections[data$state_id, ]
+  denominators <- next_column(inflections_long) - inflections_long
+  numerators <- sweep(-inflections_long, 1, data$time, FUN = "+")
+  inflection_shape <- cbind(ones(length(data$state)), numerators / denominators)
+
+  # masking columns to create weights matrix
+  null1 <- (sign(inflection_shape) + 1) / 2
+  null2 <- next_column(1 - null1)
+  null3 <- next_column(null2)
   
-  # multiply by coefficients to get trends for each state
-  distancing <- data$distancing * distancing_effects[data$state_id]
-  waning <- waning_shape * waning_effects[data$state_id]  
-  inflection <- rowSums(inflection_shape * inflection_effects[data$state_id, ])
+  # piecewise linear weights matrix
+  weights_up <- inflection_shape * null1 * null2
+  anti_weights <- next_column(weights_up)
+  weights_down <- (1 - anti_weights) * (1 - null2) * null3
+  weights <- weights_up + weights_down 
   
-  # combine them all
-  distancing + waning + inflection
+  # apply weights to get inflections, and apply to initial distancing effect
+  heights_long <- parameters$heights[data$state_id, ]
+  inflection <- rowSums(weights * heights_long)
+  
+  # apply the initial distancing period (shrunk to heightsmeet the first height)
+  initial <- (1 - data$distancing) * heights_long[, 1] 
+  inflection - initial
   
 }
 
@@ -2790,41 +2807,32 @@ hierarchical_normal <- function(n, index = NULL, mean_sd = 10, sd_sd = 0.5) {
 
 microdistancing_params <- function(n_locations = 8, n_inflections = 1, inflection_max = 1) {
   
-  # timing of peak microdistancing between the date of the last intervention and
-  # today's date
-  peak <- normal(0, 1, truncation = c(0, 1))
+  # share information between peaks on both timing and amplitude
+  logit_peak <- hierarchical_normal(n_locations) 
+  peak <- ilogit(logit_peak)
+  logit_peak_height <- hierarchical_normal(n_locations)
+  peak_height <- ilogit(logit_peak_height)
   
-  # timing of inflections between peak and now
-  inflections <- normal(0, 1,
-                        truncation = c(0, 1),
-                        dim = c(n_locations, n_inflections))
-  inflections <- apply(inflections, 1, "cumprod")
-  inflections <- t(inflections)[, rev(seq_len(n_inflections))]
-  # constrain to below a maximum value
+  # but not between subsequent inflections
+  extra_inflections <- normal(0, 1,
+                              truncation = c(0, 1),
+                              dim = c(n_locations, n_inflections - 1))
+  extra_inflection_heights <- uniform(0, 1,
+                                      dim = c(n_locations, n_inflections))
+  
+  # combine them
+  heights <- cbind(peak_height, extra_inflection_heights)
+  inflections <- cbind(peak, extra_inflections)
+  
+  # order inflections between 0 and 1 and constrain to earlier than a maximum value
+  inflections <- t(apply(inflections, 1, "cumsum")) / n_inflections
   inflections <- inflections * inflection_max
   
-  # hierarchical structure on state-level waning
-  logit_waning_effects <- hierarchical_normal(n_locations)
-  waning_effects <- -ilogit(logit_waning_effects)
+  list(
+    inflections = inflections,
+    heights = heights
+  )
   
-  # parameters for effect of each inflection (independent between states)
-  logit_inflection_effects <- normal(0, 10, dim = c(n_locations, n_inflections))
-  inflection_effects_raw <- ilogit(logit_inflection_effects)
-  inflection_effect_signs <- rep(c(1, -1), n_inflections)[seq_len(n_inflections)]
-  inflection_effects <- sweep(inflection_effects_raw,
-                              2,
-                              inflection_effect_signs,
-                              FUN = "*")
-  
-  # hierarchical structure on state-level peak effect (proportion adhering) 
-  logit_distancing_effects <- hierarchical_normal(n_locations)
-  distancing_effects <- ilogit(logit_distancing_effects)
-  
-  list(peak = peak,
-       inflections = inflections,
-       distancing_effects = distancing_effects,
-       waning_effects = waning_effects,
-       inflection_effects = inflection_effects)
 }
 
 # load  all hygiene/microdistancing survey data
@@ -2931,9 +2939,16 @@ microdistancing_data <- function(dates = NULL) {
       date %in% dates
     )
   
+  # clip distancing to non-degenerate values
+  range <- range(distancing$mean[!distancing$mean %in% c(0,  1)])
+  
   # get data to predict to
   pred_data <- distancing %>%
     rename(distancing = mean) %>%
+    mutate(
+      distancing = pmax(distancing, range[1]),
+      distancing = pmin(distancing, range[2])
+    ) %>%
     select(date, distancing) %>%
     old_right_join(
       expand_grid(
