@@ -39,7 +39,12 @@ distribution(survey_distance$count) <- binomial(
 m <- model(inflections, heights)
 
 set.seed(2020-05-30)
-draws <- mcmc(m, chains = 10)
+draws <- mcmc(m,
+              chains = 10,
+              sampler = hmc(
+                Lmin = 15,
+                Lmax = 30
+              ))
 draws <- extra_samples(draws, 3000)
 convergence(draws)
 

@@ -2209,17 +2209,8 @@ barometer_results <- function() {
   
 }
 
-
-# create a series of hinge features, given a matrix (observations on rows by
-# feature numbers  on columns) of inflection points and a vector of times
-hinges <- function(inflections, time) {
-  denom <- 1 - inflections
-  num <- sweep(-inflections, 1, time, FUN = "+")
-  shape <- num / denom 
-  nullify <- (sign(shape) + 1) / 2
-  shape * nullify
-}
-
+# move columns of this matrix one to the left, and replace the right-most column
+# with 1s. Used to define a weights matrix for a piecewise linear curve.
 next_column <- function(x) {
   cbind(x[, -1], rep(1, nrow(x)))
 }
@@ -2257,7 +2248,7 @@ microdistancing_model <- function(data, parameters) {
   heights_long <- parameters$heights[data$state_id, ]
   inflection <- rowSums(weights * heights_long)
   
-  # apply the initial distancing period (shrunk to heightsmeet the first height)
+  # apply the initial distancing period (shrunk to meet the first height)
   initial <- (1 - data$distancing) * heights_long[, 1] 
   inflection - initial
   
@@ -2808,24 +2799,23 @@ hierarchical_normal <- function(n, index = NULL, mean_sd = 10, sd_sd = 0.5) {
 microdistancing_params <- function(n_locations = 8, n_inflections = 1, inflection_max = 1) {
   
   # share information between peaks on both timing and amplitude
-  logit_peak <- hierarchical_normal(n_locations) 
-  peak <- ilogit(logit_peak)
-  logit_peak_height <- hierarchical_normal(n_locations)
-  peak_height <- ilogit(logit_peak_height)
-  
-  # but not between subsequent inflections
-  extra_inflections <- normal(0, 1,
-                              truncation = c(0, 1),
-                              dim = c(n_locations, n_inflections - 1))
-  extra_inflection_heights <- uniform(0, 1,
-                                      dim = c(n_locations, n_inflections))
-  
-  # combine them
-  heights <- cbind(peak_height, extra_inflection_heights)
-  inflections <- cbind(peak, extra_inflections)
+  inflection_means <- normal(0, 10, dim = n_inflections)
+  inflection_sds <- normal(0, 0.5, truncation = c(0, Inf), dim = n_inflections)
+  inflection_raw <- normal(0, 1, dim = c(n_locations, n_inflections))
+  inflection_scaled <- sweep(inflection_raw, 2, inflection_sds, FUN = "*")
+  inflection_centred <- sweep(inflection_raw, 2, inflection_means, FUN = "+")
+  inflections <- ilogit(inflection_centred)
+
+  height_means <- normal(0, 10, dim = n_inflections + 1)
+  height_sds <- normal(0, 0.5, truncation = c(0, Inf), dim = n_inflections + 1)
+  height_raw <- normal(0, 1, dim = c(n_locations, n_inflections + 1))
+  height_scaled <- sweep(height_raw, 2, height_sds, FUN = "*")
+  height_centred <- sweep(height_raw, 2, height_means, FUN = "+")
+  heights <- ilogit(height_centred)
   
   # order inflections between 0 and 1 and constrain to earlier than a maximum value
-  inflections <- t(apply(inflections, 1, "cumsum")) / n_inflections
+  inflections <- apply(inflections, 1, "cumprod")
+  inflections <- 1 - t(inflections)
   inflections <- inflections * inflection_max
   
   list(
