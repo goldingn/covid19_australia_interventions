@@ -67,12 +67,16 @@ baseline_point <- tibble::tibble(
 
 # compute weekend effect weights for INLA, based on fitted weekend_weight
 weekend_weights_mean <- out$weekend_weight %>%
-  calculate(values = draws, nsim = nsim) %>%
+  calculate(
+    values = draws,
+    nsim = nsim,
+    trace_batch_size = 25
+  ) %>%
   magrittr::extract2(1) %>%
   magrittr::extract(, , 1) %>%
   colMeans()
 
-# us this as an offset in INLA estimate
+# use this as an offset in INLA estimate
 
 # slim down dataframe to get independent estimates for surveys
 survey_points <- data$contacts %>%
