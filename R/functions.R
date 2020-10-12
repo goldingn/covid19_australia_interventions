@@ -3834,6 +3834,32 @@ reff_plotting <- function(
   projection_date = NA
 ) {
   
+  # create a rug plot geom for cases
+  case_data <- fitted_model$data$local$cases %>%
+    as_tibble() %>%
+    mutate(
+      date = fitted_model$data$dates$infection,
+    ) %>%
+    pivot_longer(
+      cols = -date,
+      names_to = "state",
+      values_to = "cases"
+    ) %>%
+    mutate(
+      type = "Nowcast",
+      height = 1
+    ) %>%
+    uncount(cases)
+  
+  case_rug <- geom_rug(
+    aes(date, height),
+    data = case_data,
+    sides = "b",
+    alpha = 0.5,
+    size = 0.5,
+    colour = grey(0.7)
+  )
+  
   # add counterfactuals to the model object: Reff for locals component 1 under
   # only micro/macro/surveillance improvements
   fitted_model$greta_arrays <- c(
@@ -3950,6 +3976,9 @@ reff_plotting <- function(
     
   }
   
+  # add case rug plot
+  p <- p + case_rug
+  
   p
   
   save_ggplot("R_eff_12_local.png", dir)
@@ -3990,6 +4019,9 @@ reff_plotting <- function(
                       fill = grey(0.5), alpha = 0.1)
     
   }
+  
+  # add case rug plot
+  p <- p + case_rug
   
   p
   
