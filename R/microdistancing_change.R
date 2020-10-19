@@ -9,8 +9,6 @@ data <- microdistancing_data()
 survey_distance <- data$survey_distance
 pred_data <- data$prediction_data
 
-library(greta)
-
 n_locations <- max(survey_distance$state_id)
 n_inflections <- 3
 
