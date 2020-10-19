@@ -211,7 +211,6 @@ p <- plot_trend(pred_sim,
     width = 0
   )
 
-
 p
 
 save_ggplot("macrodistancing_effect.png")
