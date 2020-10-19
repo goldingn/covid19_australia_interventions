@@ -69,8 +69,7 @@ baseline_point <- tibble::tibble(
 weekend_weights_mean <- out$weekend_weight %>%
   calculate(
     values = draws,
-    nsim = nsim,
-    trace_batch_size = 25
+    nsim = 500
   ) %>%
   magrittr::extract2(1) %>%
   magrittr::extract(, , 1) %>%
