@@ -3828,6 +3828,7 @@ reff_sims <- function(fitted_model, nsim = 2000, which = "R_eff_loc_12") {
 reff_plotting <- function(
   fitted_model,
   dir = "outputs",
+  min_date = as.Date("2020-03-01"),
   max_date = fitted_model$data$dates$latest_mobility,
   mobility_extrapolation_rectangle = TRUE,
   projection_date = NA
@@ -3844,6 +3845,7 @@ reff_plotting <- function(
       names_to = "state",
       values_to = "cases"
     ) %>%
+    filter(date >= min_date) %>%
     mutate(
       type = "Nowcast",
       height = 1
@@ -3891,6 +3893,7 @@ reff_plotting <- function(
   # microdistancing only
   plot_trend(sims$R_eff_loc_1_micro,
              data = fitted_model$data,
+             min_date = min_date,
              max_date = max_date,
              multistate = TRUE,
              base_colour = purple,
@@ -3904,6 +3907,7 @@ reff_plotting <- function(
   # macrodistancing only
   plot_trend(sims$R_eff_loc_1_macro,
              data = fitted_model$data,
+             min_date = min_date,
              max_date = max_date,
              multistate = TRUE,
              base_colour = blue,
@@ -3930,6 +3934,7 @@ reff_plotting <- function(
   # Component 1 for national / state populations
   plot_trend(sims$R_eff_loc_1,
              data = fitted_model$data,
+             min_date = min_date,
              max_date = max_date,
              multistate = TRUE,
              base_colour = green,
@@ -3942,6 +3947,7 @@ reff_plotting <- function(
   
   plot_trend(sims$R_eff_imp_1,
              data = fitted_model$data,
+             min_date = min_date,
              max_date = max_date,
              multistate = FALSE,
              base_colour = orange,
@@ -3957,6 +3963,7 @@ reff_plotting <- function(
   # Reff for active cases
   p <- plot_trend(sims$R_eff_loc_12,
                   data = fitted_model$data,
+                  min_date = min_date,
                   max_date = max_date,
                   multistate = TRUE,
                   base_colour = green,
@@ -3984,6 +3991,7 @@ reff_plotting <- function(
   
   plot_trend(sims$R_eff_imp_12,
              data = fitted_model$data,
+             min_date = min_date,
              max_date = max_date,
              multistate = TRUE,
              base_colour = orange,
@@ -3999,6 +4007,7 @@ reff_plotting <- function(
   # component 2 (noisy error trends)
   p <- plot_trend(sims$epsilon_L,
                   data = fitted_model$data,
+                  min_date = min_date,
                   max_date = max_date,
                   multistate = TRUE,
                   base_colour = pink,
@@ -4028,6 +4037,7 @@ reff_plotting <- function(
   
   plot_trend(sims$epsilon_O,
              data = fitted_model$data,
+             min_date = min_date,
              max_date = max_date,
              multistate = TRUE,
              base_colour = pink,
