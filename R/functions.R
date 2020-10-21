@@ -2296,6 +2296,52 @@ macrodistancing_model <- function(data, parameters) {
   
 }
 
+# a sort of null model (assuming a different rate of contacts per survey/state) for plotting the data 
+macrodistancing_null <- function(data) {
+  
+  # extract indices to the survey waves and states for each observation
+  n_surveys <- length(surveys)
+  n_states <- length(states)
+  idx <- ?
+
+  # hierarchical model for the average number of contacts per survey/state
+  log_contacts_mean <- normal(0, 10)
+  log_contacts_sd <- normal(0, 1, truncation = c(0, Inf))
+  log_contacts_raw <- normal(0, 1, dim = c(n_surveys, n_states))
+  log_contacts <- log_contacts_mean + log_contacts_raw * log_contacts_raw
+  avg_daily_contacts_wide <- exp(log_contacts)
+  
+  # fraction of weekly contacts that are on weekends - as a function of deviations in numbers of contacts
+  # (model based on 'raw' values to remove posterior correlations with mean and sd parameters)
+  weekend_intercept <- normal(0, 1)
+  weekend_coef <- normal(0, 10) 
+  p_weekend_wide <- ilogit(parameters$weekend_intercept + parameters$weekend_coef * log_contacts_raw)
+  
+  # expand these out to match the data
+  avg_daily_contacts <- avg_daily_contacts_wide[idx]
+  p_weekend <- p_weekend_wide[idx]
+  
+  # compute weights on average daily contacts to account for fraction of individual's time
+  # that was on the weekend
+  weight <- p_weekend * data$contacts$weekend_fraction * 7 / 2 +
+    (1 - p_weekend) * (1 - data$contacts$weekend_fraction) * 7 / 5
+  predicted_contacts <- avg_daily_contacts * weight
+
+  # grouped negative binomial likelihood  
+  sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf))
+  size <- 1 / sqrt(sqrt_inv_size)
+  prob <- 1 / (1 + predicted_contacts / size)
+  distribution(data$contacts$contact_num) <- grouped_negative_binomial(size, prob)
+
+  # return greta arrays to fit model  
+  module(
+    size,
+    avg_daily_contacts_wide,
+    p_weekend_wide
+  )
+  
+}
+
 # take a vector greta array correpsonding to dates and states and convert to
 # date-by-state wide format
 greta_long_to_date_state <- function(long, dates, states) {
@@ -2787,7 +2833,7 @@ grouped_negative_binomial_distribution <- R6Class(
         
         # add epsilon to handle numerical instability from working with
         # probabilities rather than logs
-        # density <- density + fl(.Machine$double.eps)
+        density <- density + fl(.Machine$double.eps)
         
         log(density)
         

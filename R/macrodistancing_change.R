@@ -7,7 +7,7 @@ library(greta)
 # informative priors for baseline contact parameters
 baseline_contact_params <- baseline_contact_parameters(gi_cdf)
 
-# data, parameters, preedictions, and likleihood definition for the model
+# data, parameters, predictions, and likleihood definition for the model
 data <- macrodistancing_data()
 params <- macrodistancing_params(baseline_contact_params)
 predictions <- macrodistancing_model(data, params)
@@ -29,8 +29,10 @@ m <- model(
 
 draws <- mcmc(
   m,
-  sampler = hmc(Lmin = 10, Lmax = 20),
-  n_samples = 1500,
+  warmup = 100,
+  n_samples = 100,
+  # sampler = hmc(Lmin = 10, Lmax = 20),
+  # n_samples = 1500,
   chains = 10
 )
 # draws <- extra_samples(draws, 1000)
@@ -65,17 +67,9 @@ baseline_point <- tibble::tibble(
   )
 
 
-# compute weekend effect weights for INLA, based on fitted weekend_weight
-weekend_weights_mean <- out$weekend_weight %>%
-  calculate(
-    values = draws,
-    nsim = 500
-  ) %>%
-  magrittr::extract2(1) %>%
-  magrittr::extract(, , 1) %>%
-  colMeans()
 
-# use this as an offset in INLA estimate
+# fit a null-ish model (hierarchical but otherwise independent over
+# waves/states) to visualise the data values
 
 # slim down dataframe to get independent estimates for surveys
 survey_points <- data$contacts %>%
@@ -88,34 +82,27 @@ survey_points <- data$contacts %>%
 
 # need to group this by survey periods to plot
 
-library(INLA)
-contacts_inla <- data$contacts %>%
-  mutate(wave = as.character(wave),
-         wave_state = paste(wave, state))
+null_gas <- microdistancing_null(data)
+m_null <- model(null_gas$size, null_gas$avg_daily_contacts_wide, null_gas$p_weekend_wide)
+draws_null <- mcmc(m_null)
+convergence(draws_null)
+daily_contacts_draws <- calculate(null_gas$avg_daily_contacts_wide, values = draws_null, nsim = nsim)
 
-glm <- inla(contact_num ~ f(wave_state, model = "iid"),
-            family = "nbinomial",
-            data = contacts_inla,
-            E = weekend_weights_mean,
-            control.predictor = list(link = 1))
-
-# pull out fitted values for each date/state combination
-idx <- contacts_inla %>%
-  mutate(id = row_number()) %>%
-  distinct(wave_date, state, .keep_all = TRUE) %>%
-  old_right_join(survey_points) %>%
-  pull(id)
-
-sry <- glm$summary.fitted.values[idx, ]
+# summarise fitted values for each date/state combination
+sry <- tibble(
+  state = ?,
+  waver_date = ?,
+  estimate = ?,
+  lower = ?,
+  upper = ?
+)
 
 # The width of the horizontal bars for survey data is proportional to the
 # duration, but plotted in arbitrary units (which depend on the plot size).
 # Rescale it with this tweaking parameter to roughly match the durations
 survey_points <- survey_points %>%
+  right_join(sry) %>%
   mutate(
-    estimate = sry$mean,
-    lower = sry$`0.025quant`,
-    upper = sry$`0.975quant`,
     width = wave_duration
   ) %>%
   mutate(type = "Nowcast")
