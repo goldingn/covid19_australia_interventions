@@ -10,10 +10,12 @@ library(RColorBrewer)
 library(tensorflow)
 library(purrr)
 library(ggplot2)
+library(R6)
 
 tfp <- reticulate::import("tensorflow_probability")
 
 module <- greta::.internals$utils$misc$module
+fl <- greta:::fl
 
 # read in and tidy up Facebook movement data
 facebook_mobility <- function() {
@@ -986,7 +988,7 @@ tf_lognormal_cdf <- function(x, meanlog, sdlog) {
 # probability mass function of a negative binomial distribution
 negative_binomial_pmf <- function(x, size, prob) {
   
-  op("negative_binomnial_pmf",
+  op("negative_binomial_pmf",
      x,
      size,
      prob,
@@ -2709,6 +2711,126 @@ macrodistancing_params <- function(baseline_contact_params) {
 }
 
 
+# CDF of the negative binial distribution, handling 0s and Infs
+tf_negative_binomial_cdf <- function(x, size, prob) {
+  
+  d <- tfp$distributions$NegativeBinomial(
+    total_count = size,
+    probs = fl(1) - prob
+  )
+  
+  # prepare to handle values outside the supported range
+  too_low <- tf$less(x, greta:::fl(0))
+  too_high <- tf$equal(x, greta:::fl(Inf))
+  supported <- !too_low & !too_high 
+  ones <- tf$ones_like(x)
+  zeros <- tf$zeros_like(x)
+  
+  # run cdf on supported values, and fill others in with the appropriate value  
+  x_clean <- tf$where(supported, x, ones)
+  cdf_clean <- d$cdf(x_clean)
+  mask <- tf$where(supported, ones, zeros)
+  add <- tf$where(too_high, ones, zeros)
+  cdf_clean * mask + add
+  
+}
+
+# greta distribution object for the grouped negative binomial distribution
+grouped_negative_binomial_distribution <- R6Class(
+  "grouped_negative_binomial_distribution",
+  inherit = greta:::distribution_node,
+  public = list(
+    
+    breaks = NA,
+    lower_bounds = NA,
+    upper_bounds = NA,
+    
+    initialize = function(size, prob, dim, breaks) {
+      
+      size <- as.greta_array(size)
+      prob <- as.greta_array(prob)
+      
+      self$breaks <- breaks
+      self$lower_bounds <- breaks[-length(breaks)]
+      self$upper_bounds <- breaks[-1] - 1
+      
+      # add the nodes as parents and parameters
+      dim <- greta:::check_dims(size, prob, target_dim = dim)
+      super$initialize("grouped_negative_binomial", dim, discrete = TRUE)
+      self$add_parameter(size, "size")
+      self$add_parameter(prob, "prob")
+      
+    },
+    
+    tf_distrib = function(parameters, dag) {
+      
+      size <- parameters$size
+      prob <- parameters$prob
+      tf_lower_bounds <- fl(self$lower_bounds)
+      tf_upper_bounds <- fl(self$upper_bounds)
+      tf_breaks <- fl(self$breaks)
+      
+      log_prob <- function(x) {
+
+        # compute the bounds of the observed groups and get tensors for the
+        # bounds in the format expected by TFP
+        tf_idx <- tfp$stats$find_bins(x, tf_breaks)
+        tf_idx_int <- greta:::tf_as_integer(tf_idx)
+        
+        tf_lower_vec <- tf$gather(tf_lower_bounds, tf_idx_int)
+        tf_upper_vec <- tf$gather(tf_upper_bounds, tf_idx_int)
+        
+        # compute the density over the observed groups 
+        low <- tf_negative_binomial_cdf(tf_lower_vec - fl(1), size, prob)
+        up <- tf_negative_binomial_cdf(tf_upper_vec, size, prob)
+        density <- up - low
+        
+        # add epsilon to handle numerical instability from working with
+        # probabilities rather than logs
+        # density <- density + fl(.Machine$double.eps)
+        
+        log(density)
+        
+      }
+      
+      sample <- function(seed) {
+        
+        d <- tfp$distributions$NegativeBinomial(
+          total_count = size,
+          probs = fl(1) - prob
+        )
+        d$sample(seed = seed)
+        
+      }
+      
+      list(log_prob = log_prob, sample = sample)
+      
+    }
+    
+  )
+)
+
+# # Rounding at 5s, but more so at 10s, and then 50s, 100s. Break at 2.5s, 22.5s etc 
+# # do zero-inflated NB, get probabilities of collapsed categories
+# # expect decent resolution 0:7 (5 inflated, but only slightly)
+# 0:7 (1)
+# # then inflation around 10 (12 closest to 10, 13 closest to 15)
+# 8 - 12 (5)
+# 13 - 22 (10)
+# # then inflation around 50, 100, 150, 200
+# 23 - 72 (50)
+# 73 - 122 (50)
+# 123 - 172 (50)
+# 173 - 222 (50)
+# # then around 500, and above 722
+# 223 - 722 (500)
+# 723+
+grouped_negative_binomial <- function(size, prob, 
+                                      dim = NULL,
+                                      breaks = c(0:7, 8, 13, 23, 73, 123, 173, 223, 723, Inf)) {
+  greta:::distrib("grouped_negative_binomial", size, prob, dim, breaks)
+}
+
 # define the likelihood for the macrodistancing model
 macrodistancing_likelihood <- function(predictions, data) {
   
@@ -2742,7 +2864,7 @@ macrodistancing_likelihood <- function(predictions, data) {
   sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf))
   size <- 1 / sqrt(sqrt_inv_size)
   prob <- 1 / (1 + predicted_contacts / size)
-  distribution(data$contacts$contact_num) <- negative_binomial(size, prob)
+  distribution(data$contacts$contact_num) <- grouped_negative_binomial(size, prob)
   
   result <- list(size = size,
                  prob = prob,
