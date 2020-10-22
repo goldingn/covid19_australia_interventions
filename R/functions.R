@@ -2776,6 +2776,22 @@ tf_safe_cdf <- function(x, distribution) {
   
 }
 
+tf_grouped_negative_binomial_log_prob <- function(lower, upper, prob, size) {
+
+  distribution <- tfp$distributions$NegativeBinomial(
+    total_count = size,
+    probs = fl(1) - prob
+  )
+  
+  # compute pmf for all values and sum them, on the log scale
+  values <- tf$range(lower, upper + fl(1))
+  log_densities <- distribution$log_prob(values)
+  log_density <- tf$reduce_logsumexp(log_densities)
+  log_density
+
+}
+
+
 # greta distribution object for the grouped negative binomial distribution
 grouped_negative_binomial_distribution <- R6Class(
   "grouped_negative_binomial_distribution",
@@ -2813,15 +2829,6 @@ grouped_negative_binomial_distribution <- R6Class(
       
       log_prob <- function(x) {
         
-        # build distribution object
-        d <- tfp$distributions$NegativeBinomial(
-          total_count = size,
-          probs = fl(1) - prob
-        )
-
-        # density for integer observations
-        integer_log_density <- d$log_prob(x)
-
         # for those lumped into groups, compute the bounds of the observed groups and get tensors for the
         # bounds in the format expected by TFP
         tf_idx <- tfp$stats$find_bins(x, tf_breaks)
@@ -2829,19 +2836,37 @@ grouped_negative_binomial_distribution <- R6Class(
         tf_lower_vec <- tf$gather(tf_lower_bounds, tf_idx_int)
         tf_upper_vec <- tf$gather(tf_upper_bounds, tf_idx_int)
       
-        # compute the density over the observed groups 
-        low <- tf_safe_cdf(tf_lower_vec - fl(1), d)
-        up <- tf_safe_cdf(tf_upper_vec, d)
-        group_log_density <- log(up - low)
-        
-        # combine integer (preferentially, because of numerical stability) and
-        # group densities
-        is_integer <- tf$equal(tf_upper_vec, tf_lower_vec)
-        log_density <- tf$where(
-          is_integer,
-          integer_log_density,
-          group_log_density
+        log_density <- tf$map_fn(
+          fn = tf_grouped_negative_binomial_log_prob,
+          elems = tuple(
+            lower = tf_lower_vec,
+            upper = tf_upper_vec,
+            prob = prob,
+            size = size
+          )
         )
+        
+        
+        # NB cdf does not have gradients w.r.t. size, so use sum of PMF instead
+        # (logsumexp of log_prob)
+        
+        # define function for this, taking in prob, size, lower, upper, and whether it is an integer.
+        # run tf$map_fn ot apply to each observation.
+
+        
+        # compute the density over the observed groups 
+        # low <- tf_safe_cdf(tf_lower_vec - fl(1), d)
+        # up <- tf_safe_cdf(tf_upper_vec, d)
+        # group_log_density <- log(up - low)
+        # 
+        # # combine integer (preferentially, because of numerical stability) and
+        # # group densities
+        # is_integer <- tf$equal(tf_upper_vec, tf_lower_vec)
+        # log_density <- tf$where(
+        #   is_integer,
+        #   integer_log_density,
+        #   group_log_density
+        # )
         log_density
         
       }
@@ -2880,7 +2905,7 @@ grouped_negative_binomial_distribution <- R6Class(
 # 723+
 grouped_negative_binomial <- function(size, prob, 
                                       dim = NULL,
-                                      breaks = c(0:7, 8, 13, 23, 73, 123, 173, 223, 723, Inf)) {
+                                      breaks = c(0:7, 8, 13, 23, 73, 123, 173, 223, 723, 1000)) {
   greta:::distrib("grouped_negative_binomial", size, prob, dim, breaks)
 }
 
