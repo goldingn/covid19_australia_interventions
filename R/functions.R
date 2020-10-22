@@ -2757,13 +2757,8 @@ macrodistancing_params <- function(baseline_contact_params) {
 }
 
 
-# CDF of the negative binial distribution, handling 0s and Infs
-tf_negative_binomial_cdf <- function(x, size, prob) {
-  
-  d <- tfp$distributions$NegativeBinomial(
-    total_count = size,
-    probs = fl(1) - prob
-  )
+# CDF of the provided distribution, handling 0s and Infs
+tf_safe_cdf <- function(x, distribution) {
   
   # prepare to handle values outside the supported range
   too_low <- tf$less(x, greta:::fl(0))
@@ -2774,7 +2769,7 @@ tf_negative_binomial_cdf <- function(x, size, prob) {
   
   # run cdf on supported values, and fill others in with the appropriate value  
   x_clean <- tf$where(supported, x, ones)
-  cdf_clean <- d$cdf(x_clean)
+  cdf_clean <- distribution$cdf(x_clean)
   mask <- tf$where(supported, ones, zeros)
   add <- tf$where(too_high, ones, zeros)
   cdf_clean * mask + add
@@ -2817,25 +2812,37 @@ grouped_negative_binomial_distribution <- R6Class(
       tf_breaks <- fl(self$breaks)
       
       log_prob <- function(x) {
+        
+        # build distribution object
+        d <- tfp$distributions$NegativeBinomial(
+          total_count = size,
+          probs = fl(1) - prob
+        )
 
-        # compute the bounds of the observed groups and get tensors for the
+        # density for integer observations
+        integer_log_density <- d$log_prob(x)
+
+        # for those lumped into groups, compute the bounds of the observed groups and get tensors for the
         # bounds in the format expected by TFP
         tf_idx <- tfp$stats$find_bins(x, tf_breaks)
         tf_idx_int <- greta:::tf_as_integer(tf_idx)
-        
         tf_lower_vec <- tf$gather(tf_lower_bounds, tf_idx_int)
         tf_upper_vec <- tf$gather(tf_upper_bounds, tf_idx_int)
-        
+      
         # compute the density over the observed groups 
-        low <- tf_negative_binomial_cdf(tf_lower_vec - fl(1), size, prob)
-        up <- tf_negative_binomial_cdf(tf_upper_vec, size, prob)
-        density <- up - low
+        low <- tf_safe_cdf(tf_lower_vec - fl(1), d)
+        up <- tf_safe_cdf(tf_upper_vec, d)
+        group_log_density <- log(up - low)
         
-        # add epsilon to handle numerical instability from working with
-        # probabilities rather than logs
-        density <- density + fl(.Machine$double.eps)
-        
-        log(density)
+        # combine integer (preferentially, because of numerical stability) and
+        # group densities
+        is_integer <- tf$equal(tf_upper_vec, tf_lower_vec)
+        log_density <- tf$where(
+          is_integer,
+          integer_log_density,
+          group_log_density
+        )
+        log_density
         
       }
       
