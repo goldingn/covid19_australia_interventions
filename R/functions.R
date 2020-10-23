@@ -2326,15 +2326,15 @@ macrodistancing_null <- function(data, weekend_weights) {
   avg_daily_contacts_wide <- exp(log_contacts)
   avg_daily_contacts <- avg_daily_contacts_wide[idx]
 
-  # compute weights on average daily contacts to account for fraction of individual's time
-  # that was on the weekend
+  # compute weights on average daily contacts to account for fraction of
+  # individual's time that was on the weekend
   predicted_contacts <- avg_daily_contacts * weekend_weights
 
   # grouped negative binomial likelihood  
   sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf))
   size <- 1 / sqrt(sqrt_inv_size)
   prob <- 1 / (1 + predicted_contacts / size)
-  distribution(data$contacts$contact_num) <- censored_negative_binomial(
+  distribution(data$contacts$contact_num) <- right_aggregated_negative_binomial(
     size = size,
     prob = prob,
     max_count = data$max_count
@@ -2343,7 +2343,9 @@ macrodistancing_null <- function(data, weekend_weights) {
   # return greta arrays to fit model  
   module(
     size,
-    avg_daily_contacts_wide
+    avg_daily_contacts_wide,
+    wave_dates,
+    states
   )
   
 }
@@ -2727,7 +2729,7 @@ macrodistancing_data <- function(dates = NULL, max_count = 20) {
       starts_with("contacts_")
     ) %>%
     filter(
-      contact_num <= max_count,
+      contact_num <= 999,
       date %in% location_change_trends$date
     )
   
@@ -2764,8 +2766,8 @@ macrodistancing_params <- function(baseline_contact_params) {
 }
 
 # greta distribution object for the grouped negative binomial distribution
-censored_negative_binomial_distribution <- R6Class(
-  "grouped_negative_binomial_distribution",
+right_aggregated_negative_binomial_distribution <- R6Class(
+  "right_aggregated_negative_binomial_distribution",
   inherit = greta:::distribution_node,
   public = list(
     
@@ -2780,7 +2782,11 @@ censored_negative_binomial_distribution <- R6Class(
       
       # add the nodes as parents and parameters
       dim <- greta:::check_dims(size, prob, target_dim = dim)
-      super$initialize("grouped_negative_binomial", dim, discrete = TRUE)
+      super$initialize(
+        "right_aggregated_negative_binomial",
+        dim,
+        discrete = TRUE
+      )
       self$add_parameter(size, "size")
       self$add_parameter(prob, "prob")
       
@@ -2799,22 +2805,40 @@ censored_negative_binomial_distribution <- R6Class(
           probs = fl(1) - prob
         )
         
-        log_density_unadjusted <- distribution$log_prob(x)
         
         # Get the adjustment to account for truncation need the integral from 0
         # to max_count. We can't use the CDF as there is no gradient w.r.t. the
         # size parameter, so we sum over the PMF in the uncensored range instead
         integers <- tf$range(fl(0), fl(self$max_count + 1))
         integer_log_densities <- distribution$log_prob(integers)
+    
+        # compute the log-probability of *not* exceeding max_count
         # do reduce_log_sum_exp to get log of sum over PMFs
-        log_density_adjustment <- tf$reduce_logsumexp(
+        log_p_not_excess <- tf$reduce_logsumexp(
           integer_log_densities,
           axis = 2L,
           keepdims = TRUE
         )
         
-        log_density <- log_density_unadjusted - log_density_adjustment
-       
+        # compute the log-probability of being in excess
+        # log(1 - exp(log_p_not_excess))
+        log_p_excess <- log(-tf$math$expm1(log_p_not_excess))
+          
+        # get the point densities of all counts        
+        log_density_integers <- distribution$log_prob(x)
+        
+        # bonus: extract the log probs from integer_log_densities instead of
+        # recomputing
+        # set the excess counts to 0 for now
+        # x_clean <- tf$where(excess_count, fl(0), x)
+
+        # find the counts exceeding max_count
+        excess_count <- x > fl(self$max_count)
+        
+        # for these, replace the log prob with the probabiity of being in excess
+        # of max_count
+        log_density <- tf$where(excess_count, log_p_excess, log_density_integers)
+        
         log_density
         
       }
@@ -2836,23 +2860,8 @@ censored_negative_binomial_distribution <- R6Class(
   )
 )
 
-# # Rounding at 5s, but more so at 10s, and then 50s, 100s. Break at 2.5s, 22.5s etc 
-# # do zero-inflated NB, get probabilities of collapsed categories
-# # expect decent resolution 0:7 (5 inflated, but only slightly)
-# 0:7 (1)
-# # then inflation around 10 (12 closest to 10, 13 closest to 15)
-# 8 - 12 (5)
-# 13 - 22 (10)
-# # then inflation around 50, 100, 150, 200
-# 23 - 72 (50)
-# 73 - 122 (50)
-# 123 - 172 (50)
-# 173 - 222 (50)
-# # then around 500, and above 722
-# 223 - 722 (500)
-# 723+
-censored_negative_binomial <- function(size, prob, max_count, dim = NULL) {
-  greta:::distrib("censored_negative_binomial", size, prob, max_count, dim)
+right_aggregated_negative_binomial <- function(size, prob, max_count, dim = NULL) {
+  greta:::distrib("right_aggregated_negative_binomial", size, prob, max_count, dim)
 }
 
 # define the likelihood for the macrodistancing model
@@ -2888,7 +2897,7 @@ macrodistancing_likelihood <- function(predictions, data) {
   sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf))
   size <- 1 / sqrt(sqrt_inv_size)
   prob <- 1 / (1 + predicted_contacts / size)
-  distribution(data$contacts$contact_num) <- censored_negative_binomial(
+  distribution(data$contacts$contact_num) <- right_aggregated_negative_binomial(
     size = size,
     prob = prob,
     max_count = data$max_count
@@ -3334,6 +3343,7 @@ sync_nndss <- function(mount_dir = "~/Mounts/nndss", storage_dir = "~/not_synced
   
   # mount the drive
   system("mount_nndss", ignore.stderr = TRUE)
+  Sys.sleep(3)
   
   from_files <- list.files(mount_dir, full.names = TRUE)
   existing_files <- list.files(storage_dir)

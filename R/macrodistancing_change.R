@@ -31,7 +31,7 @@ draws <- mcmc(
   m,
   warmup = 300,
   n_samples = 500,
-  # sampler = hmc(Lmin = 10, Lmax = 20),
+  # sampler = hmc(Lmin = 10, Lmax = 20),    
   # n_samples = 1500,
   chains = 10
 )
@@ -89,17 +89,17 @@ draws_null <- mcmc(
   chains = 10
 )
 convergence(draws_null)
-daily_contacts_draws <- calculate(null_gas$avg_daily_contacts_wide, values = draws_null, nsim = 2000)
+daily_contacts_draws_null <- calculate(null$avg_daily_contacts_wide, values = draws_null, nsim = 2000)
 
 # summarise fitted values for each date/state combination
 sry <- expand_grid(
-  date = null$wave_dates,
-  state = null$states
+  state = null$states,
+  wave_date = null$wave_dates
   ) %>%
   mutate(
-    estimate = c(apply(daily_contacts_draws[[1]], 2:3, mean)),
-    lower = c(apply(daily_contacts_draws[[1]], 2:3, quantile, 0.025)),
-    upper = c(apply(daily_contacts_draws[[1]], 2:3, quantile, 0.975))
+    estimate = c(apply(daily_contacts_draws_null[[1]], 2:3, mean)),
+    lower = c(apply(daily_contacts_draws_null[[1]], 2:3, quantile, 0.025)),
+    upper = c(apply(daily_contacts_draws_null[[1]], 2:3, quantile, 0.975))
   )
 
 # The width of the horizontal bars for survey data is proportional to the
