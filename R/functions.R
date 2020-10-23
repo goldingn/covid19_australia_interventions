@@ -2263,7 +2263,8 @@ macrodistancing_model <- function(data, parameters) {
   
   # format data into a date/state by location greta array
   log_location_changes <- data$location_change_trends %>%
-    select(home) %>%
+    select(-state, -date) %>%
+    as.matrix() %>%
     log() %>%
     as_data()
   
@@ -2746,7 +2747,7 @@ macrodistancing_params <- function(baseline_contact_params) {
                  truncation = c(0, Inf))
   
   # coefficients for change in average contacts as a function of mobility indices
-  mobility_coefs <- normal(0, 10, dim = 1)
+  mobility_coefs <- normal(0, 10, dim = 5)
   
   # coefficients for the fraction of weekly contacts that are on weekends, as a
   # function of the log diffference in contacts
