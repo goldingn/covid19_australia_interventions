@@ -29,8 +29,8 @@ m <- model(
 
 draws <- mcmc(
   m,
-  warmup = 100,
-  n_samples = 100,
+  warmup = 300,
+  n_samples = 500,
   # sampler = hmc(Lmin = 10, Lmax = 20),
   # n_samples = 1500,
   chains = 10
@@ -67,9 +67,44 @@ baseline_point <- tibble::tibble(
   )
 
 
-
 # fit a null-ish model (hierarchical but otherwise independent over
 # waves/states) to visualise the data values
+
+# compute weekend effect weights for null model, based on fitted weekend_weight
+weekend_weights_mean <- out$weekend_weight %>%
+  calculate(
+    values = draws,
+    nsim = 500
+  ) %>%
+  magrittr::extract2(1) %>%
+  magrittr::extract(, , 1) %>%
+  colMeans()
+
+null <- macrodistancing_null(data, weekend_weights_mean)
+m_null <- model(null$size, null$avg_daily_contacts_wide)
+draws_null <- mcmc(
+  m_null,
+  warmup = 500,
+  n_samples = 500,
+  chains = 10
+)
+convergence(draws_null)
+daily_contacts_draws <- calculate(null_gas$avg_daily_contacts_wide, values = draws_null, nsim = 2000)
+
+# summarise fitted values for each date/state combination
+sry <- expand_grid(
+  date = null$wave_dates,
+  state = null$states
+  ) %>%
+  mutate(
+    estimate = c(apply(daily_contacts_draws[[1]], 2:3, mean)),
+    lower = c(apply(daily_contacts_draws[[1]], 2:3, quantile, 0.025)),
+    upper = c(apply(daily_contacts_draws[[1]], 2:3, quantile, 0.975))
+  )
+
+# The width of the horizontal bars for survey data is proportional to the
+# duration, but plotted in arbitrary units (which depend on the plot size).
+# Rescale it with this tweaking parameter to roughly match the durations
 
 # slim down dataframe to get independent estimates for surveys
 survey_points <- data$contacts %>%
@@ -78,29 +113,7 @@ survey_points <- data$contacts %>%
     n = n(),
     wave_duration = first(wave_duration)
   )  %>%
-  ungroup()
-
-# need to group this by survey periods to plot
-
-null_gas <- microdistancing_null(data)
-m_null <- model(null_gas$size, null_gas$avg_daily_contacts_wide, null_gas$p_weekend_wide)
-draws_null <- mcmc(m_null)
-convergence(draws_null)
-daily_contacts_draws <- calculate(null_gas$avg_daily_contacts_wide, values = draws_null, nsim = nsim)
-
-# summarise fitted values for each date/state combination
-sry <- tibble(
-  state = ?,
-  waver_date = ?,
-  estimate = ?,
-  lower = ?,
-  upper = ?
-)
-
-# The width of the horizontal bars for survey data is proportional to the
-# duration, but plotted in arbitrary units (which depend on the plot size).
-# Rescale it with this tweaking parameter to roughly match the durations
-survey_points <- survey_points %>%
+  ungroup() %>%
   right_join(sry) %>%
   mutate(
     width = wave_duration

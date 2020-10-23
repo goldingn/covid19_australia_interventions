@@ -2297,47 +2297,52 @@ macrodistancing_model <- function(data, parameters) {
 }
 
 # a sort of null model (assuming a different rate of contacts per survey/state) for plotting the data 
-macrodistancing_null <- function(data) {
+macrodistancing_null <- function(data, weekend_weights) {
   
   # extract indices to the survey waves and states for each observation
-  n_surveys <- length(surveys)
+  
+  # add numeric ids for wave dates and states
+  wave_dates <- sort(unique(data$contacts$wave_date))
+  states <- sort(unique(data$contacts$state))
+  idx <- data$contacts %>%
+    mutate(
+      wave_id = match(wave_date, wave_dates),
+      state_id = match(state, states)
+    ) %>%
+    select(wave_id, state_id) %>%
+    as.matrix()
+    
+  n_waves <- length(wave_dates)
   n_states <- length(states)
-  idx <- ?
 
   # hierarchical model for the average number of contacts per survey/state
   log_contacts_mean <- normal(0, 10)
   log_contacts_sd <- normal(0, 1, truncation = c(0, Inf))
-  log_contacts_raw <- normal(0, 1, dim = c(n_surveys, n_states))
+  log_contacts_raw <- normal(0, 1, dim = c(n_waves, n_states))
   log_contacts <- log_contacts_mean + log_contacts_raw * log_contacts_raw
-  avg_daily_contacts_wide <- exp(log_contacts)
-  
-  # fraction of weekly contacts that are on weekends - as a function of deviations in numbers of contacts
-  # (model based on 'raw' values to remove posterior correlations with mean and sd parameters)
-  weekend_intercept <- normal(0, 1)
-  weekend_coef <- normal(0, 10) 
-  p_weekend_wide <- ilogit(parameters$weekend_intercept + parameters$weekend_coef * log_contacts_raw)
   
   # expand these out to match the data
+  avg_daily_contacts_wide <- exp(log_contacts)
   avg_daily_contacts <- avg_daily_contacts_wide[idx]
-  p_weekend <- p_weekend_wide[idx]
-  
+
   # compute weights on average daily contacts to account for fraction of individual's time
   # that was on the weekend
-  weight <- p_weekend * data$contacts$weekend_fraction * 7 / 2 +
-    (1 - p_weekend) * (1 - data$contacts$weekend_fraction) * 7 / 5
-  predicted_contacts <- avg_daily_contacts * weight
+  predicted_contacts <- avg_daily_contacts * weekend_weights
 
   # grouped negative binomial likelihood  
   sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf))
   size <- 1 / sqrt(sqrt_inv_size)
   prob <- 1 / (1 + predicted_contacts / size)
-  distribution(data$contacts$contact_num) <- grouped_negative_binomial(size, prob)
+  distribution(data$contacts$contact_num) <- censored_negative_binomial(
+    size = size,
+    prob = prob,
+    max_count = data$max_count
+  )
 
   # return greta arrays to fit model  
   module(
     size,
-    avg_daily_contacts_wide,
-    p_weekend_wide
+    avg_daily_contacts_wide
   )
   
 }
@@ -2688,7 +2693,7 @@ contact_survey_data <- function() {
 }
 
 # load the data needed for the macrodistancing model
-macrodistancing_data <- function(dates = NULL) {
+macrodistancing_data <- function(dates = NULL, max_count = 20) {
   
   # modelled change (after/before ratio) in time at types of locations from Google
   location_change_trends <- location_change(dates) %>%
@@ -2721,11 +2726,12 @@ macrodistancing_data <- function(dates = NULL) {
       starts_with("contacts_")
     ) %>%
     filter(
-      contact_num <= 999,
+      contact_num <= max_count,
       date %in% location_change_trends$date
     )
   
   list(
+    max_count = max_count,
     contacts = contact_data,
     location_change_trends = location_change_trends
   )
@@ -2756,60 +2762,20 @@ macrodistancing_params <- function(baseline_contact_params) {
   
 }
 
-
-# CDF of the provided distribution, handling 0s and Infs
-tf_safe_cdf <- function(x, distribution) {
-  
-  # prepare to handle values outside the supported range
-  too_low <- tf$less(x, greta:::fl(0))
-  too_high <- tf$equal(x, greta:::fl(Inf))
-  supported <- !too_low & !too_high 
-  ones <- tf$ones_like(x)
-  zeros <- tf$zeros_like(x)
-  
-  # run cdf on supported values, and fill others in with the appropriate value  
-  x_clean <- tf$where(supported, x, ones)
-  cdf_clean <- distribution$cdf(x_clean)
-  mask <- tf$where(supported, ones, zeros)
-  add <- tf$where(too_high, ones, zeros)
-  cdf_clean * mask + add
-  
-}
-
-tf_grouped_negative_binomial_log_prob <- function(lower, upper, prob, size) {
-
-  distribution <- tfp$distributions$NegativeBinomial(
-    total_count = size,
-    probs = fl(1) - prob
-  )
-  
-  # compute pmf for all values and sum them, on the log scale
-  values <- tf$range(lower, upper + fl(1))
-  log_densities <- distribution$log_prob(values)
-  log_density <- tf$reduce_logsumexp(log_densities)
-  log_density
-
-}
-
-
 # greta distribution object for the grouped negative binomial distribution
-grouped_negative_binomial_distribution <- R6Class(
+censored_negative_binomial_distribution <- R6Class(
   "grouped_negative_binomial_distribution",
   inherit = greta:::distribution_node,
   public = list(
     
-    breaks = NA,
-    lower_bounds = NA,
-    upper_bounds = NA,
+    max_count = NA,
     
-    initialize = function(size, prob, dim, breaks) {
+    initialize = function(size, prob, max_count, dim) {
       
       size <- as.greta_array(size)
       prob <- as.greta_array(prob)
       
-      self$breaks <- breaks
-      self$lower_bounds <- breaks[-length(breaks)]
-      self$upper_bounds <- breaks[-1] - 1
+      self$max_count <- max_count
       
       # add the nodes as parents and parameters
       dim <- greta:::check_dims(size, prob, target_dim = dim)
@@ -2823,50 +2789,31 @@ grouped_negative_binomial_distribution <- R6Class(
       
       size <- parameters$size
       prob <- parameters$prob
-      tf_lower_bounds <- fl(self$lower_bounds)
-      tf_upper_bounds <- fl(self$upper_bounds)
-      tf_breaks <- fl(self$breaks)
       
       log_prob <- function(x) {
         
-        # for those lumped into groups, compute the bounds of the observed groups and get tensors for the
-        # bounds in the format expected by TFP
-        tf_idx <- tfp$stats$find_bins(x, tf_breaks)
-        tf_idx_int <- greta:::tf_as_integer(tf_idx)
-        tf_lower_vec <- tf$gather(tf_lower_bounds, tf_idx_int)
-        tf_upper_vec <- tf$gather(tf_upper_bounds, tf_idx_int)
-      
-        log_density <- tf$map_fn(
-          fn = tf_grouped_negative_binomial_log_prob,
-          elems = tuple(
-            lower = tf_lower_vec,
-            upper = tf_upper_vec,
-            prob = prob,
-            size = size
-          )
+        # define the unadjusted density
+        distribution <- tfp$distributions$NegativeBinomial(
+          total_count = size,
+          probs = fl(1) - prob
         )
         
+        log_density_unadjusted <- distribution$log_prob(x)
         
-        # NB cdf does not have gradients w.r.t. size, so use sum of PMF instead
-        # (logsumexp of log_prob)
+        # Get the adjustment to account for truncation need the integral from 0
+        # to max_count. We can't use the CDF as there is no gradient w.r.t. the
+        # size parameter, so we sum over the PMF in the uncensored range instead
+        integers <- tf$range(fl(0), fl(self$max_count + 1))
+        integer_log_densities <- distribution$log_prob(integers)
+        # do reduce_log_sum_exp to get log of sum over PMFs
+        log_density_adjustment <- tf$reduce_logsumexp(
+          integer_log_densities,
+          axis = 2L,
+          keepdims = TRUE
+        )
         
-        # define function for this, taking in prob, size, lower, upper, and whether it is an integer.
-        # run tf$map_fn ot apply to each observation.
-
-        
-        # compute the density over the observed groups 
-        # low <- tf_safe_cdf(tf_lower_vec - fl(1), d)
-        # up <- tf_safe_cdf(tf_upper_vec, d)
-        # group_log_density <- log(up - low)
-        # 
-        # # combine integer (preferentially, because of numerical stability) and
-        # # group densities
-        # is_integer <- tf$equal(tf_upper_vec, tf_lower_vec)
-        # log_density <- tf$where(
-        #   is_integer,
-        #   integer_log_density,
-        #   group_log_density
-        # )
+        log_density <- log_density_unadjusted - log_density_adjustment
+       
         log_density
         
       }
@@ -2903,10 +2850,8 @@ grouped_negative_binomial_distribution <- R6Class(
 # # then around 500, and above 722
 # 223 - 722 (500)
 # 723+
-grouped_negative_binomial <- function(size, prob, 
-                                      dim = NULL,
-                                      breaks = c(0:7, 8, 13, 23, 73, 123, 173, 223, 723, 1000)) {
-  greta:::distrib("grouped_negative_binomial", size, prob, dim, breaks)
+censored_negative_binomial <- function(size, prob, max_count, dim = NULL) {
+  greta:::distrib("censored_negative_binomial", size, prob, max_count, dim)
 }
 
 # define the likelihood for the macrodistancing model
@@ -2942,7 +2887,11 @@ macrodistancing_likelihood <- function(predictions, data) {
   sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf))
   size <- 1 / sqrt(sqrt_inv_size)
   prob <- 1 / (1 + predicted_contacts / size)
-  distribution(data$contacts$contact_num) <- grouped_negative_binomial(size, prob)
+  distribution(data$contacts$contact_num) <- censored_negative_binomial(
+    size = size,
+    prob = prob,
+    max_count = data$max_count
+  )
   
   result <- list(size = size,
                  prob = prob,
