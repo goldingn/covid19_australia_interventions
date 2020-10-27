@@ -2330,20 +2330,23 @@ macrodistancing_null <- function(data, weekend_weights) {
   # individual's time that was on the weekend
   predicted_contacts <- avg_daily_contacts * weekend_weights
 
-  # grouped negative binomial likelihood  
-  sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf))
-  size <- 1 / sqrt(sqrt_inv_size)
-  prob <- 1 / (1 + predicted_contacts / size)
-  distribution(data$contacts$contact_num) <- right_aggregated_negative_binomial(
-    size = size,
-    prob = prob,
-    max_count = data$max_count
+  # get lognormal parameters from mean and standard deviation
+  sd <- normal(0, 5, truncation = c(0, Inf))
+  params <- lognormal_params(
+    mean = predicted_contacts,
+    sd = sd
   )
-
+  
+  distribution(data$contacts$contact_num) <- discrete_lognormal(
+    meanlog = params$meanlog,
+    sdlog = params$sdlog,
+    breaks = data$breaks
+  )
+  
   # return greta arrays to fit model  
   module(
-    size,
     avg_daily_contacts_wide,
+    sd,
     wave_dates,
     states
   )
@@ -2696,7 +2699,7 @@ contact_survey_data <- function() {
 }
 
 # load the data needed for the macrodistancing model
-macrodistancing_data <- function(dates = NULL, max_count = 20) {
+macrodistancing_data <- function(dates = NULL, breaks = c(0:10, 20, 50, Inf)) {
   
   # modelled change (after/before ratio) in time at types of locations from Google
   location_change_trends <- location_change(dates) %>%
@@ -2734,7 +2737,7 @@ macrodistancing_data <- function(dates = NULL, max_count = 20) {
     )
   
   list(
-    max_count = max_count,
+    breaks = breaks,
     contacts = contact_data,
     location_change_trends = location_change_trends
   )
@@ -2864,6 +2867,120 @@ right_aggregated_negative_binomial <- function(size, prob, max_count, dim = NULL
   greta:::distrib("right_aggregated_negative_binomial", size, prob, max_count, dim)
 }
 
+# CDF of the provided distribution, handling 0s and Infs
+tf_safe_cdf <- function(x, distribution) {
+  
+  # prepare to handle values outside the supported range
+  too_low <- tf$less(x, greta:::fl(0))
+  too_high <- tf$equal(x, greta:::fl(Inf))
+  supported <- !too_low & !too_high
+  ones <- tf$ones_like(x)
+  zeros <- tf$zeros_like(x)
+  
+  # run cdf on supported values, and fill others in with the appropriate value
+  x_clean <- tf$where(supported, x, ones)
+  cdf_clean <- distribution$cdf(x_clean)
+  mask <- tf$where(supported, ones, zeros)
+  add <- tf$where(too_high, ones, zeros)
+  cdf_clean * mask + add
+  
+}
+
+# greta distribution object for the grouped negative binomial distribution
+discrete_lognormal_distribution <- R6Class(
+  "discrete_lognormal_distribution",
+  inherit = greta:::distribution_node,
+  public = list(
+    
+    breaks = NA,
+    lower_bounds = NA,
+    upper_bounds = NA,
+    
+    initialize = function(meanlog, sdlog, breaks, dim) {
+      
+      meanlog <- as.greta_array(meanlog)
+      sdlog <- as.greta_array(sdlog)
+      
+      # handle gradient issue between sdlog and 0s
+      breaks <- pmax(breaks, .Machine$double.eps)
+      self$breaks <- breaks
+      self$lower_bounds <- breaks[-length(breaks)]
+      self$upper_bounds <- breaks[-1]
+      
+      # add the nodes as parents and parameters
+      dim <- greta:::check_dims(meanlog, sdlog, target_dim = dim)
+      super$initialize("discrete_lognormal", dim, discrete = TRUE)
+      self$add_parameter(meanlog, "meanlog")
+      self$add_parameter(sdlog, "sdlog")
+      
+    },
+    
+    tf_distrib = function(parameters, dag) {
+      
+      meanlog <- parameters$meanlog
+      sdlog <- parameters$sdlog
+      
+      tf_breaks <- fl(self$breaks)
+      tf_lower_bounds <- fl(self$lower_bounds)
+      tf_upper_bounds <- fl(self$upper_bounds)
+      
+      log_prob <- function(x) {
+        
+        # build distribution object
+        d <- tfp$distributions$LogNormal(
+          loc = meanlog,
+          scale = sdlog
+        )
+        
+        # for those lumped into groups, compute the bounds of the observed groups and get tensors for the
+        # bounds in the format expected by TFP
+        x_safe <- tf$math$maximum(x, fl(.Machine$double.eps))
+        tf_idx <- tfp$stats$find_bins(x_safe, tf_breaks)
+        tf_idx_int <- greta:::tf_as_integer(tf_idx)
+        tf_lower_vec <- tf$gather(tf_lower_bounds, tf_idx_int)
+        tf_upper_vec <- tf$gather(tf_upper_bounds, tf_idx_int)
+        
+        # compute the density over the observed groups
+        low <- tf_safe_cdf(tf_lower_vec, d)
+        up <- tf_safe_cdf(tf_upper_vec, d)
+        log_density <- log(up - low)
+        
+      }
+      
+      sample <- function(seed) {
+        
+        d <- tfp$distributions$LogNormal(
+          loc = meanlog,
+          scale = sdlog
+        )
+        continuous <- d$sample(seed = seed)
+        tf$floor(continuous)
+        
+      }
+      
+      list(log_prob = log_prob, sample = sample)
+      
+    }
+    
+  )
+)
+
+# a discretised lognormal distribution (i.e. samplesd by applying the floor
+# operation to samples from a lognormal). Due to the numerical instability of
+# integrating across the distribution, a vector of breaks must be defined and
+# the observations will be treated as censored within those breaks
+discrete_lognormal <- function(meanlog, sdlog, breaks, dim = NULL) {
+  greta:::distrib("discrete_lognormal", meanlog, sdlog, breaks, dim)
+}
+
+lognormal_params <- function(mean, sd) {
+  var <- sd ^ 2
+  list(
+       meanlog = log((mean ^ 2) / sqrt(var + mean ^ 2)),
+       sdlog = sqrt(log(1 + var / (mean ^ 2)))
+  )
+}
+
 # define the likelihood for the macrodistancing model
 macrodistancing_likelihood <- function(predictions, data) {
   
@@ -2894,18 +3011,24 @@ macrodistancing_likelihood <- function(predictions, data) {
     (1 - p_weekend) * (1 - data$contacts$weekend_fraction) * 7 / 5
   predicted_contacts <- avg_daily_contacts * weight
   
-  sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf))
-  size <- 1 / sqrt(sqrt_inv_size)
-  prob <- 1 / (1 + predicted_contacts / size)
-  distribution(data$contacts$contact_num) <- right_aggregated_negative_binomial(
-    size = size,
-    prob = prob,
-    max_count = data$max_count
+  # get lognormal parameters from mean and standard deviation
+  sd <- normal(0, 5, truncation = c(0, Inf))
+  params <- lognormal_params(
+    mean = predicted_contacts,
+    sd = sd
   )
   
-  result <- list(size = size,
-                 prob = prob,
-                 weekend_weight = weight)
+  distribution(data$contacts$contact_num) <- discrete_lognormal(
+    meanlog = params$meanlog,
+    sdlog = params$sdlog,
+    breaks = data$breaks
+  )
+  
+  result <- list(
+    predictions = predicted_contacts,
+    sd = sd,
+    weekend_weight = weight
+  )
   
   invisible(result)
   

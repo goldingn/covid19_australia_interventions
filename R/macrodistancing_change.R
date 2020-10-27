@@ -2,12 +2,11 @@
 # state, using a baseline rate, and survey questions from Freya's survey and the
 # BETA barometer
 source("R/functions.R")
-library(greta)
 
 # informative priors for baseline contact parameters
 baseline_contact_params <- baseline_contact_parameters(gi_cdf)
 
-# data, parameters, predictions, and likleihood definition for the model
+# data, parameters, predictions, and likelihood definition for the model
 data <- macrodistancing_data()
 params <- macrodistancing_params(baseline_contact_params)
 predictions <- macrodistancing_model(data, params)
@@ -24,14 +23,12 @@ m <- model(
   params$mobility_coefs,
   params$weekend_intercept,
   params$weekend_coef,
-  out$size
+  out$sd
 )
 
 draws <- mcmc(
   m,
-  warmup = 300,
-  n_samples = 500,
-  # sampler = hmc(Lmin = 10, Lmax = 20),    
+  sampler = hmc(Lmin = 10, Lmax = 20),
   # n_samples = 1500,
   chains = 10
 )
@@ -42,13 +39,15 @@ nsim <- coda::niter(draws) * coda::nchain(draws)
 nsim <- min(10000, nsim)
 
 # check posterior calibration
-contacts_ga <- negative_binomial(out$size, out$prob)
+params <- lognormal_params(mean = out$predictions, sd = out$sd)
+contacts_ga <- discrete_lognormal(meanlog = params$meanlog, sdlog = params$sdlog, breaks = data$breaks)
 contacts_sim <- calculate(contacts_ga, values = draws, nsim = nsim)[[1]][, , 1]
 bayesplot::ppc_ecdf_overlay(
   data$contacts$contact_num,
   contacts_sim[1:1000, ],
   discrete = TRUE
-)
+) + 
+  coord_cartesian(xlim = c(0, 300))
 
 # get trend predictions
 pred_sim <- calculate(c(OC_t_state), values = draws, nsim = nsim)[[1]][, , 1]
@@ -81,11 +80,9 @@ weekend_weights_mean <- out$weekend_weight %>%
   colMeans()
 
 null <- macrodistancing_null(data, weekend_weights_mean)
-m_null <- model(null$size, null$avg_daily_contacts_wide)
+m_null <- model(null$avg_daily_contacts_wide, null$sd)
 draws_null <- mcmc(
   m_null,
-  warmup = 500,
-  n_samples = 500,
   chains = 10
 )
 convergence(draws_null)
