@@ -23,13 +23,13 @@ m <- model(
   params$mobility_coefs,
   params$weekend_intercept,
   params$weekend_coef,
-  out$sd
+  out$sdlog
 )
 
 draws <- mcmc(
   m,
   sampler = hmc(Lmin = 10, Lmax = 20),
-  # n_samples = 1500,
+  n_samples = 1500,
   chains = 10
 )
 # draws <- extra_samples(draws, 1000)
@@ -39,8 +39,9 @@ nsim <- coda::niter(draws) * coda::nchain(draws)
 nsim <- min(10000, nsim)
 
 # check posterior calibration
-params <- lognormal_params(mean = out$predictions, sd = out$sd)
-contacts_ga <- discrete_lognormal(meanlog = params$meanlog, sdlog = params$sdlog, breaks = data$breaks)
+sdlog <- out$sdlog
+meanlog <- log(out$predictions) - (sdlog ^ 2) / 2
+contacts_ga <- discrete_lognormal(meanlog = meanlog, sdlog = sdlog, breaks = data$breaks)
 contacts_sim <- calculate(contacts_ga, values = draws, nsim = nsim)[[1]][, , 1]
 bayesplot::ppc_ecdf_overlay(
   data$contacts$contact_num,
@@ -80,13 +81,17 @@ weekend_weights_mean <- out$weekend_weight %>%
   colMeans()
 
 null <- macrodistancing_null(data, weekend_weights_mean)
-m_null <- model(null$avg_daily_contacts_wide, null$sd)
+m_null <- model(null$avg_daily_contacts_wide, null$sdlog)
 draws_null <- mcmc(
   m_null,
   chains = 10
 )
 convergence(draws_null)
-daily_contacts_draws_null <- calculate(null$avg_daily_contacts_wide, values = draws_null, nsim = 2000)
+daily_contacts_draws_null <- calculate(
+  null$avg_daily_contacts_wide,
+  values = draws_null,
+  nsim = 2000
+)
 
 # summarise fitted values for each date/state combination
 sry <- expand_grid(
@@ -210,7 +215,7 @@ p <- plot_trend(pred_sim,
 
 p
 
-save_ggplot("macrodistancing_effect.png")
+save_ggplot("macrodistancing_effect_alt2.png")
 
 # prepare outputs for plotting
 pred_trend <- data$location_change_trends %>%

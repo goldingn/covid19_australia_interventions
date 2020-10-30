@@ -2331,22 +2331,21 @@ macrodistancing_null <- function(data, weekend_weights) {
   predicted_contacts <- avg_daily_contacts * weekend_weights
 
   # get lognormal parameters from mean and standard deviation
-  sd <- normal(0, 5, truncation = c(0, Inf))
-  params <- lognormal_params(
-    mean = predicted_contacts,
-    sd = sd
-  )
+  sdlog <- normal(0, 5, truncation = c(0, Inf))
   
+  # because mean = exp(meanlog + (sdlog ^ 2) / 2)
+  meanlog <- log(predicted_contacts) - (sdlog ^ 2) / 2
+
   distribution(data$contacts$contact_num) <- discrete_lognormal(
-    meanlog = params$meanlog,
-    sdlog = params$sdlog,
+    meanlog = meanlog,
+    sdlog = sdlog,
     breaks = data$breaks
   )
   
   # return greta arrays to fit model  
   module(
     avg_daily_contacts_wide,
-    sd,
+    sdlog,
     wave_dates,
     states
   )
@@ -3012,21 +3011,20 @@ macrodistancing_likelihood <- function(predictions, data) {
   predicted_contacts <- avg_daily_contacts * weight
   
   # get lognormal parameters from mean and standard deviation
-  sd <- normal(0, 5, truncation = c(0, Inf))
-  params <- lognormal_params(
-    mean = predicted_contacts,
-    sd = sd
-  )
-  
+  sdlog <- normal(0, 5, truncation = c(0, Inf))
+
+  # because mean = exp(meanlog + (sdlog ^ 2) / 2)
+  meanlog <- log(predicted_contacts) - (sdlog ^ 2) / 2
+
   distribution(data$contacts$contact_num) <- discrete_lognormal(
-    meanlog = params$meanlog,
-    sdlog = params$sdlog,
+    meanlog = meanlog,
+    sdlog = sdlog,
     breaks = data$breaks
   )
   
   result <- list(
     predictions = predicted_contacts,
-    sd = sd,
+    sdlog = sdlog,
     weekend_weight = weight
   )
   
