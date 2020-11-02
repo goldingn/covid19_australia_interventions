@@ -26,12 +26,23 @@ m <- model(
   out$sdlog
 )
 
+# need to define initial values on the mobility coefs so they don't lead to
+# numerical overflow
+
+n_chains <- 10
+coefs <- params$mobility_coefs
+inits <- replicate(n_chains,
+                   initials(coefs = runif(5, 0, 0.1)),
+                   simplify = FALSE)
+
 draws <- mcmc(
   m,
   sampler = hmc(Lmin = 10, Lmax = 20),
+  initial_values = inits,
   n_samples = 1500,
-  chains = 10
+  chains = n_chains
 )
+
 # draws <- extra_samples(draws, 1000)
 convergence(draws)
 
@@ -215,7 +226,7 @@ p <- plot_trend(pred_sim,
 
 p
 
-save_ggplot("macrodistancing_effect_alt2.png")
+save_ggplot("macrodistancing_effect_alt4.png")
 
 # prepare outputs for plotting
 pred_trend <- data$location_change_trends %>%

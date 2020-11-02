@@ -2261,21 +2261,33 @@ microdistancing_model <- function(data, parameters) {
 # contact rate
 macrodistancing_model <- function(data, parameters) {
   
-  # format data into a date/state by location greta array
-  log_location_changes <- data$location_change_trends %>%
+  # format data into a date/state by location greta array of proportional changes
+  location_proportion_changes <- data$location_change_trends %>%
+    # convert from a ratio to proportion change
+    mutate_at(
+      vars(public, home, retail, transit, work),
+      ~ (. - 1)
+    ) %>%
+    # flip percentage change for at home (regression coefficients are forced to
+    # be positive)
+    mutate(home = -home) %>%
+    # turn into a matrix
     select(-state, -date) %>%
     as.matrix() %>%
-    log() %>%
+    # and into a greta array
     as_data()
   
-  # log of change in number of contacts compared to baseline
-  log_diff_contacts <- log_location_changes %*% parameters$mobility_coefs
+  # expected percentage change in contacts
+  proportion_change_contacts <- location_proportion_changes %*% parameters$mobility_coefs
   
   # fraction of weekly contacts that are on weekends - as a function of change in numbers of contacts
-  p_weekend <- ilogit(parameters$weekend_intercept + parameters$weekend_coef * log_diff_contacts)
+  p_weekend <- ilogit(parameters$weekend_intercept + parameters$weekend_coef * proportion_change_contacts)
+  
+  # log of change in ratio of contacts compared to baseline
+  log_change_contacts <- log1p(proportion_change_contacts)
   
   # average daily number of contacts
-  log_avg_daily_contacts <- log(parameters$OC_0) + log_diff_contacts
+  log_avg_daily_contacts <- log(parameters$OC_0) + log_change_contacts
   avg_daily_contacts <- exp(log_avg_daily_contacts)
   
   avg_daily_contacts_wide <- greta_long_to_date_state(
@@ -2284,6 +2296,11 @@ macrodistancing_model <- function(data, parameters) {
     data$location_change_trends$state
   )
   
+  log_avg_daily_contacts_wide <- greta_long_to_date_state(
+    log_avg_daily_contacts,
+    data$location_change_trends$date,
+    data$location_change_trends$state
+  )
   p_weekend_wide <- greta_long_to_date_state(
     p_weekend,
     data$location_change_trends$date,
@@ -2292,6 +2309,7 @@ macrodistancing_model <- function(data, parameters) {
   
   list(
     avg_daily_contacts = avg_daily_contacts_wide,
+    log_avg_daily_contacts = log_avg_daily_contacts_wide,
     p_weekend = p_weekend_wide
   )
   
@@ -2320,21 +2338,21 @@ macrodistancing_null <- function(data, weekend_weights) {
   log_contacts_mean <- normal(0, 10)
   log_contacts_sd <- normal(0, 1, truncation = c(0, Inf))
   log_contacts_raw <- normal(0, 1, dim = c(n_waves, n_states))
-  log_contacts <- log_contacts_mean + log_contacts_raw * log_contacts_raw
+  log_contacts_wide <- log_contacts_mean + log_contacts_raw * log_contacts_raw
   
   # expand these out to match the data
-  avg_daily_contacts_wide <- exp(log_contacts)
-  avg_daily_contacts <- avg_daily_contacts_wide[idx]
+  log_avg_daily_contacts <- log_contacts_wide[idx]
 
   # compute weights on average daily contacts to account for fraction of
   # individual's time that was on the weekend
-  predicted_contacts <- avg_daily_contacts * weekend_weights
+  # predicted_contacts <- avg_daily_contacts * weekend_weights
+  log_predicted_contacts <- log_avg_daily_contacts + log(weekend_weights)
 
   # get lognormal parameters from mean and standard deviation
   sdlog <- normal(0, 5, truncation = c(0, Inf))
   
   # because mean = exp(meanlog + (sdlog ^ 2) / 2)
-  meanlog <- log(predicted_contacts) - (sdlog ^ 2) / 2
+  meanlog <- log_predicted_contacts - (sdlog ^ 2) / 2
 
   distribution(data$contacts$contact_num) <- discrete_lognormal(
     meanlog = meanlog,
@@ -2344,7 +2362,7 @@ macrodistancing_null <- function(data, weekend_weights) {
   
   # return greta arrays to fit model  
   module(
-    avg_daily_contacts_wide,
+    avg_daily_contacts_wide = exp(log_contacts_wide),
     sdlog,
     wave_dates,
     states
@@ -2750,8 +2768,9 @@ macrodistancing_params <- function(baseline_contact_params) {
                  baseline_contact_params$se_contacts[2],
                  truncation = c(0, Inf))
   
-  # coefficients for change in average contacts as a function of mobility indices
-  mobility_coefs <- normal(0, 10, dim = 5)
+  # coefficients for change in average contacts as a function of mobility
+  # indices (all set to be negative in first lockdown)
+  mobility_coefs <- normal(0, 1, dim = 5, truncation = c(0, Inf))
   
   # coefficients for the fraction of weekly contacts that are on weekends, as a
   # function of the log diffference in contacts
@@ -2992,9 +3011,13 @@ macrodistancing_likelihood <- function(predictions, data) {
   
   # get expected number of contacts per respondent based on their date, state,
   # and the fraction of the contact survey period that was a weekend
-  OC_t_state <- predictions$avg_daily_contacts
+  
+  # OC_t_state <- predictions$avg_daily_contacts
+  # avg_daily_contacts <- OC_t_state[idx]
+  log_OC_t_state <- predictions$log_avg_daily_contacts
+  log_avg_daily_contacts <- log_OC_t_state[idx]
+  
   p_weekend_t_state <- predictions$p_weekend
-  avg_daily_contacts <- OC_t_state[idx]
   p_weekend <- p_weekend_t_state[idx]
   
   # weighting to account for the weekendiness of each survey response scale up
@@ -3008,13 +3031,15 @@ macrodistancing_likelihood <- function(predictions, data) {
   # factor out avg_daily contacts to get a weight for each observation
   weight <- p_weekend * data$contacts$weekend_fraction * 7 / 2 +
     (1 - p_weekend) * (1 - data$contacts$weekend_fraction) * 7 / 5
-  predicted_contacts <- avg_daily_contacts * weight
+  
+  log_weight <- log(weight)
+  log_predicted_contacts <- log_avg_daily_contacts + log_weight
   
   # get lognormal parameters from mean and standard deviation
   sdlog <- normal(0, 5, truncation = c(0, Inf))
-
+  
   # because mean = exp(meanlog + (sdlog ^ 2) / 2)
-  meanlog <- log(predicted_contacts) - (sdlog ^ 2) / 2
+  meanlog <- log_predicted_contacts - (sdlog ^ 2) / 2
 
   distribution(data$contacts$contact_num) <- discrete_lognormal(
     meanlog = meanlog,
@@ -3023,7 +3048,7 @@ macrodistancing_likelihood <- function(predictions, data) {
   )
   
   result <- list(
-    predictions = predicted_contacts,
+    predictions = exp(log_predicted_contacts),
     sdlog = sdlog,
     weekend_weight = weight
   )
