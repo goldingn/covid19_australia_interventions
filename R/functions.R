@@ -3720,7 +3720,7 @@ gi_convolution <- function(cases, dates, states, gi_cdf, gi_bounds = c(0, 20)) {
   
   n_dates <- length(dates)
   n_states <- length(states)
-  if (dim(cases) != c(n_dates, n_states)) {
+  if (!identical(dim(cases), c(n_dates, n_states))) {
     stop ("cases does not match dates and states", call. = FALSE)
   }
   
