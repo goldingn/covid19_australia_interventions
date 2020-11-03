@@ -5320,7 +5320,8 @@ parse_all_doh_surveys <- function(dir = "data/survey_raw") {
       full.names = TRUE
     ) %>%
     lapply(parse_doh_survey) %>%
-    bind_rows()
+    bind_rows() %>%
+    remove_doh_duplicates()
   
 }
 
@@ -5365,6 +5366,7 @@ parse_doh_survey <- function(filename) {
       wave,
       state,
       gender = S2,
+      age = S1,
       vulnerable = Q75,
       age_groups = AgeBracket,
       city,
@@ -5418,6 +5420,62 @@ parse_doh_survey <- function(filename) {
       vars(starts_with("contacts_")),
       ~as.numeric(.)
     )
+  
+}
+
+# plot apparent duplication of records in doh surveys by wave and state to spot
+# bot entries
+plot_age_duplication <- function(doh_surveys, max_fraction = 0.12) {
+  doh_surveys %>%
+    # remove any state with fewer than 50 respondents per week, on average
+    group_by(state, wave) %>%
+    mutate(respondents = n()) %>%
+    group_by(state) %>%
+    mutate(mean_respondents = mean(respondents)) %>%
+    filter(mean_respondents > 50) %>%
+    # count fraction of respondents by age in each wave/state
+    group_by(wave, state, age) %>%
+    count() %>%
+    group_by(state, wave) %>%
+    mutate(
+      fraction = n / sum(n)
+    ) %>%
+    ungroup() %>%
+    select(-n) %>%
+    complete(
+      wave, state, age,
+      fill = list(fraction = 0)
+    ) %>%
+    ggplot() +
+    aes(state, age, fill = fraction) +
+    geom_tile() +
+    facet_wrap(~wave) +
+    scale_fill_viridis_c(
+      na.value = grey(0.6),
+      limits = c(0, max_fraction)
+    ) +
+    theme_minimal()
+}
+
+# remove duplicated data in DoH surveys caused by bots
+remove_doh_duplicates <- function(doh_surveys) {
+  
+  # find clusters of more than responses of the same age gender and postcode in a given wave
+  duplicates <-
+    doh_surveys %>%
+    filter(!is.na(postcode) & wave >= 22) %>%
+    group_by(wave, age, gender, postcode) %>%
+    summarise(count = n()) %>%
+    filter(count > 5) %>%
+    arrange(wave, postcode, gender, age)
+  
+  # print out the detected duplicates
+  message("duplicates detected:")
+  print(duplicates, n = Inf)
+  
+  # return the data with them removed
+  doh_surveys %>%
+    anti_join(duplicates)
   
 }
 

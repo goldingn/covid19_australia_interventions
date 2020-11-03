@@ -226,7 +226,7 @@ p <- plot_trend(pred_sim,
 
 p
 
-save_ggplot("macrodistancing_effect_alt4.png")
+save_ggplot("macrodistancing_effect.png")
 
 # prepare outputs for plotting
 pred_trend <- data$location_change_trends %>%
