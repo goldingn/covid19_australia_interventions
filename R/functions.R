@@ -11,6 +11,7 @@ library(tensorflow)
 library(purrr)
 library(ggplot2)
 library(R6)
+library(slider)
 
 tfp <- reticulate::import("tensorflow_probability")
 
@@ -1475,9 +1476,7 @@ plot_trend <- function(simulations,
                xmax = max(df$date),
                ymin = -Inf,
                ymax = Inf,
-               fill = grey(0.5), alpha = 0.1) +
-      geom_text(aes(x = projection_at, y = 3, label = "projection"),
-                hjust = -0.1, size = 3, colour = grey(0.6))
+               fill = grey(0.5), alpha = 0.1)
   }
   
   p    
@@ -4240,8 +4239,8 @@ reff_plotting <- function(
   projection_date = NA
 ) {
   
-  # create a rug plot geom for cases
-  case_data <- fitted_model$data$local$cases %>%
+  # reformat case data for plotting (C1 and C12)
+  local_cases_long <- fitted_model$data$local$cases %>%
     as_tibble() %>%
     mutate(
       date = fitted_model$data$dates$infection,
@@ -4250,7 +4249,10 @@ reff_plotting <- function(
       cols = -date,
       names_to = "state",
       values_to = "cases"
-    ) %>%
+    )
+  
+  # rugplot of case counts
+  case_data <- local_cases_long %>%
     filter(date >= min_date) %>%
     mutate(
       type = "Nowcast",
@@ -4265,6 +4267,39 @@ reff_plotting <- function(
     alpha = 0.5,
     size = 0.5,
     colour = grey(0.7)
+  )
+  
+  # a washout for whether there are few cases (<20 in past 14 days)
+  few_case_data <- local_cases_long %>%
+    full_join(
+      expand_grid(
+        state = fitted_model$data$states,
+        date = seq(min_date, max_date, by = 1),
+      )
+    ) %>%
+    mutate(
+      cases = replace_na(cases, 0)
+    ) %>%
+    group_by(state)  %>%
+    mutate(
+      recent_count = slider::slide_int(cases, sum, .before = 13),
+    ) %>%
+    ungroup() %>%
+    filter(date >= min_date) %>%
+    mutate(
+      few_cases = recent_count < 20,
+      type = "Nowcast",
+      state = factor(state),
+      mean = 1
+    )
+    
+  few_case_washout <- geom_ribbon(
+    aes(ymin = -10, ymax = few_cases * 100 - 10),
+    data = few_case_data,
+    fill = grey(1),
+    alpha = 0.5,
+    colour = grey(0.9),
+    linetype = 3
   )
   
   # add counterfactuals to the model object: Reff for locals component 1 under
@@ -4387,10 +4422,9 @@ reff_plotting <- function(
                       fill = grey(0.5), alpha = 0.1)
     
   }
-  
-  # add case rug plot
-  p <- p + case_rug
-  
+
+  # add case rug plot and washout
+  p <- p + few_case_washout + case_rug
   p
   
   save_ggplot("R_eff_12_local.png", dir)
@@ -4434,8 +4468,8 @@ reff_plotting <- function(
     
   }
   
-  # add case rug plot
-  p <- p + case_rug
+  # add case rug plot and washout
+  p <- p + case_rug + few_case_washout
   
   p
   
