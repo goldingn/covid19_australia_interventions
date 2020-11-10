@@ -441,6 +441,106 @@ quarantine_dates <- function() {
     )
 }
 
+# dates of school holidays by state, from:
+# https://info.australia.gov.au/about-australia/special-dates-and-events/school-term-dates
+school_holiday_dates <- function() {
+  dplyr::bind_rows(
+    tibble::tibble(
+      state = "Australian Capital Territory",
+      tibble::tribble(~school_holiday, ~start, ~end,
+                      1, "2020-04-10", "2020-04-26",
+                      2, "2020-07-04", "2020-07-19",
+                      3, "2020-09-26", "2020-10-11",
+                      4, "2020-12-19", "2020-12-31"
+      )
+    ),
+    tibble::tibble(
+      state = "New South Wales",
+      tibble::tribble(~school_holiday, ~start, ~end,
+                      1, "2020-04-10", "2020-04-26",
+                      2, "2020-07-04", "2020-07-19",
+                      3, "2020-09-26", "2020-10-11",
+                      4, "2020-12-19", "2020-12-31"
+      )
+    ),
+    tibble::tibble(
+      state = "Northern Territory",
+      tibble::tribble(~school_holiday, ~start, ~end,
+                      1, "2020-04-10", "2020-04-19",
+                      2, "2020-06-27", "2020-07-20",
+                      3, "2020-09-26", "2020-10-11",
+                      4, "2020-12-18", "2020-12-31"
+      )
+    ),
+    tibble::tibble(
+      state = "Queensland",
+      tibble::tribble(~school_holiday, ~start, ~end,
+                      1, "2020-04-04", "2020-04-19",
+                      2, "2020-06-27", "2020-07-12",
+                      3, "2020-09-19", "2020-10-05",
+                      4, "2020-12-12", "2020-12-31"
+      )
+    ),
+    tibble::tibble(
+      state = "South Australia",
+      tibble::tribble(~school_holiday, ~start, ~end,
+                      1, "2020-04-10", "2020-04-26",
+                      2, "2020-07-04", "2020-07-19",
+                      3, "2020-09-26", "2020-10-11",
+                      4, "2020-12-12", "2020-12-31"
+      )
+    ),
+    tibble::tibble(
+      state = "Tasmania",
+      tibble::tribble(~school_holiday, ~start, ~end,
+                      1, "2020-04-10", "2020-04-26",
+                      2, "2020-07-04", "2020-07-19",
+                      3, "2020-09-26", "2020-10-11",
+                      4, "2020-12-18", "2020-12-31"
+      )
+    ),
+    tibble::tibble(
+      state = "Victoria",
+      tibble::tribble(~school_holiday, ~start, ~end,
+                      # Vic extended each school holiday by a week during the
+                      # pandemic
+                      # https://www.education.vic.gov.au/about/department/Pages/datesterm.aspx
+                      1, "2020-03-25", "2020-04-13",
+                      2, "2020-06-27", "2020-07-19",
+                      3, "2020-09-19", "2020-10-04",
+                      4, "2020-12-19", "2020-12-31"
+      )
+    ),
+    tibble::tibble(
+      state = "Western Australia",
+      tibble::tribble(~school_holiday, ~start, ~end,
+                      1, "2020-04-10", "2020-04-27",
+                      2, "2020-07-04", "2020-07-19",
+                      3, "2020-09-26", "2020-10-11",
+                      4, "2020-12-18", "2020-12-31"
+      )
+    )
+  ) %>%
+    mutate(
+      start = lubridate::date(start),
+      end = lubridate::date(end)
+    ) %>%
+    # loop through, expanding out into dates within term time
+    mutate(id = row_number()) %>%
+    group_by(id) %>%
+    do(
+      tibble(
+        state = .$state,
+        school_holiday = .$school_holiday, 
+        date = seq(from = .$start, to =.$end, by = 1)
+      )
+    ) %>%
+    ungroup() %>%
+    select(-id)
+}
+
+    
+    
 # dates of public holidays by state, from:
 # https://www.australia.gov.au/about-australia/special-dates-and-events/public-holidays
 holiday_dates <- function() {
