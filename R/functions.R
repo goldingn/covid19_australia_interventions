@@ -5461,7 +5461,7 @@ remove_doh_duplicates <- function(doh_surveys) {
   # find clusters of more than responses of the same age gender and postcode in a given wave
   duplicates <-
     doh_surveys %>%
-    filter(!is.na(postcode) & wave >= 22) %>%
+    filter(!is.na(postcode) & postcode != -99 & wave >= 22) %>%
     group_by(wave, age, gender, postcode) %>%
     summarise(count = n()) %>%
     filter(count > 5) %>%
