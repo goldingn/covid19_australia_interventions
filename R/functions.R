@@ -4287,7 +4287,7 @@ reff_plotting <- function(
     ungroup() %>%
     filter(date >= min_date) %>%
     mutate(
-      few_cases = recent_count < 3,
+      few_cases = recent_count < 5,
       type = "Nowcast",
       state = factor(state),
       mean = 1
