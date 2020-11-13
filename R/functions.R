@@ -303,10 +303,13 @@ all_mobility <- function() {
   
 }
 
+# Google dropped a bunch of previous data from the latest file. Pull a cached
+# version from the tidycovid package on GitHub and replace it.
+tidycovid_url <- "https://github.com/goldingn/tidycovid19/raw/e4db3ab3007576f34dcb1e8c3299b235cff6198e/cached_data/google_cmr.RDS"
 
 # append any missing google mobility data to mobility data (because Google
 # dropped a bunch of data out this one time)
-append_google_data <- function(mobility_data, url) {
+append_google_data <- function(mobility_data, url = tidycovid_url) {
   
   # download the previous dataset
   f <- tempfile(fileext = ".RDS")
@@ -6503,6 +6506,111 @@ plot_delays <- function(
   p
   
 }
+
+# given a dataframe of mobility data subsetted to a particular mobility metric,
+# fit a generalised additive model for the trend and return a dataframe with the
+# modelled mobility trend for all dates between min_date and max_date
+predict_mobility_trend <- function(
+  mobility,
+  min_date = min(mobility$date),
+  max_date = max(mobility$date)
+) {
+  
+  min_data_date = min(mobility$date)
+  max_data_date = max(mobility$date)
+  
+  public_holidays <- holiday_dates() %>%
+    mutate(
+      state = abbreviate_states(state)
+    ) %>%
+    rename(
+      holiday = name
+    )
+  
+  df <- mobility %>%
+    left_join(
+      public_holidays,
+      by = c("state", "date")
+    ) %>%
+    mutate(
+      holiday = replace_na(holiday, "none"),
+      date_num = as.numeric(date - min_date),
+      dow = lubridate::wday(date, label = TRUE),
+      dow = as.character(dow)
+    ) %>%
+    filter(!is.na(trend))
+  
+  library(mgcv)
+  
+  m <- gam(trend ~
+             s(date_num, k = 50) +
+             holiday +
+             dow,
+           select = TRUE,
+           gamma = 2,
+           data = df)
+  
+  # predict each date, averaging over the weekday effect
+  pred_df <- expand_grid(
+    state = unique(df$state),
+    date = seq(min_date, max_date, by = 1),
+  ) %>%
+    left_join(
+      public_holidays,
+      by = c("state", "date")
+    ) %>%
+    mutate(
+      holiday = replace_na(holiday, "none"),
+      # remove any named holidays not in the training data
+      holiday = case_when(
+        holiday %in% unique(df$holiday) ~ holiday,
+        TRUE ~ "none"
+      ),
+      date_num = as.numeric(date - min_date),
+      dow = lubridate::wday(date, label = TRUE),
+      dow = as.character(dow),
+    )
+  
+  # compute mean and standard deviation of Gaussian observation model
+  pred <- predict(m, newdata = pred_df, se.fit = TRUE)
+  pred$sd <- sqrt(var(residuals(m)) + pred$se.fit ^ 2)
+  
+  pred_df <- pred_df %>%
+    # predict with fitted model (and get 90% CIs)
+    mutate(
+      fitted_trend = pred$fit,
+      fitted_trend_upper = pred$fit + pred$sd * qnorm(0.025),
+      fitted_trend_lower = pred$fit + pred$sd * qnorm(0.975),
+    ) %>%
+    # now predict without holiday or day of the week effects
+    mutate(
+      holiday = "none",
+      dow = "Wed",
+      # clamp the prediction at both ends
+      date_num = pmax(date_num, min_data_date - min_date),
+      date_num = pmin(date_num, max_data_date - min_date)
+    ) %>%
+    mutate(
+      predicted_trend = predict(m, newdata = .)
+    ) %>%
+    left_join(
+      df %>%
+        select(date, state, trend, state_long),
+      by = c("state", "date")
+    ) %>%
+    # remove model fit where there is no data
+    mutate(
+      mask = ifelse(is.na(trend), NA, 1),
+      fitted_trend = fitted_trend * mask,
+      fitted_trend_upper = fitted_trend_upper * mask,
+      fitted_trend_lower = fitted_trend_lower * mask
+    ) %>%
+    select(-mask)
+  
+  pred_df
+  
+}
+
 
 
 # colours for plotting
