@@ -6569,6 +6569,9 @@ predict_mobility_trend <- function(
       date_num = as.numeric(date - min_date),
       dow = lubridate::wday(date, label = TRUE),
       dow = as.character(dow),
+      # clamp the smooth part of the prediction at both ends
+      date_num = pmax(date_num, min_data_date - min_date),
+      date_num = pmin(date_num, max_data_date - min_date)
     )
   
   # compute mean and standard deviation of Gaussian observation model
@@ -6582,16 +6585,15 @@ predict_mobility_trend <- function(
       fitted_trend_upper = pred$fit + pred$sd * qnorm(0.025),
       fitted_trend_lower = pred$fit + pred$sd * qnorm(0.975),
     ) %>%
-    # now predict without holiday or day of the week effects
+    # smooth fitted curve over days of the week and holidays
     mutate(
-      holiday = "none",
-      dow = "Wed",
-      # clamp the prediction at both ends
-      date_num = pmax(date_num, min_data_date - min_date),
-      date_num = pmin(date_num, max_data_date - min_date)
-    ) %>%
-    mutate(
-      predicted_trend = predict(m, newdata = .)
+      predicted_trend = slider::slide_dbl(
+        fitted_trend,
+        mean,
+        .before = 3,
+        .after = 3,
+        .complete = TRUE
+      )
     ) %>%
     left_join(
       df %>%
