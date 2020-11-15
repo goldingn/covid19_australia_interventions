@@ -311,6 +311,11 @@ tidycovid_url <- "https://github.com/goldingn/tidycovid19/raw/e4db3ab3007576f34d
 # dropped a bunch of data out this one time)
 append_google_data <- function(mobility_data, url = tidycovid_url) {
   
+  mobility_data <- mobility_data %>%
+    filter(!is.na(trend)) %>%
+    filter(!is.na(state)) %>%
+    select(state, date, trend, datastream)
+  
   # download the previous dataset
   f <- tempfile(fileext = ".RDS")
   download.file(url, destfile = f)
@@ -351,11 +356,11 @@ append_google_data <- function(mobility_data, url = tidycovid_url) {
   
   # find any observations that are missing in the mobility data
   missing_data <- mobility_data %>%
-    select(state, date, trend, datastream) %>%
-    anti_join(previous_data, .)
+    anti_join(previous_data, ., by = c("state", "date", "datastream"))
   
   # add them and return
   mobility_data %>%
+    anti_join(missing_data, by = c("state", "date", "datastream")) %>%
     bind_rows(missing_data) %>%
     arrange(datastream, state, date)
   
@@ -6552,9 +6557,12 @@ predict_mobility_trend <- function(
   
   # predict each date, averaging over the weekday effect
   pred_df <- expand_grid(
-    state = unique(df$state),
+    state_long = unique(df$state_long),
     date = seq(min_date, max_date, by = 1),
   ) %>%
+    mutate(
+      state = abbreviate_states(state_long)
+    ) %>% 
     left_join(
       public_holidays,
       by = c("state", "date")
@@ -6592,13 +6600,12 @@ predict_mobility_trend <- function(
         mean,
         .before = 3,
         .after = 3,
-        .complete = TRUE
       )
     ) %>%
     left_join(
       df %>%
         select(date, state, trend, state_long),
-      by = c("state", "date")
+      by = c("state", "state_long", "date")
     ) %>%
     # remove model fit where there is no data
     mutate(
