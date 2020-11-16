@@ -4236,7 +4236,8 @@ reff_plotting <- function(
   min_date = as.Date("2020-03-01"),
   max_date = fitted_model$data$dates$latest_mobility,
   mobility_extrapolation_rectangle = TRUE,
-  projection_date = NA
+  projection_date = NA,
+  washout_cutoff = 0
 ) {
   
   # reformat case data for plotting (C1 and C12)
@@ -4287,7 +4288,7 @@ reff_plotting <- function(
     ungroup() %>%
     filter(date >= min_date) %>%
     mutate(
-      few_cases = recent_count < 5,
+      few_cases = recent_count < washout_cutoff,
       type = "Nowcast",
       state = factor(state),
       mean = 1
