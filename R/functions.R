@@ -4228,6 +4228,38 @@ reff_sims <- function(fitted_model, nsim = 2000, which = "R_eff_loc_12") {
   
 }
 
+# given a vector of discrete values (e.g. logicals) representing switches
+# between states, constrain those switches so that the state may not switch to
+# another state unless thge run of the same value must have been at least
+# 'min_run_length' long.
+constrain_run_length <- function(x, min_run_length = 7) {
+  
+  # create an empty vector to fill and then iterate (this must be recursive, so
+  # can't use e.g. slider::slide())
+  result <- rep(FALSE, length(x))
+  for (end in seq_along(result)) {
+    
+    # check whether there was a change recently
+    start <- max(1, end - min_run_length) 
+    idx <-  seq(start, end - 1)
+    previous <- result[idx]
+    recently_flipped <- !all(previous == previous[1])
+    
+    # if there was, then keep the same state as the last iteration. If there
+    # wasn't, use the ideal value (the value in x)
+    if (recently_flipped) {
+      most_recent <- previous[length(previous)]
+      result[end] <- most_recent
+    } else {
+      result[end] <- x[end]
+    }
+    
+  }
+  
+  result
+  
+}
+
 # function to calculate, plot, and save all the outputs (with flags for plot
 # types) - pass in an optional maximum date argument
 reff_plotting <- function(
@@ -4270,7 +4302,8 @@ reff_plotting <- function(
     colour = grey(0.7)
   )
   
-  # a washout for whether there are few cases (<20 in past 14 days)
+  # a washout for whether there are few cases (<20 in past 5 days) with a run of
+  # at least 7 days (to prevent rapidly flip-flopping)
   few_case_data <- local_cases_long %>%
     full_join(
       expand_grid(
@@ -4292,10 +4325,18 @@ reff_plotting <- function(
       type = "Nowcast",
       state = factor(state),
       mean = 1
-    )
+    ) %>%
+    # don't let the washout state change until there have been at least the
+    # specified number of days in the same state
+    arrange(state, date) %>%
+    group_by(state) %>%
+    mutate(
+      washout = constrain_run_length(few_cases, 7)
+    ) %>%
+    ungroup()
     
   few_case_washout <- geom_ribbon(
-    aes(ymin = -10, ymax = few_cases * 100 - 10),
+    aes(ymin = -10, ymax = washout * 100 - 10),
     data = few_case_data,
     fill = grey(1),
     alpha = 0.5,
