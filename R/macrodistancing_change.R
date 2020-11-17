@@ -12,8 +12,7 @@ params <- macrodistancing_params(baseline_contact_params)
 predictions <- macrodistancing_model(data, params)
 out <- macrodistancing_likelihood(predictions, data)
 
-OC_t_state <- predictions$avg_daily_contacts
-p_weekend_t_state <- predictions$p_weekend
+OC_t_state <- predictions$mean_daily_contacts
 
 # fit model
 set.seed(2020-05-30)
@@ -21,8 +20,7 @@ set.seed(2020-05-30)
 m <- model(
   params$OC_0,
   params$mobility_coefs,
-  params$weekend_intercept,
-  params$weekend_coef,
+  params$weekday_coefs,
   out$sdlog
 )
 
@@ -37,9 +35,11 @@ inits <- replicate(n_chains,
 
 draws <- mcmc(
   m,
-  sampler = hmc(Lmin = 10, Lmax = 20),
+  # sampler = hmc(Lmin = 10, Lmax = 20),
   initial_values = inits,
-  n_samples = 1500,
+  warmup = 500,
+  n_samples = 500,
+  # n_samples = 1500,
   chains = n_chains
 )
 
@@ -81,20 +81,27 @@ baseline_point <- tibble::tibble(
 # fit a null-ish model (hierarchical but otherwise independent over
 # waves/states) to visualise the data values
 
+
+
+
+
 # compute weekend effect weights for null model, based on fitted weekend_weight
-weekend_weights_mean <- out$weekend_weight %>%
+log_fraction_weekly_contacts_mean <- predictions$log_fraction_weekly_contacts %>%
   calculate(
     values = draws,
     nsim = 500
   ) %>%
   magrittr::extract2(1) %>%
-  magrittr::extract(, , 1) %>%
-  colMeans()
+  apply(2:3, mean)
 
-null <- macrodistancing_null(data, weekend_weights_mean)
+
+# null_params <- macrodistancing_params(baseline_contact_params)
+null <- macrodistancing_null(data, log_fraction_weekly_contacts_mean)
 m_null <- model(null$avg_daily_contacts_wide, null$sdlog)
 draws_null <- mcmc(
   m_null,
+  warmup = 500,
+  n_samples = 500,
   chains = 10
 )
 convergence(draws_null)
