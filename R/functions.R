@@ -4041,23 +4041,9 @@ reff_model <- function(data) {
   log_R_eff_imp_1 <- log_R0 + log_Qt
   R_eff_imp_1 <- exp(log_R_eff_imp_1)
   
-  # temporally correlated errors in R_eff for local and imported cases - representing all the
+  # temporally correlated errors in R_eff for local cases - representing all the
   # stochastic transmission dynamics in the community, such as outbreaks in
-  # communities with higher or lower tranmission rates, and interstate and
-  # temporal variation in quarantine effectiveness not captured by the step
-  # function
-  
-  kernel_O <- rbf(
-    lengthscales = lognormal(3, 1),
-    variance = normal(0, 0.5, truncation = c(0, Inf)) ^ 2,
-  )
-  
-  epsilon_O <- epsilon_gp(
-    date_nums = data$dates$date_nums,
-    n_states = data$n_states,
-    kernel = kernel_O,
-    inducing_date_nums = data$dates$inducing_date_nums
-  )
+  # communities with higher or lower tranmission rates
   
   kernel_L <- rational_quadratic(
     lengthscales = lognormal(3, 1),
@@ -4079,7 +4065,7 @@ reff_model <- function(data) {
   log_R_eff_loc <- log_R_eff_loc_1 + epsilon_L
   
   log_R_eff_imp <- sweep(
-    epsilon_O,
+    zeros(data$n_date_nums, data$n_states),
     1,
     log_R_eff_imp_1,
     FUN = "+"
@@ -4141,8 +4127,7 @@ reff_model <- function(data) {
       surveillance_reff_local_reduction,
       log_R_eff_loc,
       log_R_eff_imp,
-      epsilon_L,
-      epsilon_O
+      epsilon_L
     )
   )
   
@@ -4362,7 +4347,6 @@ reff_plotting <- function(
     "R_eff_loc_12",
     "R_eff_imp_12",
     "epsilon_L",
-    "epsilon_O",
     "R_eff_loc_1_micro",
     "R_eff_loc_1_macro",
     "R_eff_loc_1_surv"
@@ -4471,21 +4455,6 @@ reff_plotting <- function(
   
   save_ggplot("R_eff_12_local.png", dir)
   
-  plot_trend(sims$R_eff_imp_12,
-             data = fitted_model$data,
-             min_date = min_date,
-             max_date = max_date,
-             multistate = TRUE,
-             base_colour = orange,
-             ylim = c(0, 0.4),
-             intervention_at = quarantine_dates(),
-             projection_at = projection_date) +
-    ggtitle(label = "Import to local transmission potential",
-            subtitle = "Average across active cases") +
-    ylab(expression(R["eff"]~from~"overseas-acquired"~cases))
-  
-  save_ggplot("R_eff_12_imported.png", dir)
-  
   # component 2 (noisy error trends)
   p <- plot_trend(sims$epsilon_L,
                   data = fitted_model$data,
@@ -4516,22 +4485,6 @@ reff_plotting <- function(
   p
   
   save_ggplot("R_eff_2_local.png", dir)
-  
-  plot_trend(sims$epsilon_O,
-             data = fitted_model$data,
-             min_date = min_date,
-             max_date = max_date,
-             multistate = TRUE,
-             base_colour = pink,
-             hline_at = 0,
-             intervention_at = quarantine_dates(),
-             projection_at = projection_date,
-             ylim = NULL) + 
-    ggtitle(label = "Short-term variation in import to local transmission rates",
-            subtitle = expression(Deviation~from~log(R["eff"])~of~"import-local"~transmission)) +
-    ylab("Deviation")
-  
-  save_ggplot("R_eff_2_imported.png", dir)
   
 }
 
