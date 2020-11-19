@@ -6512,6 +6512,14 @@ plot_delays <- function(
   
 }
 
+gaussian_smooth <- function (values, scaling = 2, ...) {
+  id <- seq_along(values)
+  middle <- round(mean(id))
+  diff <- id - middle
+  weights <- exp(-diff ^ 2 / scaling)
+  weighted_mean(values, weights, ...)
+}
+
 # given a dataframe of mobility data subsetted to a particular mobility metric,
 # fit a generalised additive model for the trend and return a dataframe with the
 # modelled mobility trend for all dates between min_date and max_date
@@ -6539,12 +6547,14 @@ predict_mobility_trend <- function(
     ) %>%
     mutate(
       holiday = replace_na(holiday, "none"),
+      is_a_holiday = holiday != "none",
+      holiday = factor(holiday),
       date_num = as.numeric(date - min_date),
       dow = lubridate::wday(date, label = TRUE),
       dow = as.character(dow)
     ) %>%
     filter(!is.na(trend))
-  
+
   library(mgcv)
   
   m <- gam(trend ~
@@ -6555,17 +6565,34 @@ predict_mobility_trend <- function(
            gamma = 2,
            data = df)
   
-  # predict each date, averaging over the weekday effect
+  # compute mean and standard deviation of Gaussian observation model for fitted data
+  fit <- predict(m, se.fit = TRUE)
+  fit$sd <- sqrt(var(residuals(m)) + fit$se.fit ^ 2)
+
+  df_fitted <- df %>%
+    # predict with fitted model (and get 90% CIs)
+    mutate(
+      fitted_trend = fit$fit,
+      fitted_trend_upper = fit$fit + fit$sd * qnorm(0.025),
+      fitted_trend_lower = fit$fit + fit$sd * qnorm(0.975),
+    )
+  
+  # predict each date, *averaging over the weekday effect for each date*
   pred_df <- expand_grid(
     state_long = unique(df$state_long),
+    dow = unique(df$dow),
     date = seq(min_date, max_date, by = 1),
   ) %>%
     mutate(
       state = abbreviate_states(state_long)
     ) %>% 
-    left_join(
-      public_holidays,
-      by = c("state", "date")
+    # left_join(
+    #   public_holidays,
+    #   by = c("state", "date")
+    # ) %>%
+    # factor out holidays from prediction
+    mutate(
+      holiday = NA
     ) %>%
     mutate(
       holiday = replace_na(holiday, "none"),
@@ -6574,48 +6601,53 @@ predict_mobility_trend <- function(
         holiday %in% unique(df$holiday) ~ holiday,
         TRUE ~ "none"
       ),
+      is_a_holiday = holiday != "none",
+      holiday = factor(holiday),
       date_num = as.numeric(date - min_date),
-      dow = lubridate::wday(date, label = TRUE),
-      dow = as.character(dow),
       # clamp the smooth part of the prediction at both ends
       date_num = pmax(date_num, min_data_date - min_date),
       date_num = pmin(date_num, max_data_date - min_date)
     )
-  
-  # compute mean and standard deviation of Gaussian observation model
-  pred <- predict(m, newdata = pred_df, se.fit = TRUE)
-  pred$sd <- sqrt(var(residuals(m)) + pred$se.fit ^ 2)
-  
+
+  # predict trends under these conditions, and average over day of the week
   pred_df <- pred_df %>%
-    # predict with fitted model (and get 90% CIs)
     mutate(
-      fitted_trend = pred$fit,
-      fitted_trend_upper = pred$fit + pred$sd * qnorm(0.025),
-      fitted_trend_lower = pred$fit + pred$sd * qnorm(0.975),
+      predicted_trend = predict(m, newdata = pred_df)
     ) %>%
-    # smooth fitted curve over days of the week and holidays
-    mutate(
-      predicted_trend = slider::slide_dbl(
-        fitted_trend,
-        mean,
-        .before = 3,
-        .after = 3,
-      )
+    group_by(
+      state_long, state, date
     ) %>%
+    summarise(
+      predicted_trend = mean(predicted_trend),
+      .groups = "drop"
+    ) %>%
+    group_by(
+      state
+    ) %>%
+    # don't smooth anything
+    # # smooth fitted curve over days of the week and holidays
+    # mutate(
+    #   predicted_trend = slider::slide_dbl(
+    #     predicted_trend,
+    #     gaussian_smooth,
+    #     scaling = 5,
+    #     .before = 3,
+    #     .after = 3,
+    #   )
+    # ) %>%
+    ungroup() %>%
     left_join(
-      df %>%
-        select(date, state, trend, state_long),
+      df_fitted %>%
+        select(
+          state, state_long, date,
+          trend,
+          fitted_trend,
+          fitted_trend_lower,
+          fitted_trend_upper
+        ),
       by = c("state", "state_long", "date")
-    ) %>%
-    # remove model fit where there is no data
-    mutate(
-      mask = ifelse(is.na(trend), NA, 1),
-      fitted_trend = fitted_trend * mask,
-      fitted_trend_upper = fitted_trend_upper * mask,
-      fitted_trend_lower = fitted_trend_lower * mask
-    ) %>%
-    select(-mask)
-  
+    )
+
   pred_df
   
 }

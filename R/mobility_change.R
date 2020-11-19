@@ -78,11 +78,11 @@ for (this_state in all_states) {
       size = 0.2,
       col = "purple"
     ) +
-    # # predicted trend
-    # geom_line(
-    #   aes(date, predicted_trend),
-    #   size = 1
-    # ) +
+    # predicted trend
+    geom_line(
+      aes(date, predicted_trend),
+      size = 1
+    ) +
     coord_cartesian(
       xlim = c(as.Date("2020-03-01"), max(mobility_fitted$date))
     ) +
@@ -130,9 +130,6 @@ mobility_fitted %>%
     date
   ) %>%
   saveRDS("outputs/google_change_trends.RDS")
-
-# work out why  there are duplicate entries for some states, dates, and datastreams
-# (e.g. ACT grocery and pharmacy from August on)
 
 # output 3-column plot
 # run hierarchically on LGA-level data
