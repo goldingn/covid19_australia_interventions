@@ -78,11 +78,11 @@ for (this_state in all_states) {
       size = 0.2,
       col = "purple"
     ) +
-    # predicted trend
-    geom_line(
-      aes(date, predicted_trend),
-      size = 1
-    ) +
+    # # predicted trend
+    # geom_line(
+    #   aes(date, predicted_trend),
+    #   size = 1
+    # ) +
     coord_cartesian(
       xlim = c(as.Date("2020-03-01"), max(mobility_fitted$date))
     ) +
@@ -106,7 +106,7 @@ for (this_state in all_states) {
           panel.spacing = unit(1.2, "lines"))
   
   dpi <- 150
-  ggsave(filename = paste0("outputs/gam_mobility/", this_state, "_datastream_model_fit.png"),
+  ggsave(filename = paste0("outputs/figures/", this_state, "_datastream_model_fit.png"),
          width = 1500 / dpi,
          height = 1250 / dpi,
          dpi = dpi,

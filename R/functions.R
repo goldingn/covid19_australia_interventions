@@ -6512,11 +6512,11 @@ plot_delays <- function(
   
 }
 
-gaussian_smooth <- function (values, scaling = 2, ...) {
+gaussian_smooth <- function (values, sd = 1, ...) {
   id <- seq_along(values)
   middle <- round(mean(id))
   diff <- id - middle
-  weights <- exp(-diff ^ 2 / scaling)
+  weights <- exp(-0.5 * (diff / sd) ^ 2)
   weighted_mean(values, weights, ...)
 }
 
@@ -6586,13 +6586,9 @@ predict_mobility_trend <- function(
     mutate(
       state = abbreviate_states(state_long)
     ) %>% 
-    # left_join(
-    #   public_holidays,
-    #   by = c("state", "date")
-    # ) %>%
-    # factor out holidays from prediction
-    mutate(
-      holiday = NA
+    left_join(
+      public_holidays,
+      by = c("state", "date")
     ) %>%
     mutate(
       holiday = replace_na(holiday, "none"),
@@ -6624,17 +6620,16 @@ predict_mobility_trend <- function(
     group_by(
       state
     ) %>%
-    # don't smooth anything
-    # # smooth fitted curve over days of the week and holidays
-    # mutate(
-    #   predicted_trend = slider::slide_dbl(
-    #     predicted_trend,
-    #     gaussian_smooth,
-    #     scaling = 5,
-    #     .before = 3,
-    #     .after = 3,
-    #   )
-    # ) %>%
+    # smooth fitted curve over days of the week and holidays
+    mutate(
+      predicted_trend = slider::slide_dbl(
+        predicted_trend,
+        gaussian_smooth,
+        sd = 2.8,
+        .before = 5,
+        .after = 5,
+      )
+    ) %>%
     ungroup() %>%
     left_join(
       df_fitted %>%
