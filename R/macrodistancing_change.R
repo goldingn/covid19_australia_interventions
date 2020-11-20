@@ -26,7 +26,6 @@ m <- model(
 
 # need to define initial values on the mobility coefs so they don't lead to
 # numerical overflow
-
 n_chains <- 10
 coefs <- params$mobility_coefs
 inits <- replicate(n_chains,
@@ -35,11 +34,8 @@ inits <- replicate(n_chains,
 
 draws <- mcmc(
   m,
-  # sampler = hmc(Lmin = 10, Lmax = 20),
+  sampler = hmc(Lmin = 10, Lmax = 15),
   initial_values = inits,
-  warmup = 500,
-  n_samples = 500,
-  # n_samples = 1500,
   chains = n_chains
 )
 
@@ -100,8 +96,6 @@ null <- macrodistancing_null(data, log_fraction_weekly_contacts_mean)
 m_null <- model(null$avg_daily_contacts_wide, null$sdlog)
 draws_null <- mcmc(
   m_null,
-  warmup = 500,
-  n_samples = 500,
   chains = 10
 )
 convergence(draws_null)
