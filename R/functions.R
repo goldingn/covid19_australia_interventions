@@ -4610,7 +4610,7 @@ fit_reff_model <- function(data, max_tries = 1, iterations_per_step = 2000) {
   # first pass at model fitting  
   draws <- mcmc(
     greta_model,
-    sampler = hmc(Lmin = 25, Lmax = 40),
+    sampler = hmc(Lmin = 25, Lmax = 30),
     chains = 10,
     n_samples = 2000,
     one_by_one = TRUE
