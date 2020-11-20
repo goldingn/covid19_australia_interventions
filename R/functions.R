@@ -674,7 +674,7 @@ holiday_dates <- function() {
                       "2020-04-13", "Easter Monday",
                       "2020-04-25", "ANZAC Day",
                       "2020-06-08", "Queen's Birthday",
-                      "2020-09-25", "Friday before AFL Grand Final",
+                      "2020-09-23", "Friday before AFL Grand Final",
                       "2020-11-03", "Melbourne Cup",
                       "2020-12-25", "Christmas Day",
                       "2020-12-26", "Boxing Day",
