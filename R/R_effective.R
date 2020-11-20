@@ -34,7 +34,7 @@ write_reff_sims(fitted_model, dir = "outputs/projection")
 plot_reff_checks(fitted_model)
 
 # do plots for main period
-reff_plotting(fitted_model, dir = "outputs/gam_mobility")
+reff_plotting(fitted_model, dir = "outputs")
 
 # and for projected part
 reff_plotting(fitted_model,
