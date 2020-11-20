@@ -6,13 +6,23 @@ source("R/functions.R")
 # informative priors for baseline contact parameters
 baseline_contact_params <- baseline_contact_parameters(gi_cdf)
 
+# data for plotting
+baseline_point <- tibble::tibble(
+  date = as.Date("2020-03-01"),
+  estimate = baseline_contact_params$mean_contacts[2],
+  sd = baseline_contact_params$se_contacts[2],
+  type = "Nowcast"
+) %>%
+  mutate(
+    lower = estimate - sd * 1.96,
+    upper = estimate + sd * 1.96
+  )
+
 # data, parameters, predictions, and likelihood definition for the model
 data <- macrodistancing_data()
 params <- macrodistancing_params(baseline_contact_params)
 predictions <- macrodistancing_model(data, params)
 out <- macrodistancing_likelihood(predictions, data)
-
-OC_t_state <- predictions$mean_daily_contacts
 
 # fit model
 set.seed(2020-05-30)
@@ -42,49 +52,59 @@ draws <- mcmc(
 # draws <- extra_samples(draws, 1000)
 convergence(draws)
 
-nsim <- coda::niter(draws) * coda::nchain(draws)
+fitted_model <- module(
+  model = m,
+  draws,
+  data,
+  params,
+  predictions,
+  out
+)
+
+# save fitted model
+saveRDS(fitted_model, "outputs/fitted_macro_model.RDS")
+# fitted_model <- readRDS("outputs/fitted_macro_model.RDS")
+
+# # make predictions using updated data
+# fitted_model$data <- data
+# fitted_model$predictions <- macrodistancing_model(fitted_model$data, fitted_model$params)
+
+nsim <- coda::niter(fitted_model$draws) * coda::nchain(fitted_model$draws)
 nsim <- min(10000, nsim)
 
 # check posterior calibration
-sdlog <- out$sdlog
-meanlog <- log(out$predictions) - (sdlog ^ 2) / 2
-contacts_ga <- discrete_lognormal(meanlog = meanlog, sdlog = sdlog, breaks = data$breaks)
-contacts_sim <- calculate(contacts_ga, values = draws, nsim = nsim)[[1]][, , 1]
+sdlog <- fitted_model$out$sdlog
+meanlog <- log(fitted_model$out$predictions) - (sdlog ^ 2) / 2
+contacts_ga <- discrete_lognormal(
+  meanlog = meanlog,
+  sdlog = sdlog,
+  breaks = fitted_model$data$breaks
+)
+contacts_sim <- calculate(contacts_ga, values = fitted_model$draws, nsim = nsim)[[1]][, , 1]
 bayesplot::ppc_ecdf_overlay(
-  data$contacts$contact_num,
+  fitted_model$data$contacts$contact_num,
   contacts_sim[1:1000, ],
   discrete = TRUE
 ) + 
   coord_cartesian(xlim = c(0, 300))
 
+
+
+OC_t_state <- fitted_model$predictions$mean_daily_contacts
+
 # get trend predictions
-pred_sim <- calculate(c(OC_t_state), values = draws, nsim = nsim)[[1]][, , 1]
+pred_sim <- calculate(c(OC_t_state), values = fitted_model$draws, nsim = nsim)[[1]][, , 1]
 quants <- t(apply(pred_sim, 2, quantile, c(0.05, 0.25, 0.75, 0.95)))
 colnames(quants) <- c("ci_90_lo", "ci_50_lo", "ci_50_hi", "ci_90_hi")
-
-baseline_point <- tibble::tibble(
-  date = as.Date("2020-03-01"),
-  estimate = baseline_contact_params$mean_contacts[2],
-  sd = baseline_contact_params$se_contacts[2],
-  type = "Nowcast"
-) %>%
-  mutate(
-    lower = estimate - sd * 1.96,
-    upper = estimate + sd * 1.96
-  )
 
 
 # fit a null-ish model (hierarchical but otherwise independent over
 # waves/states) to visualise the data values
 
-
-
-
-
-# compute weekend effect weights for null model, based on fitted weekend_weight
-log_fraction_weekly_contacts_mean <- predictions$log_fraction_weekly_contacts %>%
+# compute day of the week effects from full model to use in null model
+log_fraction_weekly_contacts_mean <- fitted_model$predictions$log_fraction_weekly_contacts %>%
   calculate(
-    values = draws,
+    values = fitted_model$draws,
     nsim = 500
   ) %>%
   magrittr::extract2(1) %>%
@@ -92,7 +112,7 @@ log_fraction_weekly_contacts_mean <- predictions$log_fraction_weekly_contacts %>
 
 
 # null_params <- macrodistancing_params(baseline_contact_params)
-null <- macrodistancing_null(data, log_fraction_weekly_contacts_mean)
+null <- macrodistancing_null(fitted_model$data, log_fraction_weekly_contacts_mean)
 m_null <- model(null$avg_daily_contacts_wide, null$sdlog)
 draws_null <- mcmc(
   m_null,
@@ -121,7 +141,7 @@ sry <- expand_grid(
 # Rescale it with this tweaking parameter to roughly match the durations
 
 # slim down dataframe to get independent estimates for surveys
-survey_points <- data$contacts %>%
+survey_points <- fitted_model$data$contacts %>%
   group_by(state, wave_date) %>%
   summarise(
     n = n(),
@@ -146,8 +166,8 @@ holiday_lines <- survey_points %>%
   filter(date < date_end & date > date_start)
 
 type <- 1
-states <- unique(data$location_change_trends$state)
-dates <- unique(data$location_change_trends$date)
+states <- unique(fitted_model$data$location_change_trends$state)
+dates <- unique(fitted_model$data$location_change_trends$date)
 n_states <- length(states)
 
 # mock up data object for plotting
@@ -229,8 +249,8 @@ p
 
 save_ggplot("macrodistancing_effect.png")
 
-# prepare outputs for plotting
-pred_trend <- data$location_change_trends %>%
+# predicted trends for ownstream modelling
+pred_trend <- fitted_model$data$location_change_trends %>%
   select(date, state) %>%
   # add predictions
   mutate(mean = colMeans(pred_sim)) %>%
