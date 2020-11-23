@@ -97,6 +97,33 @@ pred_sim <- calculate(c(OC_t_state), values = fitted_model$draws, nsim = nsim)[[
 quants <- t(apply(pred_sim, 2, quantile, c(0.05, 0.25, 0.75, 0.95)))
 colnames(quants) <- c("ci_90_lo", "ci_50_lo", "ci_50_hi", "ci_90_hi")
 
+# predicted trends for downstream modelling
+pred_trend <- fitted_model$data$location_change_trends %>%
+  select(date, state) %>%
+  # add predictions
+  mutate(mean = colMeans(pred_sim)) %>%
+  bind_cols(as_tibble(quants))
+
+saveRDS(pred_trend,
+        file = "outputs/macrodistancing_trends.RDS")
+
+# estimates at peak and at latest date
+pred_summary <- pred_trend %>%
+  group_by(state) %>%
+  summarise(peak = which.min(mean),
+            peak_estimate = mean[peak],
+            peak_low = ci_90_lo[peak],
+            peak_high = ci_90_hi[peak],
+            peak_date = date[peak],
+            latest = which.max(date),
+            latest_estimate = mean[latest],
+            latest_low = ci_90_lo[latest],
+            latest_high = ci_90_hi[latest],
+            latest_date = date[latest]) %>%
+  select(-peak, -latest)
+
+saveRDS(pred_summary,
+        file = "outputs/macrodistancing_trend_summary.RDS")
 
 # fit a null-ish model (hierarchical but otherwise independent over
 # waves/states) to visualise the data values
@@ -248,33 +275,3 @@ p <- plot_trend(pred_sim,
 p
 
 save_ggplot("macrodistancing_effect.png")
-
-# predicted trends for ownstream modelling
-pred_trend <- fitted_model$data$location_change_trends %>%
-  select(date, state) %>%
-  # add predictions
-  mutate(mean = colMeans(pred_sim)) %>%
-  bind_cols(as_tibble(quants))
-
-# save the model fit
-saveRDS(pred_trend,
-        file = "outputs/macrodistancing_trends.RDS")
-
-# estimates at peak and at latest date
-pred_summary <- pred_trend %>%
-  group_by(state) %>%
-  summarise(peak = which.min(mean),
-            peak_estimate = mean[peak],
-            peak_low = ci_90_lo[peak],
-            peak_high = ci_90_hi[peak],
-            peak_date = date[peak],
-            latest = which.max(date),
-            latest_estimate = mean[latest],
-            latest_low = ci_90_lo[latest],
-            latest_high = ci_90_hi[latest],
-            latest_date = date[latest]) %>%
-  select(-peak, -latest)
-
-saveRDS(pred_summary,
-        file = "outputs/macrodistancing_trend_summary.RDS")
-
