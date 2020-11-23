@@ -5553,7 +5553,7 @@ remove_doh_duplicates <- function(doh_surveys) {
     filter(!is.na(postcode) & postcode != -99 & wave >= 22) %>%
     group_by(wave, age, gender, postcode) %>%
     summarise(count = n()) %>%
-    filter(count > 5) %>%
+    filter(count > 3) %>%
     arrange(wave, postcode, gender, age)
   
   # print out the detected duplicates
