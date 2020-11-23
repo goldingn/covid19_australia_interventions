@@ -57,7 +57,7 @@ for (this_state in all_states) {
     facet_wrap(
       ~datastream,
       ncol = 3,
-      scales = "free_y"
+      scales = "free"
     ) +
     geom_ribbon(
       aes(
@@ -87,7 +87,11 @@ for (this_state in all_states) {
       xlim = c(as.Date("2020-03-01"), max(mobility_fitted$date))
     ) +
     scale_y_continuous(position = "right") +
-    scale_x_date(date_breaks = "2 months", date_labels = "%b") +
+    scale_x_date(
+      date_breaks = "2 months",
+      date_labels = "%b",
+      limits = range(mobility_fitted$date)
+    ) +
     xlab("") +
     ylab("") +
     ggtitle(
