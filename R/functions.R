@@ -3908,6 +3908,24 @@ gi_convolution <- function(cases, dates, states, gi_cdf, gi_bounds = c(0, 20)) {
   
 }
 
+# cases of spillover (import-local transmission) in during mandatory hotel quarantine
+hotel_quarantine_spillover_data <- function() {
+  tibble::tribble(
+    ~earliest_date, ~latest_date, ~state, ~infectee, ~information_source,
+    "2020-05-01", "2020-05-14", "VIC", "security guard (Rydges Hotel)",
+    "https://www.dhhs.vic.gov.au/tracking-coronavirus-victoria",
+    "2020-08-03", "2020-08-08", "NSW", "security guard (Sydney Harbour Marriott Hotel)",
+    "https://www.health.nsw.gov.au/news/Pages/20200818_01.aspx",
+    "2020-11-01", "2020-11-14", "SA", "security guard (Peppers Waymouth Hotel)",
+    "https://www.sahealth.sa.gov.au/wps/wcm/connect/public+content/sa+health+internet/about+us/news+and+media/all+media+releases/covid-19+update+15+november"
+  ) %>%
+    mutate_at(
+      c("earliest_date", "latest_date"),
+      as.Date
+    )
+    
+}
+
 
 # given a raw (unimputed) linelist, prepare all the data needed for modelling
 reff_model_data <- function(
@@ -4020,6 +4038,12 @@ reff_model_data <- function(
   import_valid <- is.finite(imported_infectiousness) & imported_infectiousness > 0
   valid_mat <- (local_valid | import_valid) & detectable
   
+  # data on quarantine spillovers (import-local infections) and imported cases
+  # since mandatory hotel quarantine was implemented hotel quarantine
+  n_hotel_spillovers <- nrow(hotel_quarantine_spillover_data())
+  hotel_quarantine_start_date <- max(quarantine_dates()$date)
+  n_hotel_cases <- sum(imported_cases[dates >= hotel_quarantine_start_date, ])
+  
   # return a named, nested list of these objects
   list(
     local = list(
@@ -4029,7 +4053,9 @@ reff_model_data <- function(
     ),
     imported = list(
       cases = imported_cases,
-      infectiousness = imported_infectiousness
+      infectiousness = imported_infectiousness,
+      total_hotel_cases = n_hotel_cases,
+      total_hotel_spillovers = n_hotel_spillovers
     ),
     detection_prob_mat = detection_prob_mat,
     valid_mat = valid_mat,
@@ -4081,6 +4107,12 @@ reff_model <- function(data) {
   log_q_raw <- -exponential(1, dim = 3)
   log_q <- cumsum(log_q_raw)
   log_Qt <- log_q[q_index]
+  
+  # add likelihood for hotel quarantine spillovers - assume Poisson since
+  # there's no reason to expect clustering with these rare events, and we'd
+  # never be able to determine the number infected in each incident anyway
+  expected_hotel_spillovers <- exp(log_q[3] + log(data$imported$total_hotel_cases))
+  distribution(data$imported$total_hotel_spillovers) <- poisson(expected_hotel_spillovers)
   
   # The change in R_t for locally-acquired cases due to social distancing
   # behaviour, modelled as a sum of household R_t and non-household R_t
