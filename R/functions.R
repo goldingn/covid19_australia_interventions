@@ -6520,10 +6520,12 @@ predict_mobility_trend <- function(
         intervention_effect = as.numeric(all_dates >= .$date)
       )
     ) %>%
-    pivot_wider(
-      names_from = intervention_id,
-      values_from = intervention_effect,
-      values_fill = list(intervention_effect = 0)
+    group_by(state, date) %>%
+    summarise(
+      intervention_stage = sum(intervention_effect)
+    ) %>%
+    mutate(
+      intervention_stage = factor(intervention_stage)
     ) %>%
     ungroup()
   
@@ -6551,13 +6553,7 @@ predict_mobility_trend <- function(
   m <- gam(trend ~
              s(date_num, k = 50) +
              holiday +
-             intervention_1 +
-             intervention_2 +
-             intervention_3 +
-             intervention_4 +
-             intervention_5 +
-             intervention_6 +
-             intervention_7 +
+             intervention_stage +
              dow,
            select = TRUE,
            gamma = 2,
