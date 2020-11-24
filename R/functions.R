@@ -6505,6 +6505,11 @@ predict_mobility_trend <- function(
       holiday = name
     )
   
+  school_holidays <- school_holiday_dates() %>%
+    mutate(
+      state = abbreviate_states(state)
+    )
+  
   # create intervention step-change covariates
   intervention_steps <- interventions() %>%
     mutate(
@@ -6522,16 +6527,20 @@ predict_mobility_trend <- function(
     ) %>%
     group_by(state, date) %>%
     summarise(
-      intervention_stage = sum(intervention_effect)
+      intervention_stage = sum(intervention_effect),
+      .groups = "drop"
     ) %>%
     mutate(
       intervention_stage = factor(intervention_stage)
-    ) %>%
-    ungroup()
+    )
   
   df <- mobility %>%
     left_join(
       public_holidays,
+      by = c("state", "date")
+    ) %>%
+    left_join(
+      school_holidays,
       by = c("state", "date")
     ) %>%
     left_join(
@@ -6541,6 +6550,7 @@ predict_mobility_trend <- function(
     mutate(
       holiday = replace_na(holiday, "none"),
       is_a_holiday = holiday != "none",
+      is_a_school_holiday = !is.na(school_holiday),
       holiday = factor(holiday),
       date_num = as.numeric(date - min_date),
       dow = lubridate::wday(date, label = TRUE),
@@ -6552,8 +6562,10 @@ predict_mobility_trend <- function(
   
   m <- gam(trend ~
              s(date_num, k = 50) +
-             holiday +
              intervention_stage +
+             is_a_holiday +
+             holiday +
+             is_a_school_holiday +
              dow,
            select = TRUE,
            gamma = 2,
@@ -6585,6 +6597,10 @@ predict_mobility_trend <- function(
       by = c("state", "date")
     ) %>%
     left_join(
+      school_holidays,
+      by = c("state", "date")
+    ) %>%
+    left_join(
       intervention_steps,
       by = c("state", "date")
     ) %>%
@@ -6596,6 +6612,7 @@ predict_mobility_trend <- function(
         TRUE ~ "none"
       ),
       is_a_holiday = holiday != "none",
+      is_a_school_holiday = !is.na(school_holiday),
       holiday = factor(holiday),
       date_num = as.numeric(date - min_date),
       # clamp the smooth part of the prediction at both ends
