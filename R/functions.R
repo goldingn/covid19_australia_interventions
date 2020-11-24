@@ -418,7 +418,7 @@ ideal_regions <- function() {
   )
 }
 
-interventions <- function(which = c("all", "national", "vic")) {
+interventions <- function(which = c("all", "national", "vic", "sa")) {
   
   which <- match.arg(which)
   
@@ -427,6 +427,11 @@ interventions <- function(which = c("all", "national", "vic")) {
     "2020-07-01", "VIC",
     "2020-07-08", "VIC",
     "2020-08-02", "VIC"
+  )
+  
+  sa_interventions <- tibble::tribble(
+    ~date, ~state,
+    "2020-11-19", "SA"
   )
   
   national_interventions <- expand_grid(
@@ -440,7 +445,12 @@ interventions <- function(which = c("all", "national", "vic")) {
       filter(state == "ACT") %>%
       mutate(state = "all"),
     vic = vic_interventions,
-    all = bind_rows(national_interventions, vic_interventions)
+    sa = sa_interventions,
+    all = bind_rows(
+      national_interventions,
+      vic_interventions,
+      sa_interventions
+    )
   )
   
   interventions %>%
