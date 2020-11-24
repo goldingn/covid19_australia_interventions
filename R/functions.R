@@ -6479,6 +6479,7 @@ gaussian_smooth <- function (values, sd = 1, ...) {
   middle <- round(mean(id))
   diff <- id - middle
   weights <- exp(-0.5 * (diff / sd) ^ 2)
+  weights <- weights / sum(weights)
   weighted_mean(values, weights, ...)
 }
 
@@ -6491,6 +6492,8 @@ predict_mobility_trend <- function(
   max_date = max(mobility$date)
 ) {
   
+  all_dates <- seq(min_date, max_date, by = 1)
+  
   min_data_date = min(mobility$date)
   max_data_date = max(mobility$date)
   
@@ -6502,9 +6505,35 @@ predict_mobility_trend <- function(
       holiday = name
     )
   
+  # create intervention step-change covariates
+  intervention_steps <- interventions() %>%
+    mutate(
+      intervention_id = paste0(
+        "intervention_",
+        match(date, unique(date))
+      )
+    ) %>%
+    group_by(intervention_id, state) %>%
+    do(
+      tibble(
+        date = all_dates,
+        intervention_effect = as.numeric(all_dates >= .$date)
+      )
+    ) %>%
+    pivot_wider(
+      names_from = intervention_id,
+      values_from = intervention_effect,
+      values_fill = list(intervention_effect = 0)
+    ) %>%
+    ungroup()
+  
   df <- mobility %>%
     left_join(
       public_holidays,
+      by = c("state", "date")
+    ) %>%
+    left_join(
+      intervention_steps,
       by = c("state", "date")
     ) %>%
     mutate(
@@ -6522,6 +6551,13 @@ predict_mobility_trend <- function(
   m <- gam(trend ~
              s(date_num, k = 50) +
              holiday +
+             intervention_1 +
+             intervention_2 +
+             intervention_3 +
+             intervention_4 +
+             intervention_5 +
+             intervention_6 +
+             intervention_7 +
              dow,
            select = TRUE,
            gamma = 2,
@@ -6543,13 +6579,17 @@ predict_mobility_trend <- function(
   pred_df <- expand_grid(
     state_long = unique(df$state_long),
     dow = unique(df$dow),
-    date = seq(min_date, max_date, by = 1),
+    date = all_dates,
   ) %>%
     mutate(
       state = abbreviate_states(state_long)
     ) %>% 
     left_join(
       public_holidays,
+      by = c("state", "date")
+    ) %>%
+    left_join(
+      intervention_steps,
       by = c("state", "date")
     ) %>%
     mutate(
@@ -6587,9 +6627,10 @@ predict_mobility_trend <- function(
       predicted_trend = slider::slide_dbl(
         predicted_trend,
         gaussian_smooth,
+        na.rm = TRUE,
         sd = 2.8,
         .before = 5,
-        .after = 5,
+        .after = 5
       )
     ) %>%
     ungroup() %>%
