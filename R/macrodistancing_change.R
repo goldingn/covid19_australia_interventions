@@ -235,42 +235,42 @@ p <- plot_trend(pred_sim,
     data = baseline_point,
     width = 0,
     colour = grey(0.5)
-  ) + 
-
-  # rug marks for holidays
-  geom_rug(
-    aes(date),
-    data = holiday_lines,
-    col = green,
-    size = 1,
-    length = unit(0.1, "npc"),
-    sides = "b",
-    inherit.aes = FALSE
-  ) +
-
-  # add survey results estimate
-  geom_point(
-    aes(
-      wave_date,
-      estimate,
-    ),
-    data = survey_points,
-    size = 4,
-    pch = "_"
-  ) +
-  geom_errorbar(
-    aes(
-      wave_date,
-      estimate,
-      ymin = lower,
-      ymax = upper,
-    ),
-    data = survey_points,
-    size = 4,
-    alpha = 0.2,
-    width = 0
-  )
+  ) #+ 
+# 
+#   # rug marks for holidays
+#   geom_rug(
+#     aes(date),
+#     data = holiday_lines,
+#     col = green,
+#     size = 1,
+#     length = unit(0.1, "npc"),
+#     sides = "b",
+#     inherit.aes = FALSE
+#   ) +
+# 
+#   # add survey results estimate
+#   geom_point(
+#     aes(
+#       wave_date,
+#       estimate,
+#     ),
+#     data = survey_points,
+#     size = 4,
+#     pch = "_"
+#   ) +
+#   geom_errorbar(
+#     aes(
+#       wave_date,
+#       estimate,
+#       ymin = lower,
+#       ymax = upper,
+#     ),
+#     data = survey_points,
+#     size = 4,
+#     alpha = 0.2,
+#     width = 0
+#   )
 
 p
 
-save_ggplot("macrodistancing_effect.png")
+save_ggplot("macrodistancing_effect.png", dir = "outputs/sa_lockdown_fully_reverted")

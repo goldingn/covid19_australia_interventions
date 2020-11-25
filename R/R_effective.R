@@ -24,21 +24,21 @@ update_past_cases()
 fitted_model <- fit_reff_model(data)
 
 # save the fitted model object
-saveRDS(fitted_model, "outputs/fitted_reff_model.RDS")
-# fitted_model <- readRDS("outputs/fitted_reff_model.RDS")
+saveRDS(fitted_model, "outputs/sa_lockdown_fully_reverted/fitted_reff_model.RDS")
+# fitted_model <- readRDS("outputs/sa_lockdown_fully_reverted/fitted_reff_model.RDS")
 
 # output Reff trajectory draws for Rob M
-write_reff_sims(fitted_model, dir = "outputs/projection")
+write_reff_sims(fitted_model, dir = "outputs/sa_lockdown_fully_reverted/projection")
 
 # visual checks of model fit
 plot_reff_checks(fitted_model)
 
 # do plots for main period
-reff_plotting(fitted_model, dir = "outputs")
+reff_plotting(fitted_model, dir = "outputs/sa_lockdown_fully_reverted")
 
 # and for projected part
 reff_plotting(fitted_model,
-              dir = "outputs/projection",
+              dir = "outputs/sa_lockdown_fully_reverted/projection",
               max_date = fitted_model$data$dates$latest_project,
               mobility_extrapolation_rectangle = FALSE,
               projection_date = fitted_model$data$dates$latest_mobility)
