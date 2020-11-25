@@ -4912,7 +4912,7 @@ load_vic <- function (file) {
     impute_linelist()
 }
 
-load_linelist <- function(date = NULL, use_vic = FALSE) {
+load_linelist <- function(date = NULL, use_vic = FALSE, use_sa = TRUE) {
   
   # load the latest NNDSS linelist (either the latest or specified file)
   linelist <- get_nndss_linelist(date = date)
@@ -4929,6 +4929,57 @@ load_linelist <- function(date = NULL, use_vic = FALSE) {
       filter(state != "VIC") %>%
       bind_rows(vic_linelist)
     
+  }
+  
+  if (use_sa) {
+    
+    # load partial linelist for parafield cluster
+    sa_linelist <- read_excel(
+      "~/not_synced/sa/sa_linelist_25Nov2020.xlsx",
+      col_types = c(
+        "text",
+        "date",
+        "date",
+        "date",
+        "text"
+      )) %>%
+      mutate(
+        date_onset = as.Date(symptom_onset),
+        date_detection = as.Date(specimen_collection),
+        date_confirmation = as.Date(isolation_date),
+        state = "SA",
+        postcode_of_acquisition = "8888",
+        postcode_of_residence = NA,
+        state_of_acquisition = ifelse(
+          import_status == "local",
+          "SA",
+          NA
+        ),
+        state_of_residence = NA,
+        report_delay = as.numeric(date_confirmation - date_onset),
+        date_linelist = as.Date("2020-11-25")
+      ) %>%
+      select(
+        date_onset,
+        date_detection,
+        date_confirmation,
+        state,
+        import_status,
+        postcode_of_acquisition
+      )
+   
+    # remove local cases from linelist on or after 14th and append SA data
+    linelist <- linelist %>%
+      filter(
+        !(state == "SA" &
+            import_status == "local" &
+            date_detection >= as.Date("2020-11-14")
+          )
+      ) %>%
+      bind_rows(
+        sa_linelist
+      )
+     
   }
   
   # flag whether each case is an interstate import
