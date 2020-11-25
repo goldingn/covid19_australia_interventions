@@ -6650,7 +6650,14 @@ predict_mobility_trend <- function(
       dow = lubridate::wday(date, label = TRUE),
       dow = as.character(dow)
     ) %>%
-    filter(!is.na(trend))
+    filter(!is.na(trend)) %>%
+    # add hacky SA lockdown
+    mutate(
+      sa_lockdown = case_when(
+        date >= as.Date("2020-11-19") & date <= as.Date("2020-11-21") ~ 1,
+        TRUE ~ 0
+      )
+    )
 
   library(mgcv)
   
@@ -6660,7 +6667,8 @@ predict_mobility_trend <- function(
              s(date_num, k = 50) +
              
              # step changes around intervention impositions
-             intervention_stage +
+             # intervention_stage +
+             sa_lockdown +
              
              # random effect on holidays (different for each holiday, but shrunk
              # to an average holiday effect which used to predict into future)
@@ -6724,7 +6732,14 @@ predict_mobility_trend <- function(
       # clamp the smooth part of the prediction at both ends
       date_num = pmax(date_num, min_data_date - min_date),
       date_num = pmin(date_num, max_data_date - min_date)
+    ) %>%
+    mutate(
+      sa_lockdown = case_when(
+        date >= as.Date("2020-11-19") & date <= as.Date("2020-11-21") ~ 1,
+        TRUE ~ 0
+      )
     )
+  
 
   # predict trends under these conditions, and average over day of the week
   pred_df <- pred_df %>%
