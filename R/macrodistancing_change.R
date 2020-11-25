@@ -88,8 +88,6 @@ bayesplot::ppc_ecdf_overlay(
 ) + 
   coord_cartesian(xlim = c(0, 300))
 
-
-
 OC_t_state <- fitted_model$predictions$mean_daily_contacts
 
 # get trend predictions
@@ -213,6 +211,7 @@ p <- plot_trend(pred_sim,
                 data = plot_data,
                 multistate = TRUE,
                 base_colour = purple,
+                max_date = max(data$contacts$date),
                 ylim = c(0, 15),
                 hline_at = NULL) + 
   ggtitle(label = "Macro-distancing trend",
@@ -237,7 +236,7 @@ p <- plot_trend(pred_sim,
     width = 0,
     colour = grey(0.5)
   ) + 
-  
+
   # rug marks for holidays
   geom_rug(
     aes(date),
@@ -248,7 +247,7 @@ p <- plot_trend(pred_sim,
     sides = "b",
     inherit.aes = FALSE
   ) +
-  
+
   # add survey results estimate
   geom_point(
     aes(
