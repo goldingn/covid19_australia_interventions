@@ -7,6 +7,8 @@ source("R/functions.R")
 # sync up the case data
 sync_nndss()
 
+gi_cdf <- taslim_ali_cdf()
+
 # prepare data for Reff modelling
 data <- reff_model_data()
 
@@ -24,21 +26,21 @@ update_past_cases()
 fitted_model <- fit_reff_model(data)
 
 # save the fitted model object
-saveRDS(fitted_model, "outputs/sa_lockdown_fully_reverted/fitted_reff_model.RDS")
-# fitted_model <- readRDS("outputs/sa_lockdown_fully_reverted/fitted_reff_model.RDS")
+saveRDS(fitted_model, "outputs/try_taslim_ali/fitted_reff_model.RDS")
+# fitted_model <- readRDS("outputs/try_taslim_ali/fitted_reff_model.RDS")
 
 # output Reff trajectory draws for Rob M
-write_reff_sims(fitted_model, dir = "outputs/sa_lockdown_fully_reverted/projection")
+write_reff_sims(fitted_model, dir = "outputs/try_taslim_ali/projection")
 
 # visual checks of model fit
 plot_reff_checks(fitted_model)
 
 # do plots for main period
-reff_plotting(fitted_model, dir = "outputs/sa_lockdown_fully_reverted")
+reff_plotting(fitted_model, dir = "outputs/try_taslim_ali")
 
 # and for projected part
 reff_plotting(fitted_model,
-              dir = "outputs/sa_lockdown_fully_reverted/projection",
+              dir = "outputs/try_taslim_ali/projection",
               max_date = fitted_model$data$dates$latest_project,
               mobility_extrapolation_rectangle = FALSE,
               projection_date = fitted_model$data$dates$latest_mobility)
