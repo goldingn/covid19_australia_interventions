@@ -3813,6 +3813,49 @@ get_vic_linelist <- function(file) {
   
 }
 
+get_sa_linelist <- function(file = "~/not_synced/sa/sa_linelist_25Nov2020.xlsx") {
+  
+  file %>%
+    read_excel(
+      col_types = c(
+        "text",
+        "date",
+        "date",
+        "date",
+        "text"
+      )
+    ) %>%
+    mutate(
+      date_onset = as.Date(symptom_onset),
+      date_detection = as.Date(specimen_collection),
+      date_confirmation = as.Date(isolation_date),
+      state = "SA",
+      postcode_of_acquisition = "8888",
+      postcode_of_residence = NA,
+      state_of_acquisition = ifelse(
+        import_status == "local",
+        "SA",
+        NA
+      ),
+      state_of_residence = NA,
+      report_delay = as.numeric(date_confirmation - date_onset),
+      date_linelist = as.Date("2020-11-25")
+    ) %>%
+    select(
+      date_onset,
+      date_detection,
+      date_confirmation,
+      state,
+      import_status,
+      postcode_of_acquisition,
+      postcode_of_residence,
+      state_of_acquisition,
+      state_of_residence,
+      report_delay,
+      date_linelist
+    )
+}
+
 # given a date-by-state matrix of case counts by date of infection,
 # corresponding vectors of dates and states, and a function got the CDF of the
 # continous version of a generation interval distribution, adjust the GI
@@ -4933,41 +4976,6 @@ load_linelist <- function(date = NULL, use_vic = FALSE, use_sa = TRUE) {
   
   if (use_sa) {
     
-    # load partial linelist for parafield cluster
-    sa_linelist <- read_excel(
-      "~/not_synced/sa/sa_linelist_25Nov2020.xlsx",
-      col_types = c(
-        "text",
-        "date",
-        "date",
-        "date",
-        "text"
-      )) %>%
-      mutate(
-        date_onset = as.Date(symptom_onset),
-        date_detection = as.Date(specimen_collection),
-        date_confirmation = as.Date(isolation_date),
-        state = "SA",
-        postcode_of_acquisition = "8888",
-        postcode_of_residence = NA,
-        state_of_acquisition = ifelse(
-          import_status == "local",
-          "SA",
-          NA
-        ),
-        state_of_residence = NA,
-        report_delay = as.numeric(date_confirmation - date_onset),
-        date_linelist = as.Date("2020-11-25")
-      ) %>%
-      select(
-        date_onset,
-        date_detection,
-        date_confirmation,
-        state,
-        import_status,
-        postcode_of_acquisition
-      )
-   
     # remove local cases from linelist on or after 14th and append SA data
     linelist <- linelist %>%
       filter(
@@ -4976,8 +4984,9 @@ load_linelist <- function(date = NULL, use_vic = FALSE, use_sa = TRUE) {
             date_detection >= as.Date("2020-11-14")
           )
       ) %>%
+      # replace with partial linelist for parafield cluster
       bind_rows(
-        sa_linelist
+        get_sa_linelist()
       )
      
   }
