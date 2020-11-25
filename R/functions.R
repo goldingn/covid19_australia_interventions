@@ -2360,15 +2360,14 @@ tf_log_imultilogit <- function(x) {
 # contact rate
 macrodistancing_model <- function(data, parameters) {
   
-  # format data into a date/state by location greta array of proportional changes
-  location_proportion_changes <- data$location_change_trends %>%
-    # convert from a ratio to proportion change
+  # format data into a date/state by location greta array of log ratios of
+  # mobility on baseline
+  log_location_change <- data$location_change_trends %>%
     mutate_at(
       vars(public, home, retail, transit, work),
-      ~ (. - 1)
+      log
     ) %>%
-    # flip percentage change for at home (regression coefficients are forced to
-    # be positive)
+    # flip log ratio for at home (regression coefficients are all positive)
     mutate(home = -home) %>%
     # turn into a matrix
     select(-state, -date) %>%
@@ -2376,14 +2375,8 @@ macrodistancing_model <- function(data, parameters) {
     # and into a greta array
     as_data()
   
-  # expected percentage change in contacts
-  proportion_change_contacts <- location_proportion_changes %*% parameters$mobility_coefs
-  
-  # # fraction of weekly contacts that are on weekends - as a function of change in numbers of contacts
-  # p_weekend <- ilogit(parameters$weekend_intercept + parameters$weekend_coef * proportion_change_contacts)
-  # 
-  # log of change in ratio of contacts compared to baseline
-  log_change_contacts <- log1p(proportion_change_contacts)
+  # expected log change in contacts
+  log_change_contacts <- log_location_change %*% parameters$mobility_coefs
   
   # average daily number of contacts
   log_mean_daily_contacts <- log(parameters$OC_0) + log_change_contacts
