@@ -6,6 +6,7 @@ mobility <- all_mobility() %>%
   
 saveRDS(mobility, file = "outputs/cached_mobility.RDS")
 
+n_weeks_ahead <- 6
 first_date <- min(mobility$date)
 last_date <- max(mobility$date)
 
@@ -25,7 +26,7 @@ mobility_fitted <- mobility %>%
     predict_mobility_trend(
       .,
       min_date = first_date,
-      max_date = last_date
+      max_date = last_date + 7 * n_weeks_ahead
     )
   ) %>%
   ungroup()
@@ -33,7 +34,7 @@ mobility_fitted <- mobility %>%
 all_states <- na.omit(unique(mobility_fitted$state_long))
 
 for (this_state in all_states) {
-  
+
   mobility_fitted %>%
     filter(state_long == this_state) %>%
     ggplot() +
@@ -84,7 +85,7 @@ for (this_state in all_states) {
     #   size = 1
     # ) +
     coord_cartesian(
-      xlim = c(as.Date("2020-03-01"), max(mobility_fitted$date))
+      xlim = c(as.Date("2020-03-01"), last_date)
     ) +
     scale_y_continuous(position = "right") +
     scale_x_date(

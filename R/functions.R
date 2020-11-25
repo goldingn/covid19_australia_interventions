@@ -6602,12 +6602,24 @@ predict_mobility_trend <- function(
   library(mgcv)
   
   m <- gam(trend ~
+             
+             # smooth variations in mobility
              s(date_num, k = 50) +
+             
+             # step changes around intervention impositions
              intervention_stage +
+             
+             # random effect on holidays (different for each holiday, but shrunk
+             # to an average holiday effect which used to predict into future)
              is_a_holiday +
-             holiday +
+             s(holiday, bs = "re") +
+             
+             # constant effect for school holidays
              is_a_school_holiday +
+             
+             # day of the week effect
              dow,
+           
            select = TRUE,
            gamma = 2,
            data = df)
@@ -6647,14 +6659,14 @@ predict_mobility_trend <- function(
     ) %>%
     mutate(
       holiday = replace_na(holiday, "none"),
+      is_a_holiday = holiday != "none",
       # remove any named holidays not in the training data
       holiday = case_when(
         holiday %in% unique(df$holiday) ~ holiday,
         TRUE ~ "none"
       ),
-      is_a_holiday = holiday != "none",
-      is_a_school_holiday = !is.na(school_holiday),
       holiday = factor(holiday),
+      is_a_school_holiday = !is.na(school_holiday),
       date_num = as.numeric(date - min_date),
       # clamp the smooth part of the prediction at both ends
       date_num = pmax(date_num, min_data_date - min_date),
