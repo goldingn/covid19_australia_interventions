@@ -79,13 +79,13 @@ for (this_state in all_states) {
       size = 0.2,
       col = "purple"
     ) +
-    # # predicted trend
-    # geom_line(
-    #   aes(date, predicted_trend),
-    #   size = 1
-    # ) +
+    # predicted trend
+    geom_line(
+      aes(date, predicted_trend),
+      size = 1
+    ) +
     coord_cartesian(
-      xlim = c(as.Date("2020-03-01"), last_date)
+      xlim = c(as.Date("2020-03-01"), last_date + n_weeks_ahead * 7)
     ) +
     scale_y_continuous(position = "right") +
     scale_x_date(
