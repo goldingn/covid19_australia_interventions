@@ -6546,6 +6546,13 @@ predict_mobility_trend <- function(
   
   # create intervention step-change covariates
   intervention_steps <- interventions() %>%
+    # add event for SA ending lockdown, to enable effect to be reversed
+    bind_rows(
+      tibble(
+        date = as.Date("2020-11-22"),
+        state = "SA"
+      )
+    ) %>%
     mutate(
       intervention_id = paste0(
         "intervention_",
