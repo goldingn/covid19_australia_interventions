@@ -5,6 +5,7 @@ mobility <- all_mobility() %>%
   append_google_data()
   
 saveRDS(mobility, file = "outputs/cached_mobility.RDS")
+# mobility <- readRDS("outputs/cached_mobility.RDS")
 
 n_weeks_ahead <- 6
 first_date <- min(mobility$date)
