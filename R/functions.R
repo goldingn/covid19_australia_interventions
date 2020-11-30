@@ -3853,6 +3853,9 @@ get_sa_linelist <- function(file = "~/not_synced/sa/sa_linelist_25Nov2020.xlsx")
       state_of_residence,
       report_delay,
       date_linelist
+    ) %>%
+    filter(
+      import_status == "local"
     )
 }
 
@@ -4981,7 +4984,8 @@ load_linelist <- function(date = NULL, use_vic = FALSE, use_sa = TRUE) {
       filter(
         !(state == "SA" &
             import_status == "local" &
-            date_detection >= as.Date("2020-11-14")
+            date_detection >= as.Date("2020-11-14") & 
+            date_detection < as.Date("2020-11-25")
           )
       ) %>%
       # replace with partial linelist for parafield cluster
