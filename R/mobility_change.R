@@ -138,10 +138,8 @@ mobility_fitted %>%
   saveRDS("outputs/google_change_trends.RDS")
 
 # output 3-column plot
-# run hierarchically on LGA-level data
-
-target_datastreams <- c("Google: time at parks",
-                        "Apple: directions for driving",
+target_datastreams <- c("Google: time at workplaces",
+                        "Google: time at retail and recreation",
                         "Google: time at transit stations")
 
 mobility_fitted %>%
@@ -219,7 +217,7 @@ mobility_fitted %>%
   theme(legend.position = "none",
         strip.background = element_blank(),
         axis.text.y = element_text(size = 8),
-        strip.text.x = element_text(size = 14),
+        strip.text.x = element_text(size = 12),
         strip.text.y = element_text(size = 18),
         plot.title = element_text(size = 20, face = "plain"),
         panel.border = element_rect(colour = grey(0.4), fill = NA),
