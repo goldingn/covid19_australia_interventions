@@ -4145,22 +4145,58 @@ reff_model <- function(data) {
   
   kernel_L <- rational_quadratic(
     lengthscales = lognormal(3, 1),
-    variance = normal(0, 0.5, truncation = c(0, Inf)) ^ 2,
+    variance = 1,
     alpha = lognormal(3, 1)
   )
   
-  epsilon_L <- epsilon_gp(
-    date_nums = data$dates$date_nums,
-    n_states = data$n_states,
+  # population distribution over individual transmission rates
+  
+  # sigma and mu parameters of the marginally-lognormal distribution over
+  # individual transmission rates in the whole population (mean of the lognormal
+  # is Reff 1)
+  sigma_star <- normal(0, 0.5, truncation = c(0, Inf))
+  sigma_star_2 <- sigma_star ^ 2
+  mu_star <- log_R_eff_loc_1 - sigma_star_2 / 2
+  
+  # variance in individual transmission rates over the whole population
+  # (variance of a lognormal distribution)
+  V_star <- (exp(sigma_star_2) - 1) * exp(2 * mu_star + sigma_star_2)
+  
+  # sample distribution over individual transmission rates
+  
+  # variance of individual transmission rates among active cases, considered as a
+  # sample of the population
+  M <- data$local$cases_infectious
+  M[] <- pmax(1, M)
+  M <- rbind(M, matrix(1, data$n_date_nums - data$n_dates, data$n_states))
+  sample_variance <- V_star / M
+  
+  # mu and sigma parameters of the marginally-lognormal distribution over
+  # individual transmission rates among active cases
+  R_eff_loc_1_sq <- exp(log_R_eff_loc_1) ^ 2
+  mu <- log(R_eff_loc_1_sq / sqrt(sample_variance + R_eff_loc_1_sq))
+  sigma_2 <- log1p(sample_variance / (mu ^ 2))
+  sigma <- sqrt(sigma_2)
+  
+  # whitened representation of the GP, with fixed marginal variance (sigma_2)
+  v_raw <- normal(0, 1, dim = c(data$n_inducing, data$n_states))
+  v <- v_raw * sigma[data$dates$inducing_date_nums, ]
+  
+  # temporally-correlated sigma parameter of the marginally-lognormal distribution
+  # over *the mean* of individual transmission rates across current active cases
+  epsilon_L <- multi_gp(
+    x = data$dates$date_nums,
+    v = v,
     kernel = kernel_L,
-    inducing_date_nums = data$dates$inducing_date_nums
+    inducing = data$dates$inducing_date_nums,
+    tol = 1e-06
   )
   
   # work out which elements to exclude (because there were no infectious people)
   valid <- which(data$valid_mat, arr.ind = TRUE)
   
   # log Reff for locals and imports
-  log_R_eff_loc <- log_R_eff_loc_1 + epsilon_L
+  log_R_eff_loc <- mu + epsilon_L
   
   log_R_eff_imp <- sweep(
     zeros(data$n_date_nums, data$n_states),
