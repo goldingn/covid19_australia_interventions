@@ -4035,6 +4035,11 @@ reff_model_data <- function(
     gi_cdf = gi_cdf
   )
   
+  # tabulate the number of active (at all infectious) local cases
+  active_convolution <- time_difference_matrix(n_dates)
+  active_convolution <- active_convolution >= 0 & active_convolution <= 21
+  local_active_cases <- active_convolution %*% local_cases_infectious_corrected
+  
   # elements to exclude due to a lack of infectiousness
   local_valid <- is.finite(local_infectiousness) & local_infectiousness > 0
   import_valid <- is.finite(imported_infectiousness) & imported_infectiousness > 0
@@ -4051,7 +4056,8 @@ reff_model_data <- function(
     local = list(
       cases = local_cases,
       cases_infectious = local_cases_infectious,
-      infectiousness = local_infectiousness
+      infectiousness = local_infectiousness,
+      cases_active = local_active_cases
     ),
     imported = list(
       cases = imported_cases,
@@ -4166,7 +4172,7 @@ reff_model <- function(data) {
   
   # variance of individual transmission rates among active cases, considered as a
   # sample of the population
-  M <- data$local$cases_infectious
+  M <- data$local$cases_active
   M[] <- pmax(1, M)
   M <- rbind(M, matrix(1, data$n_date_nums - data$n_dates, data$n_states))
   sample_variance <- V_star / M
