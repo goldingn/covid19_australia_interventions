@@ -4184,9 +4184,9 @@ reff_model <- function(data) {
   
   # mu and sigma parameters of the marginally-lognormal distribution over
   # individual transmission rates among active cases
-  R_eff_loc_1_sq <- exp(log_R_eff_loc_1) ^ 2
+  R_eff_loc_1_sq <- exp(2 * log_R_eff_loc_1)
   mu <- log(R_eff_loc_1_sq / sqrt(sample_variance + R_eff_loc_1_sq))
-  sigma_2 <- log1p(sample_variance / (mu ^ 2))
+  sigma_2 <- log1p(sample_variance / R_eff_loc_1_sq)
   sigma <- sqrt(sigma_2)
   
   # whitened representation of the GP, with fixed marginal variance (sigma_2)
