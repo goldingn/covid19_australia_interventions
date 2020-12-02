@@ -4169,27 +4169,29 @@ reff_model <- function(data) {
   sigma_star_2 <- sigma_star ^ 2
   mu_star <- log_R_eff_loc_1 - sigma_star_2 / 2
   
-  # variance in individual transmission rates over the whole population
+  # variance in individual transmission rates over the whole population 
   # (variance of a lognormal distribution)
   V_star <- (exp(sigma_star_2) - 1) * exp(2 * mu_star + sigma_star_2)
   
   # sample distribution over individual transmission rates
   
-  # variance of individual transmission rates among active cases, considered as a
-  # sample of the population
+  # variance in the *mean* of a sample of M individual transmission rates (i.e.
+  # the active cases) assuming they are independently drawn from the overall
+  # population, which has population variance V_star
   M <- data$local$cases_active
   M[] <- pmax(1, M)
   M <- rbind(M, matrix(1, data$n_date_nums - data$n_dates, data$n_states))
   sample_variance <- V_star / M
   
-  # mu and sigma parameters of the marginally-lognormal distribution over
-  # individual transmission rates among active cases
+  # mean and variance of a Gaussian prior over the log- *sample mean* of transmission
+  # potential, where the sample is active cases (i.e. the sample mean is Reff 12)
   R_eff_loc_1_sq <- exp(2 * log_R_eff_loc_1)
-  mu <- log(R_eff_loc_1_sq / sqrt(sample_variance + R_eff_loc_1_sq))
+  mu_prior <- log(R_eff_loc_1_sq / sqrt(sample_variance + R_eff_loc_1_sq))
   sigma_2 <- log1p(sample_variance / R_eff_loc_1_sq)
   sigma <- sqrt(sigma_2)
   
-  # whitened representation of the GP, with fixed marginal variance (sigma_2)
+  # whitened representation of the decentered GP, with prior marginal variance
+  # sigma_2
   v_raw <- normal(0, 1, dim = c(data$n_inducing, data$n_states))
   v <- v_raw * sigma[data$dates$inducing_date_nums, ]
   
@@ -4202,13 +4204,11 @@ reff_model <- function(data) {
     inducing = data$dates$inducing_date_nums,
     tol = 1e-06
   )
-  
-  # work out which elements to exclude (because there were no infectious people)
-  valid <- which(data$valid_mat, arr.ind = TRUE)
-  
-  # log Reff for locals and imports
-  log_R_eff_loc <- mu + epsilon_L
-  
+
+  # add the prior mean back on to re-centre the posterior  
+  log_R_eff_loc <- mu_prior + epsilon_L
+
+  # expand out the Reff for locals
   log_R_eff_imp <- sweep(
     zeros(data$n_date_nums, data$n_states),
     1,
@@ -4218,6 +4218,9 @@ reff_model <- function(data) {
   
   R_eff_loc_12 <- exp(log_R_eff_loc)
   R_eff_imp_12 <- exp(log_R_eff_imp)
+  
+  # work out which elements to exclude (because there were no infectious people)
+  valid <- which(data$valid_mat, arr.ind = TRUE)
   
   # combine everything as vectors, excluding invalid datapoints (remove invalid
   # elements here, otherwise it causes a gradient issue)
