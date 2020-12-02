@@ -34,11 +34,11 @@ write_reff_sims(fitted_model, dir = "outputs/projection")
 plot_reff_checks(fitted_model)
 
 # do plots for main period
-reff_plotting(fitted_model, dir = "outputs/quarantine_spillover")
+reff_plotting(fitted_model, dir = "outputs")
 
 # and for projected part
 reff_plotting(fitted_model,
-              dir = "outputs/quarantine_spillover/projection",
+              dir = "outputs/projection",
               max_date = fitted_model$data$dates$latest_project,
               mobility_extrapolation_rectangle = FALSE,
               projection_date = fitted_model$data$dates$latest_mobility)

@@ -4004,7 +4004,7 @@ reff_model_data <- function(
       region_type = "state",
       case_type = "local"
     )
-  
+
   # those imported (only considered infectious, but with a different Reff)
   imported_cases <- linelist %>%
     infections_by_region(
