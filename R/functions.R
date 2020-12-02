@@ -4148,11 +4148,16 @@ reff_model <- function(data) {
   # temporally correlated errors in R_eff for local cases - representing all the
   # stochastic transmission dynamics in the community, such as outbreaks in
   # communities with higher or lower tranmission rates
+  # fixing the kernel variance at 1, and introducing the time-varying variance in v
+  # kernel_L <- rational_quadratic(
+  #   lengthscales = lognormal(3, 1),
+  #   variance = 1,
+  #   alpha = lognormal(3, 1)
+  # )
   
-  kernel_L <- rational_quadratic(
+  kernel_L <- rbf(
     lengthscales = lognormal(3, 1),
-    variance = 1,
-    alpha = lognormal(3, 1)
+    variance = 1
   )
   
   # population distribution over individual transmission rates
