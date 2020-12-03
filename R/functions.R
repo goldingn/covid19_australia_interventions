@@ -4155,7 +4155,8 @@ reff_model <- function(data) {
   )
   
   # hierarchical (marginal) prior sd on log(Reff12) by state 
-  sigma_state <- normal(0, 0.5, truncation = c(0, Inf), dim = data$n_states)
+  sigma_state <- normal(0, 0.5, truncation = c(0, Inf))
+  sigma_state <- sigma_state * ones(data$n_states)
 
   # hierarchical prior mean on log(Reff12) by state
   mu_prior <- sweep(
