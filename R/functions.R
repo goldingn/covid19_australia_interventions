@@ -4136,7 +4136,6 @@ reff_model <- function(data) {
   
   # multiply by the surveillance effect
   R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_reff_local_reduction
-  
   log_R_eff_loc_1 <- log(R_eff_loc_1)
   
   # extract R0 from this model and estimate R_t component due to quarantine for
@@ -4149,60 +4148,30 @@ reff_model <- function(data) {
   # stochastic transmission dynamics in the community, such as outbreaks in
   # communities with higher or lower tranmission rates
   # fixing the kernel variance at 1, and introducing the time-varying variance in v
-  # kernel_L <- rational_quadratic(
-  #   lengthscales = lognormal(3, 1),
-  #   variance = 1,
-  #   alpha = lognormal(3, 1)
-  # )
-  
-  kernel_L <- rbf(
+  kernel_L <- rational_quadratic(
     lengthscales = lognormal(3, 1),
-    variance = 1
+    variance = 1,
+    alpha = lognormal(3, 1)
   )
   
-  # population distribution over individual transmission rates
-  
-  # sigma and mu parameters of the marginally-lognormal distribution over
-  # individual transmission rates in the whole population (mean of the lognormal
-  # is Reff 1)
-  sigma_star <- normal(0, 0.5, truncation = c(0, Inf))
-  sigma_star_2 <- sigma_star ^ 2
-  mu_star <- log_R_eff_loc_1 - sigma_star_2 / 2
-  
-  # variance in individual transmission rates over the whole population 
-  # (variance of a lognormal distribution)
-  V_star <- (exp(sigma_star_2) - 1) * exp(2 * mu_star + sigma_star_2)
-  
-  # sample distribution over individual transmission rates
-  
-  # variance in the *mean* of a sample of M individual transmission rates (i.e.
-  # the active cases) assuming they are independently drawn from the overall
-  # population, which has population variance V_star
-  M <- data$local$cases_active
-  M[] <- pmax(1, M)
-  M <- rbind(M, matrix(1, data$n_date_nums - data$n_dates, data$n_states))
-  sample_variance <- V_star / M
-  
-  # mean and variance of a Gaussian prior over the log- *sample mean* of transmission
-  # potential, where the sample is active cases (i.e. the sample mean is Reff 12)
-  R_eff_loc_1_sq <- exp(2 * log_R_eff_loc_1)
-  mu_prior <- log(R_eff_loc_1_sq / sqrt(sample_variance + R_eff_loc_1_sq))
-  sigma_2 <- log1p(sample_variance / R_eff_loc_1_sq)
-  sigma <- sqrt(sigma_2)
-  
-  # whitened representation of the decentered GP, with prior marginal variance
-  # sigma_2
-  v_raw <- normal(0, 1, dim = c(data$n_inducing, data$n_states))
-  v <- v_raw * sigma[data$dates$inducing_date_nums, ]
-  
-  # temporally-correlated sigma parameter of the marginally-lognormal distribution
-  # over *the mean* of individual transmission rates across current active cases
-  epsilon_L <- multi_gp(
-    x = data$dates$date_nums,
-    v = v,
-    kernel = kernel_L,
-    inducing = data$dates$inducing_date_nums,
-    tol = 1e-06
+  # hierarchical (marginal) prior sd on log(Reff12) by state 
+  sigma_state <- normal(0, 0.5, truncation = c(0, Inf), dim = data$n_states)
+
+  # hierarchical prior mean on log(Reff12) by state
+  mu_prior <- sweep(
+    log_R_eff_loc_1,
+    2,
+    sigma_state ^ 2,
+    FUN = "-"
+  ) 
+
+  # de-centred temporally-correlated log Reff12 GP prior
+  epsilon_L <- epsilon_gp(
+    date_nums = data$dates$date_nums,
+    n_states = data$n_states,
+    inducing_date_nums = data$dates$inducing_date_nums,
+    sigma_state = sigma_state,
+    kernel = kernel_L
   )
 
   # add the prior mean back on to re-centre the posterior  
