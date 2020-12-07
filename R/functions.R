@@ -3330,9 +3330,13 @@ microdistancing_data <- function(dates = NULL) {
   # rate
   distancing <- readRDS("outputs/social_distancing_latent.RDS")
   
-  # use these dates if no others are specified
+  # use dates from start of distancing to present if no others are specified
   if (is.null(dates)) {
-    dates <- distancing$date
+    dates <- seq(
+      min(distancing$date),
+      Sys.Date(),
+      by = 1
+    )
   }
   
   survey <- hygiene_data() %>%
@@ -3357,7 +3361,13 @@ microdistancing_data <- function(dates = NULL) {
         state = unique(survey$state)
       )
     ) %>%
-    replace_na(list(distancing = 0)) %>%
+    mutate(
+      distancing = case_when(
+        is.na(distancing) & date < min(dates) ~ 0,
+        is.na(distancing) & date >= min(dates) ~ 1,
+        TRUE ~ distancing
+      )
+    ) %>%
     mutate(
       state_id = match(state, unique(state)),
       time = as.numeric(date - interventions("national")$date[3]),
