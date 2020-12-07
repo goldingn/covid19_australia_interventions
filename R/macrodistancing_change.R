@@ -190,6 +190,15 @@ holiday_lines <- survey_points %>%
   ) %>%
   filter(date < date_end & date > date_start)
 
+holiday_lines <- holiday_dates() %>%
+  mutate(
+    state = abbreviate_states(state)
+  ) %>%
+  filter(
+    date <= max(data$contacts$date) &
+      date >= as.Date("2020-03-01")
+  )
+
 type <- 1
 states <- unique(fitted_model$data$location_change_trends$state)
 dates <- unique(fitted_model$data$location_change_trends$date)
@@ -212,7 +221,7 @@ p <- plot_trend(pred_sim,
                 multistate = TRUE,
                 base_colour = purple,
                 max_date = max(data$contacts$date),
-                ylim = c(0, 15),
+                ylim = c(0, 20),
                 hline_at = NULL) + 
   ggtitle(label = "Macro-distancing trend",
           subtitle = "Rate of non-household contacts") +
@@ -243,7 +252,7 @@ p <- plot_trend(pred_sim,
     data = holiday_lines,
     col = green,
     size = 1,
-    length = unit(0.1, "npc"),
+    length = unit(0.05, "npc"),
     sides = "b",
     inherit.aes = FALSE
   ) +
