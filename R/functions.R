@@ -4138,29 +4138,24 @@ reff_model <- function(data) {
   log_R_eff_imp_1 <- log_R0 + log_Qt
   R_eff_imp_1 <- exp(log_R_eff_imp_1)
   
+  # hierarchical (marginal) prior sd on log(Reff12) by state 
+  sigma <- normal(0, 0.5, truncation = c(0, Inf))
+  sigma_state <- sigma * ones(data$n_states)
+  var <- sigma ^ 2
+
+  # hierarchical prior mean on log(Reff12) by state
+  mu_prior <- log_R_eff_loc_1 - var
+
   # temporally correlated errors in R_eff for local cases - representing all the
   # stochastic transmission dynamics in the community, such as outbreaks in
   # communities with higher or lower tranmission rates
-  # fixing the kernel variance at 1, and introducing the time-varying variance in v
+  # fixing the kernel variance at 1, and introducing the variance in v
   kernel_L <- rational_quadratic(
     lengthscales = lognormal(3, 1),
-    # variance = normal(0, 0.5, truncation = c(0, Inf)) ^ 2,
     variance = 1,
     alpha = lognormal(3, 1)
   )
   
-  # hierarchical (marginal) prior sd on log(Reff12) by state 
-  sigma_state <- normal(0, 0.5, truncation = c(0, Inf))
-  sigma_state <- sigma_state * ones(data$n_states)
-
-  # hierarchical prior mean on log(Reff12) by state
-  mu_prior <- sweep(
-    log_R_eff_loc_1,
-    2,
-    sigma_state ^ 2,
-    FUN = "-"
-  ) 
-
   # de-centred temporally-correlated log Reff12 GP prior
   epsilon_L <- epsilon_gp(
     date_nums = data$dates$date_nums,
