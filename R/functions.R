@@ -4034,12 +4034,7 @@ reff_model_data <- function(
     states = states,
     gi_cdf = gi_cdf
   )
-  
-  # tabulate the number of active (at all infectious) local cases
-  active_convolution <- time_difference_matrix(n_dates)
-  active_convolution <- active_convolution >= 0 & active_convolution <= 21
-  local_active_cases <- active_convolution %*% local_cases_infectious_corrected
-  
+
   # elements to exclude due to a lack of infectiousness
   local_valid <- is.finite(local_infectiousness) & local_infectiousness > 0
   import_valid <- is.finite(imported_infectiousness) & imported_infectiousness > 0
@@ -4056,8 +4051,7 @@ reff_model_data <- function(
     local = list(
       cases = local_cases,
       cases_infectious = local_cases_infectious,
-      infectiousness = local_infectiousness,
-      cases_active = local_active_cases
+      infectiousness = local_infectiousness
     ),
     imported = list(
       cases = imported_cases,
@@ -4150,6 +4144,7 @@ reff_model <- function(data) {
   # fixing the kernel variance at 1, and introducing the time-varying variance in v
   kernel_L <- rational_quadratic(
     lengthscales = lognormal(3, 1),
+    # variance = normal(0, 0.5, truncation = c(0, Inf)) ^ 2,
     variance = 1,
     alpha = lognormal(3, 1)
   )
