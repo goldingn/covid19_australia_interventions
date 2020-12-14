@@ -3910,6 +3910,7 @@ gi_convolution <- function(cases, dates, states, gi_cdf, gi_bounds = c(0, 20)) {
 
 # cases of spillover (import-local transmission) in during mandatory hotel quarantine
 hotel_quarantine_spillover_data <- function() {
+
   tibble::tribble(
     ~earliest_date, ~latest_date, ~state, ~infectee, ~information_source,
     "2020-05-01", "2020-05-14", "VIC", "security guard (Rydges Hotel)",
@@ -3917,7 +3918,9 @@ hotel_quarantine_spillover_data <- function() {
     "2020-08-03", "2020-08-08", "NSW", "security guard (Sydney Harbour Marriott Hotel)",
     "https://www.health.nsw.gov.au/news/Pages/20200818_01.aspx",
     "2020-11-01", "2020-11-14", "SA", "security guard (Peppers Waymouth Hotel)",
-    "https://www.sahealth.sa.gov.au/wps/wcm/connect/public+content/sa+health+internet/about+us/news+and+media/all+media+releases/covid-19+update+15+november"
+    "https://www.sahealth.sa.gov.au/wps/wcm/connect/public+content/sa+health+internet/about+us/news+and+media/all+media+releases/covid-19+update+15+november",
+    "2020-11-27", "2020-11-30", "NSW", "domestic worker (Novotel Darling Harbour)",
+    "https://www.health.nsw.gov.au/news/Pages/20201204_01.aspx"
   ) %>%
     mutate_at(
       c("earliest_date", "latest_date"),
@@ -3925,7 +3928,6 @@ hotel_quarantine_spillover_data <- function() {
     )
     
 }
-
 
 # given a raw (unimputed) linelist, prepare all the data needed for modelling
 reff_model_data <- function(
