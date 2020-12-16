@@ -5398,11 +5398,11 @@ forecast_locals <- function (local_cases, imported_cases,
                              Reff_locals, Reff_imports,
                              dates, gi_cdf,
                              simulation_start = dates[nrow(local_cases)],
-                             gi_bounds = c(0, 20)) {
+                             gi_bounds = c(0, 20),
+                             states = c("ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA")) {
   
   n_dates <- length(dates)
   n_states <- ncol(Reff_locals)
-  states <- c("ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA")
   
   # check inputs
   if (nrow(Reff_locals) != n_dates |
@@ -5429,7 +5429,12 @@ forecast_locals <- function (local_cases, imported_cases,
   
   # create the generation interval matrix and vector
   # gi_mat <- gi_matrix(gi_cdf, dates, gi_bounds = gi_bounds)
-  gi_vec <- gi_vector(gi_cdf, max(dates), gi_bounds = gi_bounds)
+  gi_vec <- gi_vector(
+    gi_cdf,
+    date = max(dates),
+    state = "ACT",
+    gi_bounds = gi_bounds
+  )
   
   # infectiousness of imported cases over time
   imported_infectious <- gi_convolution(
@@ -6177,46 +6182,30 @@ reff_distancing <- function(fitted_model, macro_effect = TRUE, micro_effect = TR
   
   de <- fitted_model$greta_arrays$distancing_effect
   infectious_days <- infectious_period(gi_cdf)
+  dates <- fitted_model$data$dates$mobility
   
-  # duration in the household
-  HD <- de$HD_0
+  # if scenario has both effects, just return the fitted trend
+  if (macro_effect & micro_effect) {
+    return(de$R_t)
+  }
   
-  # non-household contacts
-  OC <- de$OC_0
-  
-  # reduction in transmission probability due to hygiene measures
-  gamma <- 1
+  # otherwise, if one or both are turned off construct relevant Rt (effects
+  # either as observed, or turned off)
+  n_mobility_dates <- length(fitted_model$data$dates$mobility)
+  one <- ones(n_mobility_dates, fitted_model$data$n_states)
   
   if (macro_effect) {
-    
-    macro_trends <- trends_date_state(
-      "outputs/macrodistancing_trends.RDS",
-      fitted_model$data$dates$infection
-    )
-    
-    # optimal date and state for reduction in contacts
-    macro_optimum <- which(macro_trends == min(macro_trends), arr.ind = TRUE)[1, , drop = FALSE]
-    
-    # duration in the household increases at optimum
-    h_optimal <- h_t_state(fitted_model$data$dates$infection)[macro_optimum]
-    HD <- HD * h_optimal
-    
-    # number of non-household contacts decreases at optimum
-    OC <- macro_trends[macro_optimum]
+    OC <- de$OC_t_state
+    HD <- de$HD_0 * h_t_state(dates)
+  } else {
+    OC <- de$OC_0 * one
+    HD <- de$HD_0 * one
   }
   
   if (micro_effect) {
-    
-    # optimal date and state for reduction in contacts
-    micro_trends <- trends_date_state(
-      "outputs/microdistancing_trends.RDS",
-      fitted_model$data$dates$infection
-    )
-    micro_optimum <- which(micro_trends == max(micro_trends), arr.ind = TRUE)[1, , drop = FALSE]
-    
-    # transmission probability is reduced at optimum
-    gamma <- de$gamma_t_state[micro_optimum]
-    
+    gamma <- de$gamma_t_state
+  } else {
+    gamma <- one
   }
   
   household_infections <- de$HC_0 * (1 - de$p ^ HD)
@@ -6230,34 +6219,49 @@ reff_distancing <- function(fitted_model, macro_effect = TRUE, micro_effect = TR
 # scalar reffs for locally- and overseas-acquired cases under different policy scenarios
 counterfactual_reffs <- function(scenario, fitted_model) {
   
+  data <- fitted_model$data
+  
   # baseline reff due to household/non-household model
-  baseline_local_reff <- reff_distancing(
+  baseline_local_reff_raw <- reff_distancing(
     fitted_model,
     macro_effect = scenario$mobility_restrictions,
     micro_effect = scenario$physical_distancing
   )
   
-  # reduction in reff due to contact tracing
-  contact_tracing_effect <- switch(
-    scenario$contact_tracing,
-    none = 1,
-    suboptimal = surveillance_effect(as.Date("2020-01-01"), gi_cdf),
-    optimal = surveillance_effect(as.Date("2020-09-01"), gi_cdf)
+  baseline_local_reff <- extend(
+    baseline_local_reff_raw,
+    data$n_dates_project
   )
   
+  # reduction in reff due to contact tracing
+  if (scenario$contact_tracing) {
+    contact_tracing_effect <- surveillance_effect(
+      dates = data$dates$infection_project,
+      cdf = gi_cdf,
+      states = data$states
+    )
+  } else {
+    contact_tracing_effect <- 1
+  }
+
   # overall reff for locally-acquired cases
   local_reff <- baseline_local_reff * contact_tracing_effect
   
   # overall reff for overseas-acquired cases  
-  import_reff <- local_reff
   if (scenario$overseas_quarantine) {
-    log_q3 <- fitted_model$greta_arrays$log_q[3]
-    import_reff <- exp(log_q3)
+    import_reff <- sweep(
+      ones(data$n_dates_project, data$n_states),
+      1,
+      fitted_model$greta_arrays$R_eff_imp_1,
+      FUN = "*"
+    )
+  } else {
+    import_reff <- local_reff
   }
   
   # return these scalar greta arrays
   module(local_reff, import_reff)
-  
+
 }
 
 # things to do for each:
@@ -6272,21 +6276,25 @@ counterfactual_reffs <- function(scenario, fitted_model) {
 # the vectors of case counts to use for each scenario
 scenario_cases <- function(scenario, fitted_model) {
   
-  all_dates <- fitted_model$data$dates$infection
-  all_imported <- rowSums(fitted_model$data$imported$cases)
-  all_local <- rowSums(fitted_model$data$local$cases)
+  dates <- fitted_model$data$dates$infection
+  imported <- fitted_model$data$imported$cases
+  local <- fitted_model$data$local$cases
+  n_states <- fitted_model$data$n_states
   
   scenario_dates <- scenario_dates(scenario)
   scenario_start <- min(scenario_dates)
   n_scenario_dates <- length(scenario_dates)
   
-  during <- all_dates %in% scenario_dates
-  before <- all_dates < scenario_start & all_dates >= (scenario_start - 21)
+  during <- dates %in% scenario_dates
+  before <- dates < scenario_start & dates >= (scenario_start - 21)
   
   list(
-    local_cases = c(all_local[before], rep(0, n_scenario_dates)),
-    imported_cases = all_imported[before | during],
-    dates = all_dates[before | during],
+    local_cases = rbind(
+      local[before, ],
+      matrix(0, n_scenario_dates, n_states)
+    ),
+    imported_cases = imported[before | during, ],
+    dates = dates[before | during],
     simulation_start = scenario_start,
     n_dates = n_scenario_dates
   )  
@@ -6299,52 +6307,62 @@ simulate_scenario <- function (index, scenarios, fitted_model, nsim = 5000) {
   
   scenario <- scenarios[index, ]
   
-  reffs <- counterfactual_reffs(scenario, fitted_model)
   case_data <- scenario_cases(scenario, fitted_model)
-  one <- ones(length(case_data$local_cases))
+  
+  # get reffs, expanding out scalars if needed
+  reffs <- counterfactual_reffs(scenario, fitted_model)
+  
+  # clip to scenario dates
+  keep <- fitted_model$data$dates$infection_project %in% case_data$dates
+  reff_locals <- reffs$local_reff[keep, ]
+  reff_imports <- reffs$import_reff[keep, ]
   
   # need to include 3 weeks of pre-simulation local and imported cases, so pad
   # dates. pass in a single column matrix of these things to do national simulations
   simulation <- forecast_locals(
     local_cases = as.matrix(case_data$local_cases),
     imported_cases = as.matrix(case_data$imported_cases),
-    Reff_locals = reffs$local_reff * one,
-    Reff_imports = reffs$import_reff * one,
+    Reff_locals = reff_locals,
+    Reff_imports = reff_imports,
     dates = case_data$dates,
     gi_cdf = gi_cdf,
     simulation_start = case_data$simulation_start
   )
   
   keep <- case_data$dates >= case_data$simulation_start
-  local_cases <- simulation$local_cases[keep]
-  imported_cases <- case_data$imported_cases[keep]
+  local_cases <- simulation$local_cases[keep, ]
+  imported_cases <- case_data$imported_cases[keep, ]
   dates <- case_data$dates[keep]
   
-  reff_local <- reffs$local_reff
-  reff_imported <- reffs$import_reff
+  local_cases_ntnl <- rowSums(local_cases)
+  
+  # use state populations here instead and do a matrix multiply on the fractions
+  # relative_population <- state_populations() %>%
+  #   arrange(state) %>%
+  #   mutate(fraction = population / sum(population)) %>%
+  #   dplyr::select(-population)
+  # reff_local_ntnl <- reff_locals[keep, ] %*% relative_population
+  reff_local_ntnl <- apply(reff_locals[keep, ], 1, FUN = "mean")
+  reff_imported_ntnl <- apply(reff_imports[keep, ], 1, FUN = "mean")
   
   # get posterior samples
   sims <- calculate(
-    local_cases, reff_local, reff_imported,
+    local_cases_ntnl, reff_local_ntnl, reff_imported_ntnl,
     values = fitted_model$draws,
     nsim = nsim
   )
   
   # handle the outputting
-  local_cases <- tibble(
+  results <- tibble(
     sim = rep(seq_len(nsim), each = length(dates)),
     date = rep(dates, nsim),
-    cases = as.vector(t(sims$local_cases[, , 1]))
-  )
-  
-  reffs <- tibble(
-    sim = seq_len(nsim),
-    local = as.vector(sims$reff_local),
-    imported = as.vector(sims$reff_imported),
+    cases = as.vector(t(sims$local_cases_ntnl[, , 1])),
+    reff_local = as.vector(t(sims$reff_local_ntnl[, , 1])),
+    reff_imported = as.vector(t(sims$reff_imported_ntnl[, , 1]))
   )
   
   # save these samples
-  module(scenario, local_cases, reffs) %>%
+  module(scenario, results) %>%
     saveRDS(paste0("outputs/counterfactuals/scenario", index, ".RDS"))
   
 }
