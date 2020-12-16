@@ -113,6 +113,10 @@ point_df <- point_df %>%
     upper = cis[, 2] * 100
   )
 
+# save these fits for plotting later
+module(line_df, point_df) %>%
+  saveRDS("outputs/micro_plotting_data.RDS")
+
 base_colour <- purple
 
 p <- ggplot(line_df) +
@@ -146,7 +150,7 @@ p <- ggplot(line_df) +
             colour = base_colour,
             alpha = 0.8) + 
   
-  facet_wrap(~ state, ncol = 2, scales = "free") +
+  facet_wrap(~state, ncol = 2, scales = "free") +
   
   cowplot::theme_cowplot() +
   cowplot::panel_border(remove = TRUE) +

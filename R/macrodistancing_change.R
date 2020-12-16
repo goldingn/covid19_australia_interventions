@@ -179,6 +179,9 @@ survey_points <- fitted_model$data$contacts %>%
   ) %>%
   mutate(type = "Nowcast")
 
+# save these fits for plotting later
+saveRDS(survey_points, "outputs/macro_data_fit.RDS")
+
 # get holiday dates and subset to where they overlap with surveys
 holiday_lines <- survey_points %>%
   mutate(date_start = wave_date - wave_duration / 2,
