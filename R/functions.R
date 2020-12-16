@@ -3920,7 +3920,9 @@ hotel_quarantine_spillover_data <- function() {
     "2020-11-01", "2020-11-14", "SA", "security guard (Peppers Waymouth Hotel)",
     "https://www.sahealth.sa.gov.au/wps/wcm/connect/public+content/sa+health+internet/about+us/news+and+media/all+media+releases/covid-19+update+15+november",
     "2020-11-27", "2020-11-30", "NSW", "domestic worker (Novotel Darling Harbour)",
-    "https://www.health.nsw.gov.au/news/Pages/20201204_01.aspx"
+    "https://www.health.nsw.gov.au/news/Pages/20201204_01.aspx",
+    "2020-12-07", "2020-12-12", "NSW", "airport driver (Sydney Ground Transport, Alexandria)",
+    "https://www.abc.net.au/news/2020-12-16/nsw-confirms-new-locally-acquired-coronavirus-case/12988866"
   ) %>%
     mutate_at(
       c("earliest_date", "latest_date"),
