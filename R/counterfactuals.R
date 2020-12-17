@@ -179,8 +179,17 @@ base <- observed %>%
     lty = 2
   ) +
   theme_cowplot() +
-  ylab("new locally-acquired infections") +
-  xlab("date of infection")
+  ylab("") +
+  xlab("") +
+  scale_y_continuous(
+    position = "right",
+    labels = scales::comma
+  ) +
+  scale_x_date(
+    date_breaks = "1 month",
+    date_labels = "%b"
+  )
+  
 
 make_plot <- function(..., base_plot, colours) {
   scenarios <- list(...)
@@ -229,6 +238,7 @@ p <-
   (distancing[[1]] | distancing[[2]] | distancing[[3]]) / 
   (contacts[[1]] | contacts[[2]] | contacts[[3]]) +
   plot_annotation("Epidemic curves under counterfactual scenarios")
+
 p
 
 ggsave("~/Desktop/multipanel.png", plot = p)
