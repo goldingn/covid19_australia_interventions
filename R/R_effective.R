@@ -29,7 +29,7 @@ saveRDS(fitted_model, "outputs/fitted_reff_model.RDS")
 
 # output Reff trajectory draws for Rob M
 write_reff_sims(fitted_model, dir = "outputs/projection")
-
+  
 # visual checks of model fit
 plot_reff_checks(fitted_model)
 

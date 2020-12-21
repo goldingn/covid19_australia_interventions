@@ -3389,16 +3389,22 @@ microdistancing_data <- function(dates = NULL) {
 
 # given vectors of dates and numbers of days post infection, and a single state,
 # return the fraction of cases *not* being detected by that point
-ttd_survival <- function(days, dates, target_state) {
+ttd_survival <- function(days, dates, target_state, cdfs = NULL) {
   
   # filter to this state,
   # loop through dates running ecdfs on days (accounting for change of dates from onset to infection!)
   
   # will need to line up dates, but shouldn't need to line up days_idx (ecdf()
   # will take care of it)
+
+  # load empirical CDFs of delay from onset to notificiation (aggregated from
+  # date of onset) over time
+  if (is.null(cdfs)) {
+    cdfs <- readRDS("outputs/delay_from_onset_cdfs.RDS")
+  }
   
-  # load empirical CDFs of delay from onset to notificiation (aggregated from date of onset) over time
-  cdfs <- readRDS("outputs/delay_from_onset_cdfs.RDS") %>%
+  # subset to this state
+  cdfs <- cdfs %>%
     filter(state == target_state)
   
   # line up dates
@@ -3421,7 +3427,9 @@ ttd_survival <- function(days, dates, target_state) {
 }
 
 # returna date-by-state matrix of reduction in R due to faster detection of cases
-surveillance_effect <- function(dates, states, cdf, gi_bounds = c(0, 20)) {
+surveillance_effect <- function(dates, states, cdf,
+                                gi_bounds = c(0, 20),
+                                ttd_cdfs = NULL) {
   
   n_dates <- length(dates)
   n_states <- length(states)
@@ -3441,7 +3449,8 @@ surveillance_effect <- function(dates, states, cdf, gi_bounds = c(0, 20)) {
     ttd_days[] <- ttd_survival(
       c(day_mat),
       rep(dates, gi_range),
-      target_state = states[i]
+      target_state = states[i],
+      cdfs = ttd_cdfs
     )
     
     # weighted sum to get reduction due to impeded transmission
@@ -4604,6 +4613,7 @@ reff_plotting <- function(
                   max_date = max_date,
                   multistate = TRUE,
                   base_colour = green,
+                  ylim = c(0, 5),
                   projection_at = projection_date) +
     ggtitle(label = "Local to local transmission potential",
             subtitle = "Average across active cases") +
@@ -5457,7 +5467,9 @@ pad_cases_matrix <- function(cases, n_dates, which = c("after", "before")) {
 # build a convolution matrix for the discrete generation interval for a single
 # state, applying the effect of improving surveillance and normalising to
 # integrate to 1
-gi_matrix <- function(gi_cdf, dates, state, gi_bounds = c(0, 20)) {
+gi_matrix <- function(gi_cdf, dates, state,
+                      gi_bounds = c(0, 20),
+                      ttd_cdfs = NULL) {
   
   n_dates <- length(dates)
   
@@ -5471,13 +5483,15 @@ gi_matrix <- function(gi_cdf, dates, state, gi_bounds = c(0, 20)) {
   ttd_mat[] <- ttd_survival(
     days = c(day_diff),
     dates = rep(dates, each = n_dates),
-    target_state = state
+    target_state = state,
+    cdfs = ttd_cdfs
   )
   scaling <- surveillance_effect(
     dates = dates,
     cdf = gi_cdf,
     state = state,
-    gi_bounds = gi_bounds
+    gi_bounds = gi_bounds,
+    ttd_cdfs = ttd_cdfs
   )
   rel_gi_mat <- gi_mat_naive * ttd_mat
   gi_mat <- sweep(rel_gi_mat, 2, scaling, FUN = "/")
@@ -5489,7 +5503,9 @@ gi_matrix <- function(gi_cdf, dates, state, gi_bounds = c(0, 20)) {
 # build a vector of discrete generation interval probability masses for a given
 # date, applying the effect of improving surveillance and normalising to
 # integrate to 1
-gi_vector <- function(gi_cdf, date, state, gi_bounds = c(0, 20)) {
+gi_vector <- function(gi_cdf, date, state,
+                      gi_bounds = c(0, 20),
+                      ttd_cdfs = NULL) {
   
   # baseline GI vector, without effects of improved surveillance
   days <- seq(gi_bounds[1], gi_bounds[2])
@@ -5500,13 +5516,15 @@ gi_vector <- function(gi_cdf, date, state, gi_bounds = c(0, 20)) {
   ttd_vec <- ttd_survival(
     days = days,
     dates = rep(date, each = length(days)),
-    target_state = state
+    target_state = state,
+    cdfs = ttd_cdfs
   )
   scaling <- surveillance_effect(
     dates = date,
     cdf = gi_cdf,
     state = state,
-    gi_bounds = gi_bounds
+    gi_bounds = gi_bounds,
+    ttd_cdfs = ttd_cdfs
   )
   rel_gi_vec <- gi_vec_naive * ttd_vec
   gi_vec <- rel_gi_vec / scaling
@@ -6387,6 +6405,35 @@ weight_ecdf <- function(ecdf_1, ecdf_2, weight) {
   rval
   
 }
+
+# convert a vector fo cumulative probabilities into an ecdf object
+make_ecdf <- function(y, x) {
+  
+  sims <- sample(x,
+                 100,
+                 prob = y,
+                 replace = TRUE)
+  
+  ecdf_null <- ecdf(sims)
+  envir <- environment(ecdf_null)
+  
+  # rebuild an ecdf object, the slow way
+  method <- 2L
+  yleft <- 0
+  yright <- 1
+  f <- envir$f
+  n <- envir$nobs
+  rval <- function (v) {
+    stats:::.approxfun(x, y, v, method, yleft, yright, f)
+  }
+  class(rval) <- c("ecdf", "stepfun", class(rval))
+  assign("nobs", n, envir = environment(rval))
+  attr(rval, "call") <- attr(ecdf_null, "call")
+  rval  
+}
+
+
+
 
 get_cis <- function(date, state, ecdf, weight, use_national) {
   
