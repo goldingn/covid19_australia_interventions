@@ -4722,6 +4722,7 @@ fit_reff_model <- function(data, max_tries = 1, iterations_per_step = 2000) {
     greta_model,
     sampler = hmc(Lmin = 25, Lmax = 30),
     chains = 10,
+    warmup = 500,
     n_samples = 2000,
     one_by_one = TRUE
   )
