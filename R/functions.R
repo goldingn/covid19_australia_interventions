@@ -3873,6 +3873,66 @@ get_sa_linelist <- function(file = "~/not_synced/sa/sa_linelist_25Nov2020.xlsx")
     )
 }
 
+
+col_nsw_date <- function() {
+  col_date(format = "%d/%m/%Y")
+}
+
+# get NSW linelist from 14-22 Dec 2020
+get_nsw_linelist <- function (file = "~/not_synced/nsw/20201222 - Case list - James McCaw.csv") {
+  
+  file %>%
+    read_csv(
+      col_types = cols(
+        .default = col_character(),
+        CASE_ID = col_double(),
+        EARLIEST_CONFIRMED_OR_PROBABLE = col_nsw_date(),
+        SYMPTOM_ONSET_DATE = col_nsw_date(),
+        CALCULATED_ONSET_DATE = col_nsw_date(),
+        AGE_AT_EVENT_YEARS = col_double(),
+        DATE_ISOLATION_BEGAN = col_nsw_date(),
+        SETTING_OF_TRANSMISSION_DATE = col_nsw_date(),
+        INTERVIEWED_DATE = col_nsw_date()
+      )
+    ) %>%
+    mutate(
+      date_onset = case_when(
+        !is.na(SETTING_OF_TRANSMISSION_DATE) ~ SETTING_OF_TRANSMISSION_DATE,
+        TRUE ~ CALCULATED_ONSET_DATE
+      ),
+      date_detection = NA,
+      date_confirmation = EARLIEST_CONFIRMED_OR_PROBABLE,
+      state = "NSW",
+      import_status = ifelse(
+        PLACE_ACQUISITION == "Acquired in NSW",
+        "local",
+        "imported"
+      ),
+      postcode_of_acquisition = NA,
+      postcode_of_residence = NA,
+      state_of_acquisition = "NSW",
+      state_of_residence = NA,
+      report_delay = NA,
+      date_linelist = as.Date("2020-12-22"),
+      interstate_import = FALSE
+    ) %>%
+    select(
+      date_onset,
+      date_detection,
+      date_confirmation = EARLIEST_CONFIRMED_OR_PROBABLE,
+      state,
+      import_status,
+      postcode_of_acquisition,
+      postcode_of_residence,
+      state_of_acquisition,
+      state_of_residence,
+      report_delay,
+      date_linelist,
+      interstate_import
+    )
+    
+}
+
 # given a date-by-state matrix of case counts by date of infection,
 # corresponding vectors of dates and states, and a function got the CDF of the
 # continous version of a generation interval distribution, adjust the GI
@@ -5019,7 +5079,10 @@ load_vic <- function (file) {
     impute_linelist()
 }
 
-load_linelist <- function(date = NULL, use_vic = FALSE, use_sa = TRUE) {
+load_linelist <- function(date = NULL,
+                          use_vic = FALSE,
+                          use_sa = TRUE,
+                          use_nsw = TRUE) {
   
   # load the latest NNDSS linelist (either the latest or specified file)
   linelist <- get_nndss_linelist(date = date)
@@ -5054,6 +5117,23 @@ load_linelist <- function(date = NULL, use_vic = FALSE, use_sa = TRUE) {
         get_sa_linelist()
       )
      
+  }
+  
+  if (use_nsw) {
+    
+    # remove local cases from linelist from 14/12 - 22/12
+    linelist <- linelist %>%
+      filter(
+        !(state == "NSW" &
+            import_status == "local" &
+            date_detection >= as.Date("2020-12-14") & 
+            date_detection <= as.Date("2020-12-22")
+        )
+      ) %>%
+      # replace with partial linelist for parafield cluster
+      bind_rows(
+        get_nsw_linelist()
+      )
   }
   
   # flag whether each case is an interstate import
