@@ -3875,11 +3875,11 @@ get_sa_linelist <- function(file = "~/not_synced/sa/sa_linelist_25Nov2020.xlsx")
 
 
 col_nsw_date <- function() {
-  col_date(format = "%d/%m/%Y")
+  col_date(format = "%d/%m/%y")
 }
 
 # get NSW linelist from 14-22 Dec 2020
-get_nsw_linelist <- function (file = "~/not_synced/nsw/20201222 - Case list - James McCaw.csv") {
+get_nsw_linelist <- function (file = "~/not_synced/nsw/20201224 - Case list - James McCaw.csv") {
   
   file %>%
     read_csv(
@@ -5127,7 +5127,7 @@ load_linelist <- function(date = NULL,
         !(state == "NSW" &
             import_status == "local" &
             date_detection >= as.Date("2020-12-14") & 
-            date_detection <= as.Date("2020-12-22")
+            date_detection <= as.Date("2020-12-24")
         )
       ) %>%
       # replace with partial linelist for parafield cluster
