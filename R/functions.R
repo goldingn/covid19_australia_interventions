@@ -3904,6 +3904,13 @@ get_nsw_linelist <- function (file = "~/not_synced/nsw/20201224 - Case list - Ja
         INTERVIEWED_DATE = col_nsw_date()
       )
     ) %>%
+    # if any infection dates are after onset, set the infection date to NA
+    mutate(
+      SETTING_OF_TRANSMISSION_DATE = case_when(
+        SETTING_OF_TRANSMISSION_DATE > SYMPTOM_ONSET_DATE ~ as.Date(NA),
+        TRUE ~ SETTING_OF_TRANSMISSION_DATE
+      )
+    ) %>%
     mutate(
       date_onset = case_when(
         !is.na(SETTING_OF_TRANSMISSION_DATE) ~ SETTING_OF_TRANSMISSION_DATE,
