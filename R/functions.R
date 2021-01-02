@@ -3884,11 +3884,26 @@ get_sa_linelist <- function(file = "~/not_synced/sa/sa_linelist_25Nov2020.xlsx")
 
 
 col_nsw_date <- function() {
-  col_date(format = "%d/%m/%y")
+  col_date(format = "%Y-%m-%d")
 }
 
-# get NSW linelist from 14-22 Dec 2020
-get_nsw_linelist <- function (file = "~/not_synced/nsw/20201224 - Case list - James McCaw.csv") {
+# get NSW linelist from 14 Dec 2020
+get_nsw_linelist <- function () {
+  
+  files <- list.files(
+    "~/not_synced/nsw",
+    pattern = ".csv",
+    full.names = TRUE
+  )
+  
+  dates <- files %>%
+    basename() %>%
+    substr(1, 8) %>%
+    as.Date(format = "%Y%m%d")
+  
+  latest <- which.max(dates)
+  file <- files[latest]
+  date <- dates[latest]
   
   file %>%
     read_csv(
@@ -3929,7 +3944,7 @@ get_nsw_linelist <- function (file = "~/not_synced/nsw/20201224 - Case list - Ja
       state_of_acquisition = "NSW",
       state_of_residence = NA,
       report_delay = NA,
-      date_linelist = as.Date("2020-12-22"),
+      date_linelist = date,
       interstate_import = FALSE
     ) %>%
     select(
@@ -4014,7 +4029,7 @@ reff_model_data <- function(
   inducing_gap = 3
 ) {
   
-  linelist_date <- linelist_raw$date_linelist[1]
+  linelist_date <- max(linelist_raw$date_linelist)
   
   # load modelled google mobility data 
   mobility_data <- readRDS("outputs/google_change_trends.RDS")
@@ -5138,18 +5153,21 @@ load_linelist <- function(date = NULL,
   
   if (use_nsw) {
     
-    # remove local cases from linelist from 14/12 - 22/12
+    nsw_ll <- get_nsw_linelist()
+    nsw_ll_date <- nsw_ll$date_linelist[1]
+    
+    # remove local cases from linelist from 14/12 to the linelist date
     linelist <- linelist %>%
       filter(
         !(state == "NSW" &
             import_status == "local" &
             date_detection >= as.Date("2020-12-14") & 
-            date_detection <= as.Date("2020-12-24")
+            date_detection <= nsw_ll_date
         )
       ) %>%
       # replace with partial linelist for parafield cluster
       bind_rows(
-        get_nsw_linelist()
+        nsw_ll
       )
   }
   
