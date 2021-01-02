@@ -3883,8 +3883,13 @@ get_sa_linelist <- function(file = "~/not_synced/sa/sa_linelist_25Nov2020.xlsx")
 }
 
 
-col_nsw_date <- function() {
-  col_date(format = "%Y-%m-%d")
+col_nsw_date <- function(type = c("short", "long")) {
+  type <- match.arg(type)
+  switch(
+    type,
+    short = col_date(format = "%Y-%m-%d"),
+    long = col_date(format = "%d/%m/%Y %H:%M:%S AM")
+  )
 }
 
 # get NSW linelist from 14 Dec 2020
@@ -3914,8 +3919,8 @@ get_nsw_linelist <- function () {
         SYMPTOM_ONSET_DATE = col_nsw_date(),
         CALCULATED_ONSET_DATE = col_nsw_date(),
         AGE_AT_EVENT_YEARS = col_double(),
-        DATE_ISOLATION_BEGAN = col_nsw_date(),
-        SETTING_OF_TRANSMISSION_DATE = col_nsw_date(),
+        DATE_ISOLATION_BEGAN = col_nsw_date("long"),
+        SETTING_OF_TRANSMISSION_DATE = col_nsw_date("long"),
         INTERVIEWED_DATE = col_nsw_date()
       )
     ) %>%
@@ -3928,8 +3933,8 @@ get_nsw_linelist <- function () {
     ) %>%
     mutate(
       date_onset = case_when(
-        !is.na(SETTING_OF_TRANSMISSION_DATE) ~ SETTING_OF_TRANSMISSION_DATE,
-        TRUE ~ CALCULATED_ONSET_DATE
+        !is.na(SETTING_OF_TRANSMISSION_DATE) ~ SETTING_OF_TRANSMISSION_DATE + 5,
+        TRUE ~ SYMPTOM_ONSET_DATE
       ),
       date_detection = NA,
       date_confirmation = EARLIEST_CONFIRMED_OR_PROBABLE,
