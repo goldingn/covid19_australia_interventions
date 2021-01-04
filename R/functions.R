@@ -3924,10 +3924,11 @@ get_nsw_linelist <- function () {
         INTERVIEWED_DATE = col_nsw_date()
       )
     ) %>%
-    # if any infection dates are after onset, set the infection date to NA
+    # if any infection dates are after onset, or on/after confirmation, set the infection date to NA
     mutate(
       SETTING_OF_TRANSMISSION_DATE = case_when(
         SETTING_OF_TRANSMISSION_DATE > SYMPTOM_ONSET_DATE ~ as.Date(NA),
+        SETTING_OF_TRANSMISSION_DATE >= EARLIEST_CONFIRMED_OR_PROBABLE ~ as.Date(NA),
         TRUE ~ SETTING_OF_TRANSMISSION_DATE
       )
     ) %>%
