@@ -147,7 +147,16 @@ apple_mobility <- function() {
         country = col_character()
       )) %>%
     tidyr::pivot_longer(
-      cols = starts_with("2020-"),
+      cols = !any_of(
+        c(
+          "geo_type",
+          "region",
+          "transportation_type",
+          "alternative_name",
+          "sub-region",
+          "country"
+        )
+      ),
       names_to = "date",
       values_to = "trend"
     ) %>%
@@ -6955,7 +6964,7 @@ predict_mobility_trend <- function(
       date_num = pmax(date_num, min_data_date - min_date),
       date_num = pmin(date_num, max_data_date - min_date)
     )
-
+  
   # predict trends under these conditions, and average over day of the week
   pred_df <- pred_df %>%
     mutate(
