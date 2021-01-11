@@ -42,3 +42,32 @@ reff_plotting(fitted_model,
               max_date = fitted_model$data$dates$latest_project,
               mobility_extrapolation_rectangle = FALSE,
               projection_date = fitted_model$data$dates$latest_mobility)
+
+# model C1 under UK strain, under two modelled estimates of relative transmissability
+
+# Imperial estimate with a long GI (6.5 days); 50-75%. Assuming centred at 62.5%.
+imperial_fitted_model <- multiply_reff(fitted_model, 1.625, c(1.5, 1.75))
+imperial_dir <- "outputs/projection/b117_imperial_long"
+dir.create(imperial_dir, showWarnings = FALSE)
+write_reff_sims(imperial_fitted_model, imperial_dir)
+
+# LSHTM estimate with a short GI (mean 3.6); 31% (27%-34%)
+lshtm_fitted_model <- multiply_reff(fitted_model, 1.31, c(1.27, 1.34))
+lshtm_dir <- "outputs/projection/b117_lshtm_short"
+dir.create(lshtm_dir, showWarnings = FALSE)
+write_reff_sims(lshtm_fitted_model, lshtm_dir)
+
+read_csv("outputs/projection/b117_lshtm_short/r_eff_1_local_samples.csv") %>%
+  filter(date == as.Date("2020-04-11")) %>%
+  pivot_longer(
+    cols = starts_with("sim"),
+    names_to = "sim"
+  ) %>%
+  group_by(state, date) %>%
+  summarise(
+    mean = mean(value),
+    lower = quantile(value, 0.05),
+    upper = quantile(value, 0.95)
+  )
+
+  
