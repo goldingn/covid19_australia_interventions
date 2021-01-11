@@ -3538,12 +3538,10 @@ impute_onsets <- function(confirmation_dates,
 }
 
 # clean up some weird date encoding in the linelist
-clean_date <- function (original_date, min_date = as.Date("2020-01-01"), max_date = Sys.Date()) {
-  weird <- !grepl("2020", original_date)
-  corrected_date <- gsub("^\\d\\d\\d\\d", "2020", original_date)
+clean_date <- function (date, min_date = as.Date("2019-12-01"), max_date = Sys.Date()) {
   # don't use ifelse as it converts to a numeric
-  date <- original_date
-  date[weird] <- corrected_date[weird]
+  # date <- original_date
+  # date[weird] <- corrected_date[weird]
   
   # remove any that are out of bounds
   early <- as.Date(date) < min_date
@@ -3939,6 +3937,20 @@ get_nsw_linelist <- function () {
         SETTING_OF_TRANSMISSION_DATE = col_nsw_date("long"),
         INTERVIEWED_DATE = col_nsw_date()
       )
+    ) %>%
+    # remove some bogus dates
+    mutate(across(
+      all_of(c(
+        "EARLIEST_CONFIRMED_OR_PROBABLE",
+        "SYMPTOM_ONSET_DATE",
+        "SETTING_OF_TRANSMISSION_DATE",
+        "CALCULATED_ONSET_DATE",
+        "DATE_ISOLATION_BEGAN",
+        "SETTING_OF_TRANSMISSION_DATE",
+        "INTERVIEWED_DATE"
+      )),
+      clean_date
+    )
     ) %>%
     # if any infection dates are after onset, or on/after confirmation, set the infection date to NA
     mutate(
