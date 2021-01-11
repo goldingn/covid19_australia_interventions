@@ -36,11 +36,11 @@ distribution(survey_distance$count) <- binomial(
 
 m <- model(inflections, heights)
 
-set.seed(2020-05-30)
+set.seed(2021-01-11)
 draws <- mcmc(m,
               chains = 10,
               sampler = hmc(
-                Lmin = 15,
+                Lmin = 25,
                 Lmax = 30
               ))
 draws <- extra_samples(draws, 3000)
