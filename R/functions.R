@@ -3908,7 +3908,7 @@ col_nsw_date <- function(type = c("short", "long")) {
   )
 }
 
-# get NSW linelist from 14 Dec 2020
+# get latest NSW linelist
 get_nsw_linelist <- function () {
   
   files <- list.files(
@@ -3935,7 +3935,7 @@ get_nsw_linelist <- function () {
         SYMPTOM_ONSET_DATE = col_nsw_date(),
         CALCULATED_ONSET_DATE = col_nsw_date(),
         AGE_AT_EVENT_YEARS = col_double(),
-        DATE_ISOLATION_BEGAN = col_nsw_date("long"),
+        DATE_ISOLATION_BEGAN = col_nsw_date(),
         SETTING_OF_TRANSMISSION_DATE = col_nsw_date("long"),
         INTERVIEWED_DATE = col_nsw_date()
       )
@@ -3982,6 +3982,9 @@ get_nsw_linelist <- function () {
       report_delay,
       date_linelist,
       interstate_import
+    ) %>%
+    arrange(
+      desc(date_onset)
     )
     
 }
@@ -5181,13 +5184,14 @@ load_linelist <- function(date = NULL,
     
     nsw_ll <- get_nsw_linelist()
     nsw_ll_date <- nsw_ll$date_linelist[1]
+    nsw_ll_start <- min(nsw_ll$date_confirmation)
     
     # remove local cases from linelist from 14/12 to the linelist date
     linelist <- linelist %>%
       filter(
         !(state == "NSW" &
             import_status == "local" &
-            date_detection >= as.Date("2020-12-14") & 
+            date_detection >= nsw_ll_start & 
             date_detection <= nsw_ll_date
         )
       ) %>%
