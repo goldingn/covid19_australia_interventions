@@ -15,7 +15,7 @@ n_inflections <- 3
 # how late can the latest inflection be (not after two weeks before the latest
 # survey date) convert that into a fraction of time between the peak and last datapoint
 post_peak_days <- as.numeric(max(survey_distance$date) - as.Date("2020-04-12"))
-inflection_max <- 1 - 14 / post_peak_days
+inflection_max <- 1 - 21 / post_peak_days
 
 # get model parameters
 params <- microdistancing_params(
