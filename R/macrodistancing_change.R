@@ -80,13 +80,14 @@ contacts_ga <- discrete_lognormal(
   sdlog = sdlog,
   breaks = fitted_model$data$breaks
 )
-contacts_sim <- calculate(contacts_ga, values = fitted_model$draws, nsim = nsim)[[1]][, , 1]
-bayesplot::ppc_ecdf_overlay(
-  fitted_model$data$contacts$contact_num,
-  contacts_sim[1:1000, ],
-  discrete = TRUE
-) + 
-  coord_cartesian(xlim = c(0, 300))
+# contacts_sim <- calculate(contacts_ga, values = fitted_model$draws, nsim = nsim)[[1]][, , 1]
+# bayesplot::ppc_ecdf_overlay(
+#   fitted_model$data$contacts$contact_num,
+#   contacts_sim[1:1000, ],
+#   discrete = TRUE
+# ) + 
+#   coord_cartesian(xlim = c(0, 300))
+## THIS HASHED OUT AS KILLING GR LAPTOP MEMORY
 
 OC_t_state <- fitted_model$predictions$mean_daily_contacts
 

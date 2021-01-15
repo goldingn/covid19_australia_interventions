@@ -223,7 +223,7 @@ citymapper_url <- function(min_delay = 0, max_delay = 14) {
       ".csv"
     )
     # return if successful, or increment
-    if (RCurl::url.exists(url)) {
+    if (url_exists(url)) {
       return(url)
     } else {
       delay <- delay + 1
@@ -326,10 +326,13 @@ append_google_data <- function(mobility_data, url = tidycovid_url) {
     filter(!is.na(state)) %>%
     select(state, date, trend, datastream)
   
-  # download the previous dataset
-  f <- tempfile(fileext = ".RDS")
-  download.file(url, destfile = f)
-  tmp <- readRDS(f)
+  
+  file <- "data/google_cmr/tidycovid_cache.RDS"
+  if (!file.exists(file)) {
+    dowload_tidycovid()
+  }
+  tmp <- readRDS(file)
+
   
   # get the previous data in the same format
   previous_data <- tmp$country_region %>%
@@ -1784,7 +1787,7 @@ rolls_contact_data <- function() {
     ) %>%
     group_by(weight) %>%
     # expand out to include 0s for different categories, to averages are unbiased
-    complete(participant_id, hh_member, location, fill = list(contacts = 0)) %>%
+    tidyr::complete(participant_id, hh_member, location, fill = list(contacts = 0)) %>%
     arrange(participant_id, hh_member, location)
   
   contact_data
@@ -5154,7 +5157,7 @@ load_vic <- function (file) {
 
 load_linelist <- function(date = NULL,
                           use_vic = FALSE,
-                          use_sa = TRUE,
+                          use_sa = FALSE,
                           use_nsw = TRUE) {
   
   # load the latest NNDSS linelist (either the latest or specified file)
@@ -7060,3 +7063,26 @@ pink <- brewer.pal(8, "Set2")[4]
 
 # default cdf
 gi_cdf <- nishiura_cdf()
+
+
+url_exists <- function(address) {  
+  tryCatch(
+    {  
+      con <- url(address)  
+      a  <- capture.output(suppressWarnings(readLines(con)))  
+      close(con)  
+      TRUE;  
+    },  
+    error = function(err) {  
+      occur <- grep("cannot open the connection", capture.output(err));  
+      if(length(occur) > 0) FALSE;  
+    }  
+  )  
+}
+
+download_tidycovid <- function() {
+  f <- tempfile(fileext = ".RDS")
+  download.file(tidycovid_url, destfile = f)
+  tmp <- readRDS(f)
+  saveRDS(tmp, file = "data/google_cmr/tidycovid_cache.RDS")  
+}
