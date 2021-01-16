@@ -83,7 +83,7 @@ facebook_mobility <- function() {
 # load and format Jono Carroll's scraping of Aus mobility data
 # - remove the grocery and pharmacy category
 # (affected by panic buying, not interventions)
-google_mobility <- function() {
+google_mobility <- function(country = "Australia") {
   # get link from: https://www.google.com/covid19/mobility/index.html
   url <- "https://www.gstatic.com/covid19/mobility/Global_Mobility_Report.csv"
   data <- readr::read_csv(
@@ -104,7 +104,7 @@ google_mobility <- function() {
     )
   ) %>%
     filter(
-      country_region == "Australia" & is.na(sub_region_2)
+      country_region == country & is.na(sub_region_2)
     ) %>%
     tidyr::pivot_longer(
       ends_with("_percent_change_from_baseline"),
