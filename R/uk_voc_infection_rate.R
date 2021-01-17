@@ -87,6 +87,8 @@
 
 source("R/functions.R")
 
+set.seed(2021-01-17)
+
 # load data
 
 # UK attack rate data:
@@ -485,10 +487,10 @@ beta_posterior <- calculate(
   nsim = 5000
 )[[1]]
 
-beta_mu <- 1
-beta_sigma <- sqrt(sum((beta_posterior - 1) ^ 2) / length(beta_posterior))
-beta <- normal(beta_mu, beta_sigma, truncation = c(0, 1))
-
+# beta_mu <- 1
+# beta_sigma <- sqrt(sum((beta_posterior - 1) ^ 2) / length(beta_posterior))
+# beta <- normal(beta_mu, beta_sigma, truncation = c(0, 1))
+beta <- mean(beta_posterior)
 # hist(beta_posterior, breaks = 20, xlim = c(0, 1))
 # hist(calculate(beta, nsim = 5000)[[1]], breaks = 20, xlim = c(0, 1))
 
@@ -519,7 +521,18 @@ OD_0 <- normal(baseline_contact_params$mean_duration[2],
 # prior on the relative per-unit-contact-time infectiousness of the UK VOC strain
 phi <- normal(1, 0.25, truncation = c(0, Inf))
 
+# per-unit-contact-time infectiousness of the UK VOC strain
 p_voc <- 1 - (1 - p_wt) ^ phi
+
+# bias in sampling of contacts and cases in UK attack rate data (uniformly
+# increases/decreases the observed attack rate fromt he hypothetical 'true'
+# attack rate, where the true attack rate is defined such that the number of
+# non-household contacts is that from the contact surveys). We could get a prior
+# for this by comparing the numbers of contacts per case to the average numbers
+# of non-household contacts, however the UK attack rate report does not clearly
+# state the number of cases considered.
+
+bias <- normal(1, 1, truncation = c(0, Inf))
 
 infectious_days <- infectious_period(gi_cdf)
 
@@ -539,12 +552,18 @@ w_i <- HC_0 / (HC_0 + OC_i$mean * infectious_days)
 sar_wt_i <- w_i * hsar_wt_i + (1 - w_i) * osar_wt_i
 sar_voc_i <- w_i * hsar_voc_i + (1 - w_i) * osar_voc_i
 
-distribution(uk_attack$cases_wt) <- binomial(uk_attack$contacts_wt, sar_wt_i)
-distribution(uk_attack$cases_voc) <- binomial(uk_attack$contacts_voc, sar_voc_i)
+# account for biased undersampling of contacts in the SAR data (e.g. sampling
+# all household contacts but only a fraction of non-household contacts) which
+# would cause the observed and expected attack rates to differ.
+sar_wt_observed_i <- sar_wt_i ^ bias
+sar_voc_observed_i <- sar_voc_i ^ bias
 
-m <- model(phi, beta, HC_0, HD_0, OD_0, p_wt)
+distribution(uk_attack$cases_wt) <- binomial(uk_attack$contacts_wt, sar_wt_observed_i)
+distribution(uk_attack$cases_voc) <- binomial(uk_attack$contacts_voc, sar_voc_observed_i)
 
-draws <- mcmc(m)
+m <- model(phi, HC_0, HD_0, OD_0, p_wt, bias)
+
+draws <- mcmc(m, chains = 10)
 convergence(draws)
 bayesplot::mcmc_trace(draws)
 
@@ -556,10 +575,13 @@ bayesplot::mcmc_trace(draws)
 r_household <- hsar_voc_i / hsar_wt_i
 r_non_household <- osar_voc_i / osar_wt_i
 r_overall <- mean(sar_voc_i / sar_wt_i)
+r_overall_observed <- mean(sar_voc_observed_i / sar_wt_observed_i)
 
-# # simulate prior and posterior over the ratio of attack rates (and therefore of Reff)
+# simulate prior and posterior over the ratio of attack rates (and therefore of Reff)
 r_sim_prior <- calculate(r_overall, nsim = 5000)[[1]][, 1, 1]
 r_sim_posterior <- calculate(r_overall, values = draws, nsim = 5000)[[1]][, 1, 1]
+r_observed_sim_prior <- calculate(r_overall_observed, nsim = 5000)[[1]][, 1, 1]
+r_observed_sim_posterior <- calculate(r_overall_observed, values = draws, nsim = 5000)[[1]][, 1, 1]
 
 par(mfrow = c(1, 2))
 hist(r_sim_prior, breaks = 50, xlim = c(0, 3))
@@ -568,7 +590,12 @@ hist(r_sim_posterior, breaks = 50, xlim = c(0, 3))
 abline(v = 1, lty = 2)
 
 mean(r_sim_prior)
+mean(r_observed_sim_prior)
+
 mean(r_sim_posterior)
+quantile(r_sim_posterior, c(0.05, 0.95))
+mean(r_observed_sim_posterior)
+quantile(r_observed_sim_posterior, c(0.05, 0.95))
 
 r_household_posterior <- calculate(r_household, values = draws, nsim = 5000)[[1]][, , 1]
 r_non_household_posterior <- calculate(r_non_household, values = draws, nsim = 5000)[[1]][, , 1]
@@ -576,7 +603,102 @@ r_non_household_posterior <- calculate(r_non_household, values = draws, nsim = 5
 colMeans(r_household_posterior)
 colMeans(r_non_household_posterior)
 
-# do posterior predictive checks to understand why these don't align with raw ratios from PHE data
+# compare priors and posteriors for all parameters
+
+hist_prior_posterior <- function(greta_array, draws, nsim = 1000, ...)  {
+  
+  prior_sim <- calculate(greta_array, nsim = nsim)[[1]]
+  posterior_sim <- calculate(greta_array, values = draws, nsim = nsim)[[1]]
+  
+  prior_sim <- c(prior_sim)
+  posterior_sim <- c(posterior_sim)
+  xlim <- range(c(prior_sim, posterior_sim))
+
+  op <- par()
+  on.exit(par(op))
+  par(mfrow = c(1, 2))
+  
+  hist(c(prior_sim), xlim = xlim, ...)
+  hist(c(posterior_sim), xlim = xlim, ...)
+  
+}
+
+hist_prior_posterior(phi, draws)
+hist_prior_posterior(HC_0, draws)
+hist_prior_posterior(HD_0, draws)
+hist_prior_posterior(OD_0, draws)
+hist_prior_posterior(p_wt, draws)
+hist_prior_posterior(bias, draws)
+hist_prior_posterior(r_overall, draws)
+hist_prior_posterior(r_household, draws)
+hist_prior_posterior(r_non_household, draws)
+
+# do posterior predictive checks to make sure these align with raw ratios from PHE data
+cases_voc_ga <- binomial(uk_attack$contacts_voc, sar_voc_observed_i)
+cases_wt_ga <- binomial(uk_attack$contacts_wt, sar_wt_observed_i)
+cases_voc_sim <- calculate(cases_voc_ga, values = draws, nsim = 1000)[[1]][, , 1]
+cases_wt_sim <- calculate(cases_wt_ga, values = draws, nsim = 1000)[[1]][, , 1]
+bayesplot::ppc_ecdf_overlay(
+  uk_attack$cases_voc,
+  cases_voc_sim,
+  discrete = TRUE
+)
+bayesplot::ppc_ecdf_overlay(
+  uk_attack$cases_wt,
+  cases_wt_sim,
+  discrete = TRUE
+)
+
+# do posterior predictive check on the empirical ratio of attack rates
+empirical_r_observed <- uk_attack %>%
+  mutate(
+    attack_rate_voc = cases_voc / contacts_voc,
+    attack_rate_wt = cases_wt / contacts_wt,
+    ratio = attack_rate_voc / attack_rate_wt
+  ) %>%
+  pull(ratio)
+
+empirical_sar_voc_ga <- cases_voc_ga / uk_attack$contacts_voc
+empirical_sar_wt_ga <- cases_wt_ga / uk_attack$contacts_wt
+empirical_r_ga <- empirical_sar_voc_ga / empirical_sar_wt_ga
+empirical_r_sim <- calculate(empirical_r_ga, values = draws, nsim = 1000)[[1]][, , 1]
+
+bayesplot::ppc_ecdf_overlay(
+  empirical_r_observed,
+  empirical_r_sim,
+  discrete = FALSE
+)
+
 
 # summarise the posterior of phi for use in counterfactuals
+phi_sim <- calculate(phi, values = draws, nsim = 5000)[[1]][, 1, 1]
+hist(phi_sim)
+
+# approximate as a normal distribution
+mean(phi_sim)
+# 0.852
+sd(phi_sim)
+# 0.021
+
+
+# summarise relative infectiousness in UK
+r_draws <- calculate(
+  r_overall,
+  r_household,
+  r_non_household,
+  values = draws,
+  nsim = 5000
+)
+
+lapply(r_draws,
+       function(x) {
+         x <- 100 * (x - 1)
+         stats <- c(
+           mean = mean(x),
+           quantile(x, c(0.05, 0.5, 0.95))
+         )
+         round(stats, 2)
+       }
+)
+
 
