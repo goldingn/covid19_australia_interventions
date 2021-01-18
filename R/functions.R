@@ -6900,9 +6900,6 @@ predict_mobility_trend <- function(
     ) %>%
     mutate(
       intervention_stage = factor(intervention_stage)
-    ) %>%
-    filter(
-      date <= max_data_date
     )
   
   df <- mobility %>%

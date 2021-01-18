@@ -35,6 +35,7 @@ write_local_cases(data)
 parse_all_doh_surveys() %>%
   filter(wave > (max(wave) - 4)) %>%
   plot_age_duplication()
+
 ggsave(
   "outputs/figures/age_deduplication_check.png",
   width = 9,
