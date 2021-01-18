@@ -448,7 +448,7 @@ interventions <- function(which = c("all", "national", "vic", "sa", "qld")) {
   
   qld_interventions <- tibble::tribble(
     ~date, ~state,
-    "2021-01-08", "QLD"
+    "2021-01-09", "QLD"
   )
   
   national_interventions <- expand_grid(
@@ -6868,12 +6868,17 @@ predict_mobility_trend <- function(
   
   # create intervention step-change covariates
   intervention_steps <- interventions() %>%
-    # add event for SA ending lockdown, to enable effect to be reversed
+    # add events for SA and QLD ending short lockdowns, to enable effects to be
+    # reversed
     bind_rows(
       tibble(
         date = as.Date("2020-11-22"),
         state = "SA"
-      )
+      ),
+      tibble(
+        date = as.Date("2021-01-12"),
+        state = "QLD"
+      ),
     ) %>%
     mutate(
       intervention_id = paste0(
