@@ -1,89 +1,226 @@
 # Analysis of the potential increase in per-unit-contact-time infectiousness of
 # the UK VOC 202012/1 relative to wildtype.
 
-# We want to infer the ratio of the per-unit-contact-time-transmission
-# probabilities between wildtype and UK VOC strains of SARS-CoV-2. This would
-# enable us to provide more reliable estimates of what Reff could be expected to
-# be achieved in Australia under different lockdown scenarios.
+# We carried out an analysis to independently estimate the relative
+# transmissability of the UK VOC strain of SARS-CoV-2 compared with UK wild-type
+# strains, and to account for variability in relative transmissability between
+# high-restriction and low-restriction scenarios. We sought to directly estimate
+# the impact of the UK VOC strain on the probability of transmission to a
+# contact per unit of contact time. A change to this parameter is consistent
+# with the hypothesis that the increased case growth rates associated with UK
+# VOC are due to increased viral shedding during infection. With an estimate of
+# this parameter we can modify our estimates of transmission potential in
+# Australia, whilst accounting for estimated changes to the fraction of contacts
+# that are with household members, the duration of time spent in the household,
+# and changes to microdistancing behaviours. We estimated this key parameter by
+# adapting the mathematical model of household and non-household transmission
+# that forms part of our methodology for estimating transmission potential in
+# Australia, and fitting it to data from Public Health England on secondary
+# attack rates among contacts for UK VOC and wild-type strains in 9 English
+# regions.
+ 
+# # Model for attack rates
 
-# NHS track and trace provide data on secondary attack rates for the two
-# strains, disaggregated by a range of ages and regions. It may be possible to
-# calculate the ratio of per-unit-contact-time transmission probabilities from
-# these data using external estimates of the duration and number of contacts
-# (household and non-household) for UK regions during this period. However the
-# UK attack rate estimates are not disaggregate by household vs non-household
-# contacts, which poses a problem.
+# Our existing transmission potential model explicitly considers secondary
+# attack rates among household members and non-household members, modelled as a
+# function of the probability of transmission per unit contact time, the average
+# duration of contacts with household and non-household members, and
+# modification of the non-household attack rate. The latter is a combined effect
+# of reductions in the per-unit-contact-time transmission probability and in the
+# average duration of non-household contacts.
  
-# We can adapt part of the Reff model to estimate overall attack rates in the
-# UK, in order to parameterise the relative infectiousness of the VOC strain.
+# We explicitly model the household secondary attack rate at time/location $i$
+# as:
 
-# Household secondary attack rate (HSAR):
-#   HSAR = 1 - p ^ (HD_0 * h)
- 
-# where p is the per-unit-contact-time transmission probability, HD_0 is the
-# baseline duration of household contacts over the whole infectious period, and
-# h is proportional change in the amount of time spent at home (~~Google
-# residential)
- 
-# Non-household secondary attack rate (OSAR):
-#   OSAR = gamma * (1 - p ^ OD_0)
- 
-# where OD_0 is the average duration of non-household contacts per 24h at
-# baseline, and gamma is the reduction in per-contact transmission rate for
-# non-household contacts due to microdistancing behaviours
+#   HSAR_i = 1 - (1 - p) ^ HD_i
 
-# The overall secondary attack rate (SAR) is a mixture of the two, weighted by
-# the fraction of contacts that are household member versus not:
-#   SAR = (HC * HSAR + OC * ID * OSAR) / (HC + OC * ID)
-#   SAR = w * HSAR + (1 - w) * OSAR
-#   w = HC / (HC + OC * ID)
-
-# where ID is the average duration of the infectious period in days, HC is the
-# number of household contacts (assumed to be constant throughout the infectious
-# period), and OC is the number of non-household contacts per 24 hours. Note
-# that we assume that non-household contacts are unique to each day. Though this
-# only affects depletion of susceptible non-household contacts and violation of
-# this assumption is unlikely to have an appreciable impact on estimates unless
-# the per-contact transmission probability for non-household contacts is very
-# high.
+# where $p$ is the probability of transmission per unit of contact time, and
+# $HD_i$ is the average duration of household contacts at time and place $i$,
+# summed over the full course of infection.
  
-# We can fit this with a Bayesian statistical model over data for each UK region i
-#   infected_WT_i ~ Binomial(contacts_WT_i, SAR_WT_i)
-#   infected_VOC_i ~ Binomial(contacts_VOC_i, SAR_VOC_i)
-#   SAR_WT_i = w_i * HSAR_WT_i + (1 - w_i) * OSAR_WT
-#   SAR_VOC_i = w_i * HSAR_VOC_i + (1 - w_i) * OSAR_VOC
+# We model the secondary attack rate for non-household members as:
+   
+#   OSAR_i = \gamma_i * (1 - (1 - p) ^ OD_0)
+
+# where $OD_0$ is the average duration of non-household contacts per 24 hours at
+# baseline (prior to the pandemic and restrictions), and $\gamma_i$ is the
+# reduction in non-household secondary attack rates as a function of
+# microdistancing behaviour.
+ 
+# We infer the parameters $HD_i$ and $gamma_i$ from data on mobility and
+# behavioural change as:
+   
+#   HD_i = HD_0 * h_i
+# \gamma_i = 1 - \beta * d_i
+ 
+# where $HD_0$ is the average duration of household contacts over the full
+# infectious period at baseline, $h_i$ is proportional change in the amount of
+# time spent in the household, inferred from the Google mobility metric 'Time at
+# Residential', d_i is the degree of adherence of microdistancing behaviour,
+# scaled to range from 0 at baseline to 1 at the peak of microdistancing, and
+# $\beta$ is a free parameter controlling the impact of microdistancing on
+# reducing non-household transmission that is fitted to Australian case data.
+ 
+# # Effect of UK VOC
+
+# We model the effect of the UK VOC on per-unit-contact time probability of
+# transmission via a parameter for the power of the probability of *not
+# transmitting* per unit of contact time:
+   
+#   p^* = 1 - (1 - p) ^ \phi
+
+# where $p^*$ and $p$ are the per-unit-contact time probabilities of
+# transmission for the VOC strain and wild type strains, respectively, and
+# $\phi$ is a free parameter constrained to be positive that controlls the
+# relative infectiousness. $\phi = 1$ would imply the two strains have the same
+# transmissability. The aim of this analysis is to infer $\phi$ from UK attack
+# rate data.
+ 
+# # Fitting to UK attack rate data
+
+# Public Health England's Technical Report 3 on the UK VOC 202012/01 Table 6
+# reports numbers of contacts of cases with VOC and wild-type strains in 9
+# English regions, and the number of those contacts that became cases, between
+# 2020/09/20 and 2021/01/04:
+# https://www.gov.uk/government/publications/investigation-of-novel-sars-cov-2-variant-variant-of-concern-20201201
+# We fit a model that separately considers attack rates in each of these
+# regions, using separate estimates of mobility, microdistancing, and
+# macrodistancing in each.  By considering all 9 regions as independent
+# observations (rather than aggegating the data for all of England) we increase
+# statistical power, consider the effect of the strain at different levels of
+# restrictions, and reduce the probability the high attack rates may be due to
+# founder effects or confounding with outbreaks in specific settings.
+ 
+# Unfortunately, these data are not provided disaggregated at a finer temporal resolution. Nor are the attack rate estimates dissagregated by whether or not the contacts were houshold members. We must therefore adapt our model to estimate an overall attack rate over contacts, and adjust it for non-random ascertainment of contacts in the PHE dataset.
+
+# We can estimate the overall secondary attack rate for each region $SAR_i$ as a
+# combination of household and non-household secondary attack rates weighted by
+# $w_i$, the fraction of contacts that are household members:
+ 
+#   SAR_i = w_i * HSAR_i + (1 - w_i) * OSAR_i
 #   w_i = HC / (HC + OC_i * ID)
-#   HSAR_WT_i = 1 - p_WT ^ (HD_0 * h_i)
-#   HSAR_VOC_i = 1 - p_VOC ^ (HD_0 * h_i)
-#   OSAR_WT = gamma_i * (1 - p_WT ^ OD_0)
-#   OSAR_VOC = gamma_i * (1 - p_VOC ^ OD_0)
-#   gamma_i = 1 - beta * d_i
-#   p_VOC = 1 - (1 - p_WT) ^ phi
 
-# where phi is the relative per-contact-time infectiousness of VOC
- 
-# data sources:
+# where $HC$ is the average number of household contacts (assumed the same for
+# each region), $OC_i$ is the average number of non-household contacts per 24
+# hours, and ID is the average duration of infectiousness in days. Our model
+# assumes that household contacts stay the same throughout the course of
+# infection, but that there is a different set of non-household contacts on each
+# day.
 
-# infected_WT_i, contacts_WT_i, infected_VOC_i, contacts_VOC_i: NHS track and
-# trace report:
-# https://assets.publishing.service.gov.uk/government/uploads/system/uploads/attachment_data/file/950823/Variant_of_Concern_VOC_202012_01_Technical_Briefing_3_-_England.pdf
- 
-# h_i: Google residential metric for location i
+#  The overall secondary attack rates estimated by this model correspond to the
+#  average number of contacts specified as $HC$ and $OC_i$. Whilst the number of
+#  household contacts is likely to be consistent between analyses, the
+#  operational contact definition used by the contact tracing teams that
+#  provided the PHE data is likely to yield a smaller number of contacts than
+#  the contact surveys used to estimate $OC_i$. Moreover, the number of contacts
+#  will not be a random sample of the larger number of contacts, since
+#  operational contact tracing will target those individuals with a greater risk
+#  of transmission. The consequence of this is that observed attack rates are
+#  biased-up. This will also affect estimates of the relative transmissability
+#  of the VOC strain from these raw data - reducing the apparent
+#  transmissability. We account for these issues by introducing a free parameter
+#  $\psi$ to relate the 'true' and observed attack rates:
 
-# OC_i: Aus OC model applied to Google mobility metrics for UK location i
+#    SAR_i ^ \psi
 
-# HC, HD_0, OD_0, ID: baseline household contacts and contact durations from Aus
-# model
+# # Full model
  
-# d_i: find a similar question to our 1.5 rule from the you.gov survey
-# timeseries for UK (check trends of question for Aus against our micro), scale
-# relative to maximum, and multiply by posterior mean of beta from the fitted
-# Reff model https://github.com/YouGov-Data/covid-19-tracker/tree/master/data
+# We specified a Bayesian statistical model to estimate $\phi$ and the other
+# parameters from UK attack rate data as follows:
  
-# p_WT prior: as per posterior from Aus model
+#   C_i ~ Binomial(N_i, SAR_i ^ \psi)
+#   C^*_i ~ Binomial(N^*_i, SAR^*_i ^ \psi)
+# 
+#   SAR_i = w_i * HSAR_i + (1 - w_i) * OSAR
+#   SAR^*_i = w_i * HSAR^*_i + (1 - w_i) * OSAR^*
+#   w_i = HC / (HC + OC_i * ID)
+# 
+#   HSAR_i <- 1 - (1 - p) ^ HD_i
+#   HSAR^*_i <- 1 - (1 - p^*) ^ HD_i
+# 
+#   OSAR_i <- \gamma_i * (1 - (1 - p) ^ OD_0)
+#   OSAR^*_i <- \gamma_i * (1 - (1 - p^*) ^ OD_0)
+# 
+#   HD_i = HD_0 * h_i
+#   \gamma_i = 1 - \beta * d_i
+
+# where N_i and C_i are the number of contacts, and the number of those contacts
+# that became cases in each English region i, and all variables with superscript
+# $*$ correspond to infection with the UK VOC strain, and those without
+# correspond to wild type strains.
  
-# r prior: as minimally-informative as possible, contrained to be positive, but
-# not constrained to be greater than 1. E.g. N+(1, 10)
+# The model was fitted by MCMC using the same algorithm and software as the
+# model for R_effective. The model was run until there were at least 1000
+# effective samples of each parameter. Convergence was assessed visually and by
+# the potential scale reduction factor (less than 1.01 for all parameters).
+# Calibration of the model was assessed by posterior predictive checks over each
+# of $C_i$, $C^*_i$, and the empirical estimate of the ratio of attack rates
+# between strains for each region: $\frac{C^*_i / N^*_i}{C_i / N_i}$, and
+# indicated good fit.
+
+# # Parameter values and priors
+
+# When fitting the R effective model for Australia, the parameters $OC_i$
+# (non-household contacts per 24 hours), $h_i$ (relative time spent at home),
+# and $d_i$ (relative microdistancing effect) are all informed by bespoke
+# statistical models tailored to the Australian situation and surveys carried
+# out only in Australia. We developed equivalent estimates of these parameters
+# for the UK from a range of other sources.
+ 
+# To estimate $OC_i$ we used the macrodistancing model fitted to Australian
+# contact survey data to predict the number of non-household contacts per days
+# in each English region, based on the values of Google mobility metrics for
+# those regions. Google mobility data were downloaded for each English county,
+# aggregated up to compute the average value over each region, and then averaged
+# for each region over the period over which attack rate data were collected.
+# Predictions of the Australian contact model were visually compared with
+# summary statistics of non-household contact rates from April to August 2020 as
+# estimated by the UK's CoMix survey series and found to have good calibration.
+# We used the aggregated estimate of change in Google's time at residential to
+# inform $h_i$. To estimate $d_i$ we analysed data on adherence to the UK's 2m
+# rule using data for each English region from you.gov surveys. We calculated
+# the number of people responding that they had not broken the 2m rule ("come
+# into physical contact with (within 2 meters / 6 feet)") in the past 7 days.
+# This is analogous to the 1.5m rule question used to define our microdistancing
+# metric in Australia. This time series was analysed using a Binomial
+# Generalised Additive Model with a smooth on date, to estimate a timeseries of
+# the metric for each region over the course of the pandemic. This timeseries
+# was rescaled to have maximum value 1 and then averaged over the time period
+# over which attack rate data were collected.
+
+# The model comprised 6 parameters; 4 for which we have existing estimates ($p$,
+# $HC$, $HD_0$, and $OD_0$) and 2 for which we do not ($\phi$ and $\psi$). We
+# defined an informative prior for $p$ based on a normal approximation to the
+# posterior for this parameter from the Australian R effective model. This
+# assumes \emph{a priori} that the wild-type strains in the UK have equivalent
+# infectiousness to the strains that have circulated in Australia, though the
+# parameter can be amended by the UK attack rate model fitting procedure if this
+# is inconsistent with the data. For $HC$, $HD_0$, and $OD_0$ we used the same
+# priors as we use in fitting the Australian model of R effective - based on
+# surveys of contact behaviour in Australian prior to the pandemic. The average
+# number of household contacts in each English region as reported in the you.gov
+# surveys agreed closely with this Australian prior for $HC$. We chose to use
+# the Australian estimate rather than the UK estimates since the posterior
+# estimate of $p$ was estimated contingent on this distribution. Both $\phi and
+# $\psi$ must be positive and a value of 1 indicates no effect (of the strain or
+# of bias in contact acquisition, respectively). We therefore specified
+# minimally informative positive-truncated normal priors for both parameters,
+# with mode ($\mu$ parameter of the normal distribution) of 1. For $\psi$ we set
+# the $\sigma$ parameter of the normal distribution to 1 to allow a large range
+# of values, and for $\phi$ we set it to 0.25. Prior predictive checks on the
+# ratio of attack rates between VOC and wild-type strains
+# ($\frac{SAR^*_i}{SAR_i}$) with this prior on $\phi$ confirmed that the prior
+# was vague with respect to the relative transmissability of the VOC strain
+# versus wild type. I.e. multiplicative increases in transmissability of the VOC
+# strain estimated from other studies were within the bulk of the prior
+# distribution, as were larger increases and decreases in transmissability.
+
+# $\beta$ was fixed at the posterior mean as estimated from the Australian
+# model. In the absence of a time series of attack rate data, it is not possible
+# to estimate this parameter independently for the UK, and the value of the
+# parameter is poorly statistically identified in this model due to potential
+# confounding with other parameters - especially $\psi$. For this reason,
+# uncertainty in $\beta$ was not considered in this analysis.
 
 source("R/functions.R")
 
@@ -476,7 +613,7 @@ h_i <- uk_location_change_trends %>%
     home = mean(home)
   )
 
-# base priors on p_WT and beta on Reff model posteriors
+# base priors on p and beta on Reff model posteriors
 
 fitted_reff_model <- readRDS("outputs/fitted_reff_model.RDS")
 
@@ -494,15 +631,16 @@ beta <- mean(beta_posterior)
 # hist(beta_posterior, breaks = 20, xlim = c(0, 1))
 # hist(calculate(beta, nsim = 5000)[[1]], breaks = 20, xlim = c(0, 1))
 
-# approximate p_wt as a normal
-p_wt_posterior <- calculate(
+# approximate q (q = 1 - p) as a normal. In the Reff model we call the
+# probability of not transmitting o, but here we call it q
+q_posterior <- calculate(
   fitted_reff_model$greta_arrays$distancing_effect$p,
   values = fitted_reff_model$draws,
   nsim = 1000
 )[[1]]
 
-p_wt <- normal(mean(p_wt_posterior), sd(p_wt_posterior), truncation = c(0, 1))
-
+q <- normal(mean(q_posterior), sd(q_posterior), truncation = c(0, 1))
+p <- 1 - q
 
 # HC, HD_0, OD_0, ID: baseline household contacts and contact durations from Aus
 # model
@@ -519,10 +657,10 @@ OD_0 <- normal(baseline_contact_params$mean_duration[2],
                truncation = c(0, Inf))
 
 # prior on the relative per-unit-contact-time infectiousness of the UK VOC strain
-phi <- normal(1, 0.25, truncation = c(0, Inf))
+phi <- normal(1, 1, truncation = c(0, Inf))
 
 # per-unit-contact-time infectiousness of the UK VOC strain
-p_voc <- 1 - (1 - p_wt) ^ phi
+p_star <- 1 - (1 - p) ^ phi
 
 # bias in sampling of contacts and cases in UK attack rate data (uniformly
 # increases/decreases the observed attack rate fromt he hypothetical 'true'
@@ -532,7 +670,7 @@ p_voc <- 1 - (1 - p_wt) ^ phi
 # of non-household contacts, however the UK attack rate report does not clearly
 # state the number of cases considered.
 
-bias <- normal(1, 1, truncation = c(0, Inf))
+psi <- normal(1, 1, truncation = c(0, Inf))
 
 infectious_days <- infectious_period(gi_cdf)
 
@@ -540,30 +678,31 @@ infectious_days <- infectious_period(gi_cdf)
 gamma_i <- 1 - beta * d_i$micro_effect
 
 # household and non-household secondary attack rates for the two strains
-hsar_wt_i <- 1 - p_wt ^ (HD_0 * h_i$home)
-hsar_voc_i <- 1 - p_voc ^ (HD_0 * h_i$home)
-osar_wt_i <- gamma_i * (1 - p_wt ^ OD_0)
-osar_voc_i <- gamma_i * (1 - p_voc ^ OD_0)
+hsar_i <- 1 - (1 - p) ^ (HD_0 * h_i$home)
+hsar_star_i <- 1 - (1 - p_star) ^ (HD_0 * h_i$home)
+osar_i <- gamma_i * (1 - (1 - p) ^ OD_0)
+osar_star_i <- gamma_i * (1 - (1 - p_star) ^ OD_0)
 
 # proportion of contacts that are household contacts
 w_i <- HC_0 / (HC_0 + OC_i$mean * infectious_days)
 
 # overall secondary attack rates
-sar_wt_i <- w_i * hsar_wt_i + (1 - w_i) * osar_wt_i
-sar_voc_i <- w_i * hsar_voc_i + (1 - w_i) * osar_voc_i
+sar_i <- w_i * hsar_i + (1 - w_i) * osar_i
+sar_star_i <- w_i * hsar_star_i + (1 - w_i) * osar_star_i
 
 # account for biased undersampling of contacts in the SAR data (e.g. sampling
 # all household contacts but only a fraction of non-household contacts) which
 # would cause the observed and expected attack rates to differ.
-sar_wt_observed_i <- sar_wt_i ^ bias
-sar_voc_observed_i <- sar_voc_i ^ bias
+sar_observed_i <- sar_i ^ psi
+sar_star_observed_i <- sar_star_i ^ psi
 
-distribution(uk_attack$cases_wt) <- binomial(uk_attack$contacts_wt, sar_wt_observed_i)
-distribution(uk_attack$cases_voc) <- binomial(uk_attack$contacts_voc, sar_voc_observed_i)
+distribution(uk_attack$cases_wt) <- binomial(uk_attack$contacts_wt, sar_observed_i)
+distribution(uk_attack$cases_voc) <- binomial(uk_attack$contacts_voc, sar_star_observed_i)
 
-m <- model(phi, HC_0, HD_0, OD_0, p_wt, bias)
+m <- model(phi, HC_0, HD_0, OD_0, p, psi)
 
 draws <- mcmc(m, chains = 10)
+draws <- extra_samples(draws, 2000)
 convergence(draws)
 bayesplot::mcmc_trace(draws)
 
@@ -572,10 +711,10 @@ bayesplot::mcmc_trace(draws)
 # reff_household_voc <- HC_0 * hsar_voc_i
 
 # compute the ratio of Reff for household, non-household, and overall infections
-r_household <- hsar_voc_i / hsar_wt_i
-r_non_household <- osar_voc_i / osar_wt_i
-r_overall <- mean(sar_voc_i / sar_wt_i)
-r_overall_observed <- mean(sar_voc_observed_i / sar_wt_observed_i)
+r_household <- hsar_star_i / hsar_i
+r_non_household <- osar_star_i / osar_i
+r_overall <- mean(sar_star_i / sar_i)
+r_overall_observed <- mean(sar_star_observed_i / sar_observed_i)
 
 # simulate prior and posterior over the ratio of attack rates (and therefore of Reff)
 r_sim_prior <- calculate(r_overall, nsim = 5000)[[1]][, 1, 1]
@@ -623,19 +762,28 @@ hist_prior_posterior <- function(greta_array, draws, nsim = 1000, ...)  {
   
 }
 
+
+
+# compare priors and posteriors
+
+# parameters we want to estimate
 hist_prior_posterior(phi, draws)
+hist_prior_posterior(psi, draws)
+
+# parameters we provide informative priors for
 hist_prior_posterior(HC_0, draws)
 hist_prior_posterior(HD_0, draws)
 hist_prior_posterior(OD_0, draws)
-hist_prior_posterior(p_wt, draws)
-hist_prior_posterior(bias, draws)
+hist_prior_posterior(p, draws)
+
+# derived parameters of interest
 hist_prior_posterior(r_overall, draws)
 hist_prior_posterior(r_household, draws)
 hist_prior_posterior(r_non_household, draws)
 
 # do posterior predictive checks to make sure these align with raw ratios from PHE data
-cases_voc_ga <- binomial(uk_attack$contacts_voc, sar_voc_observed_i)
-cases_wt_ga <- binomial(uk_attack$contacts_wt, sar_wt_observed_i)
+cases_voc_ga <- binomial(uk_attack$contacts_voc, sar_star_observed_i)
+cases_wt_ga <- binomial(uk_attack$contacts_wt, sar_observed_i)
 cases_voc_sim <- calculate(cases_voc_ga, values = draws, nsim = 1000)[[1]][, , 1]
 cases_wt_sim <- calculate(cases_wt_ga, values = draws, nsim = 1000)[[1]][, , 1]
 bayesplot::ppc_ecdf_overlay(
@@ -676,10 +824,15 @@ hist(phi_sim)
 
 # approximate as a normal distribution
 mean(phi_sim)
-# 0.852
+# 1.512
 sd(phi_sim)
-# 0.021
+# 0.084
 
+# p_star_sim <- calculate(p_star, values = draws, nsim = 5000)[[1]][, 1, 1]
+# summary(p_star_sim)
+# 
+# p_sim <- calculate(p, values = draws, nsim = 5000)[[1]][, 1, 1]
+# summary(p_sim)
 
 # summarise relative infectiousness in UK
 r_draws <- calculate(
@@ -701,4 +854,15 @@ lapply(r_draws,
        }
 )
 
+# $r_overall
+# mean    5%   50%   95% 
+# 43.55 32.34 43.39 55.38 
+# 
+# $r_household
+# mean    5%   50%   95% 
+# 39.14 29.20 39.01 49.53 
+# 
+# $r_non_household
+# mean    5%   50%   95% 
+# 49.02 36.08 48.77 62.64 
 

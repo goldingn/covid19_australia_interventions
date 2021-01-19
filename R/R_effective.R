@@ -59,18 +59,25 @@ write_reff_sims(lshtm_fitted_model, lshtm_dir)
 
 # Results with Oz analysis - use estimate of the relative per-unit-contact-time
 # infection probability and reconstruct component 1 timeseries
-phi <- normal(0.852, 0.021, truncation = c(0, Inf))
+phi <- normal(1.512, 0.084, truncation = c(0, Inf))
 
+data <- fitted_model$data
 dates <- data$dates$mobility
+
 de <- fitted_model$greta_arrays$distancing_effect
+
+q <- de$p
+p <- 1 - q
+p_star <- 1 - (1 - p) ^ phi
+
 infectious_days <- infectious_period(gi_cdf)
+
 h_t <- h_t_state(dates)
 HD_t <- de$HD_0 * h_t
-p_star <- 1 - (1 - de$p) ^ phi
 
-household_infections <- de$HC_0 * (1 - p_star ^ HD_t)
+household_infections <- de$HC_0 * (1 - (1 - p_star) ^ HD_t)
 non_household_infections <- de$OC_t_state * de$gamma_t_state *
-  infectious_days * (1 - p_star ^ de$OD_0)
+  infectious_days * (1 - (1 - p_star) ^ de$OD_0)
 R_t <- household_infections + non_household_infections
 R_eff_loc_1_no_surv <- extend(R_t, data$n_dates_project)
 
