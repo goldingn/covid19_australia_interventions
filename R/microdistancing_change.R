@@ -1,4 +1,4 @@
-# analyse change in microdistancing behaviour by state, using survey questions
+  # analyse change in microdistancing behaviour by state, using survey questions
 # from the BETA barometer
 source("R/functions.R")
 
@@ -10,7 +10,7 @@ survey_distance <- data$survey_distance
 pred_data <- data$prediction_data
 
 n_locations <- max(survey_distance$state_id)
-n_inflections <- 3
+n_inflections <- 4
 
 # how late can the latest inflection be (not after two weeks before the latest
 # survey date) convert that into a fraction of time between the peak and last datapoint
@@ -36,12 +36,12 @@ distribution(survey_distance$count) <- binomial(
 
 m <- model(inflections, heights)
 
-set.seed(2021-01-11)
+set.seed(2021-01-18)
 draws <- mcmc(m,
               chains = 10,
               sampler = hmc(
-                Lmin = 25,
-                Lmax = 30
+                Lmin = 35,
+                Lmax = 40
               ))
 draws <- extra_samples(draws, 3000)
 convergence(draws)
