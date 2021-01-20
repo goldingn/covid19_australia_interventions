@@ -1,0 +1,124 @@
+  digraph pipeline_flowchart {
+
+  # a 'graph' statement
+  graph [fontsize = 9
+  fontname = Helvetica
+  ]
+  
+  node []
+  
+  mob [label = "mobility_change.R"]
+  rol [label = "rolling_delays.R"]
+  rmd [label = "Reff model data"]
+  par [label = "parse contact data"]
+  mic [label = "microdistancing_change.R"]
+  mac [label = "macrodistancing_change.R"]
+  ref [label = "R_effective.R"]
+  
+  
+  add [label = "Apple: directions for driving"]
+  adt [label = "Apple: directions for transit"]
+  adw [label = "Apple: directions for walking"]
+  cmd [label = "Citymapper: directions"]
+  gtg [label = "Google time at grocery and pharmacy"]
+  gtp [label = "Google: time at parks"]
+  gtr [label = "Google: time at residential"]
+  grr [label = "Google: time at retail and recreation"]
+  gtt [label = "Google: time at transit stations"]
+  gtw [label = "Google: time at work"]
+  
+  app [label = "Apple-web"]
+  cmp [label = "Citymapper-web"]
+  goo [label = "Google-web"]
+  
+  cmo [label = "cached_mobility.RDS"]
+  
+  dmf [label = "datastream_model_fit"]
+  mmf [label = "multistate_model_fit"]
+    
+  
+  #{rank = same; mob; app;}
+  #{rank = 2; rol}
+  #{rank = 3; rmd}
+  #{rank = 4; par}
+  #{rank = 5; mic}
+  #{rank = 6; mac}
+  #{rank = 7; ref}
+
+  
+  subgraph cluster_code {
+          label = "code";
+          {rank = same;
+          mob;
+          rol;
+          rmd;
+          par;
+          mic;
+          mac;
+          ref
+          }
+      }
+  
+  subgraph cluster_data {
+    label = "data";
+    {rank = same;
+    add;
+    adt;
+    adw;
+    cmd;
+    gtg;
+    gtp;
+    gtr;
+    grr;
+    gtt;
+    gtw
+    }
+    
+  }
+  
+  subgraph cluster_source {
+    label = "source";
+    {rank = same}
+    app;
+    cmp;
+    goo;
+  }
+  
+  subgraph cluster_images {
+    label = "images";
+    dmf;
+    mmf;
+  }
+  
+  subgraph clulster_RDS {
+    label = "RDS";
+    cmo
+  }
+  
+  subgraph cluster_cdv{
+    label = "csv"
+  }
+
+
+  # several 'edge' statements
+  mob -> rol -> rmd -> par -> mic -> mac -> ref
+  
+  
+  app -> add -> mob
+  app -> adt -> mob
+  app -> adw -> mob
+  cmp -> cmd -> mob
+  goo -> gtg -> mob
+  goo -> gtp -> mob
+  goo -> gtr -> mob
+  goo -> grr -> mob
+  goo -> gtt -> mob
+  goo -> gtw -> mob
+  
+  mob -> cmo
+  
+  mob -> mmf
+  mob -> dmf
+
+
+}
