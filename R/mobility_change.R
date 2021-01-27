@@ -1,3 +1,5 @@
+source("spartan/lib.R")
+
 source("R/functions.R")
 
 # load, cache, and format the mobility data
@@ -217,11 +219,12 @@ mobility_fitted %>%
   theme(legend.position = "none",
         strip.background = element_blank(),
         axis.text.y = element_text(size = 8),
-        strip.text.x = element_text(size = 12),
+        strip.text.x = element_text(size = 10),
         strip.text.y = element_text(size = 18),
+        #strip.text.x = element_text(size = 12),
         plot.title = element_text(size = 20, face = "plain"),
         panel.border = element_rect(colour = grey(0.4), fill = NA),
-        panel.spacing = unit(1.2, "lines"))
+        panel.spacing = unit(1.2, "lines")) 
 
 dpi <- 300
 ggsave(filename = "outputs/figures/multistate_model_fit.png",

@@ -1,5 +1,7 @@
   # analyse change in microdistancing behaviour by state, using survey questions
 # from the BETA barometer
+source("spartan/lib.R")
+
 source("R/functions.R")
 
 # sync aggregated data for Dennis
@@ -158,7 +160,8 @@ p <- ggplot(line_df) +
         strip.background = element_blank(),
         strip.text = element_text(hjust = 0, face = "bold"),
         axis.title.y.right = element_text(vjust = 0.5, angle = 90),
-        panel.spacing = unit(1.2, "lines")) +
+        panel.spacing = unit(1.2, "lines"),
+        axis.text.x = element_text(size = 8)) +
   
   # add empirical percentages
   geom_point(

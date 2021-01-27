@@ -1,3 +1,5 @@
+source("spartan/lib.R")
+
 library(readr)
 library(dplyr)
 library(stringr)
@@ -12,6 +14,8 @@ library(purrr)
 library(ggplot2)
 library(R6)
 library(slider)
+library(cowplot)
+library(lubridate)
 
 tfp <- reticulate::import("tensorflow_probability")
 
@@ -1457,7 +1461,8 @@ plot_trend <- function(simulations,
           strip.background = element_blank(),
           strip.text = element_text(hjust = 0, face = "bold"),
           axis.title.y.right = element_text(vjust = 0.5, angle = 90),
-          panel.spacing = unit(1.2, "lines"))
+          panel.spacing = unit(1.2, "lines"),
+          axis.text.x = element_text(size = 8))
   
   if (multistate) {
     p <- p + facet_wrap(~ state, ncol = 2, scales = "free")

@@ -1,6 +1,9 @@
 # analyse change in macrodistancing behaviour (non-household contact rate) by
 # state, using a baseline rate, and survey questions from Freya's survey and the
 # BETA barometer
+
+source("spartan/lib.R")
+
 source("R/functions.R")
 
 # informative priors for baseline contact parameters
@@ -49,7 +52,7 @@ draws <- mcmc(
   chains = n_chains
 )
 
-# draws <- extra_samples(draws, 1000)
+ draws <- extra_samples(draws, 1000)
 convergence(draws)
 
 fitted_model <- module(
@@ -65,7 +68,7 @@ fitted_model <- module(
 saveRDS(fitted_model, "outputs/fitted_macro_model.RDS")
 # fitted_model <- readRDS("outputs/fitted_macro_model.RDS")
 
-# # make predictions using updated data
+# # make predictions using updated data on a day out of sync with standard Monday fit
 # fitted_model$data <- data
 # fitted_model$predictions <- macrodistancing_model(fitted_model$data, fitted_model$params)
 
@@ -85,7 +88,7 @@ contacts_ga <- discrete_lognormal(
 #   fitted_model$data$contacts$contact_num,
 #   contacts_sim[1:1000, ],
 #   discrete = TRUE
-# ) + 
+# ) +
 #   coord_cartesian(xlim = c(0, 300))
 ## THIS HASHED OUT AS KILLING GR LAPTOP MEMORY
 
@@ -140,11 +143,17 @@ log_fraction_weekly_contacts_mean <- fitted_model$predictions$log_fraction_weekl
 # null_params <- macrodistancing_params(baseline_contact_params)
 null <- macrodistancing_null(fitted_model$data, log_fraction_weekly_contacts_mean)
 m_null <- model(null$avg_daily_contacts_wide, null$sdlog)
+
 draws_null <- mcmc(
   m_null,
   chains = 10
 )
+
+
 convergence(draws_null)
+
+#draws_null <- extra_samples(draws_null, 500)
+
 daily_contacts_draws_null <- calculate(
   null$avg_daily_contacts_wide,
   values = draws_null,
