@@ -28,6 +28,7 @@ library(cowplot)
 
 # turn each policy off (FALSE) or leave as observed (TRUE)
 # run for each phase
+
 scenarios <- expand_grid(
   overseas_quarantine = c(FALSE, TRUE),
   mobility_restrictions = c(FALSE, TRUE),
@@ -54,7 +55,6 @@ saveRDS(scenarios, "outputs/counterfactuals/scenario_list.RDS")
 
 # loop through all these scenarios generating posterior samples
 scenarios_to_run <- seq_len(nrow(scenarios))
-scenarios_to_run <- 5:17
 for (index in scenarios_to_run) {
   
   print(paste("scenario: ", index))
@@ -73,7 +73,6 @@ for (index in scenarios_to_run) {
 }
 
 scenario <- readRDS("outputs/counterfactuals/scenario1.RDS")
-
 
 summarise_scenario <- function(scenario) {
   file <- paste0("outputs/counterfactuals/scenario", scenario, ".RDS")
@@ -110,18 +109,15 @@ add_scenario_ribbon <- function(base_plot, data, colour = "black") {
       data = data,
       fill = colour,
       alpha = 0.2
-    ) +
-    geom_line(
-      aes(
-        date,
-        median
-      ),
-      data = data,
-      color = colour
-    ) +
-    coord_cartesian(
-      xlim = range(data$date)
-    )
+    ) # +
+    # geom_line(
+    #   aes(
+    #     date,
+    #     median
+    #   ),
+    #   data = data,
+    #   color = colour
+    # )
 }
 
 # set up plotting of different scenarios
@@ -164,26 +160,39 @@ sc_optimal <- list(
   summarise_scenario(18) 
 )
 
+fitted_model <- readRDS("outputs/fitted_reff_model.RDS")
+
 # observed case counts
 observed <- tibble(
   date = fitted_model$data$dates$infection,
   cases = rowSums(fitted_model$data$local$cases)
 )
 
+# format large numbers with 'k' for thousands, 'M' for millions etc.
+large_numbers <- function(n) {
+  case_when(
+    n < 1e3 ~ as.character(n),
+    n < 1e6 ~ paste0(round(n/1e3), 'k'),
+    n < 1e9 ~ paste0(round(n/1e6), 'M')
+  )
+}
+
 base <- observed %>%
   ggplot() +
   aes(date, median) + 
   geom_line(
     aes(date, cases),
-    data = observed,
-    lty = 2
+    data = observed
   ) +
   theme_cowplot() +
+  theme(
+    plot.title = element_text(hjust = 0.5)
+  ) +
   ylab("") +
   xlab("") +
   scale_y_continuous(
     position = "right",
-    labels = scales::comma
+    labels = large_numbers
   ) +
   scale_x_date(
     date_breaks = "1 month",
@@ -224,57 +233,37 @@ distancing <- mapply(make_plot,
                      SIMPLIFY = FALSE)
 
 contacts <- mapply(make_plot,
-                     sc_optimal,
-                     sc_no_contacts,
-                     MoreArgs = list(
-                       base_plot = base,
-                       colours = c(grey(0.4), yellow, yellow)
-                     ),
-                     SIMPLIFY = FALSE)
+                   sc_optimal,
+                   sc_no_contacts,
+                   MoreArgs = list(
+                     base_plot = base,
+                     colours = c(grey(0.4), yellow, yellow)
+                   ),
+                   SIMPLIFY = FALSE)
 
 library(patchwork)
+
+coords <- function(phase = 1, max_cases = 1000) {
+  phase_long <- c("importation", "suppression", "community")[phase]
+  dates <- scenario_dates(list(phase = phase_long))
+  xlim <- range(dates)
+  coord_cartesian(xlim = xlim, ylim = c(0, max_cases))
+}
+
 p <- 
-  (quarantine[[1]] | quarantine[[2]] | quarantine[[3]]) /
-  (distancing[[1]] | distancing[[2]] | distancing[[3]]) / 
-  (contacts[[1]] | contacts[[2]] | contacts[[3]]) +
-  plot_annotation("Epidemic curves under counterfactual scenarios")
+  (quarantine[[1]] + ggtitle("importation phase") + coords(1, 1000) |
+     quarantine[[2]] + ggtitle("suppression phase") + coords(2, 1000) |
+     quarantine[[3]] + ggtitle("outbreak phase") + coords(3)) /
+  (distancing[[1]] + coords(1, 1000) |
+     distancing[[2]] + coords(2, 1000)  |
+     distancing[[3]] + coords(3) ) / 
+  (contacts[[1]] + coords(1, 1000) |
+     contacts[[2]] + coords(2, 1000) |
+     contacts[[3]] + coords(3))
 
 p
 
-ggsave("~/Desktop/multipanel.png", plot = p)
+# add in colour label legend on RHS alongside correct row
+# fix the scenarios ('optimal' should now be the observed, so should not skyrocket)
 
-    
-# # read in all the scenarios, summarise the Reffs, and visualise
-# files <- paste0("outputs/counterfactuals/scenario", 1:72, ".RDS")
-# 
-# extract_reff <- function(scenario, file) {
-#   object <- readRDS(file)
-#   cbind(object$reffs, scenario = scenario)
-# }
-# 
-# reff <- mapply(
-#   extract_reff,
-#   seq_along(files),
-#   files,
-#   SIMPLIFY = FALSE
-# ) %>%
-#   do.call(bind_rows, .) %>%
-#   group_by(scenario) %>%
-#   summarise(
-#     local_reff_mean = mean(local),
-#     local_reff_exceedance = mean(local > 1)
-#   ) %>%
-#   cbind(scenarios) %>%
-#   select(
-#     scenario,
-#     phase,
-#     mobility_restrictions,
-#     physical_distancing,
-#     contact_tracing,
-#     overseas_quarantine,
-#     local_reff_mean,
-#     local_reff_exceedance
-#   )
-# 
-# reff %>%
-#   filter(phase == "importation" & mobility_restrictions & physical_distancing & overseas_quarantine)
+ggsave("~/Desktop/multipanel.png", plot = p)

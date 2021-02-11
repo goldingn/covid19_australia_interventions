@@ -6163,7 +6163,7 @@ scenario_dates <- function(scenario) {
   
   switch(
     scenario$phase,
-    importation = seq(as.Date("2020-03-01"),
+    importation = seq(as.Date("2020-02-01"),
                       as.Date("2020-04-30"),
                       by = 1),
     suppression = seq(as.Date("2020-05-01"),
