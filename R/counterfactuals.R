@@ -72,8 +72,6 @@ for (index in scenarios_to_run) {
   
 }
 
-scenario <- readRDS("outputs/counterfactuals/scenario1.RDS")
-
 summarise_scenario <- function(scenario) {
   file <- paste0("outputs/counterfactuals/scenario", scenario, ".RDS")
   file %>%
@@ -266,4 +264,9 @@ p
 # add in colour label legend on RHS alongside correct row
 # fix the scenarios ('optimal' should now be the observed, so should not skyrocket)
 
-ggsave("~/Desktop/multipanel.png", plot = p)
+ggsave("~/Desktop/multipanel.png", plot = p, width = 10, height = 8)
+
+
+# Need to debug these. Try simulating with C12 rather than C1. and start on the same date as the Reff calibration check.
+
+

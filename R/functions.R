@@ -4372,7 +4372,10 @@ reff_model <- function(data) {
       surveillance_reff_local_reduction,
       log_R_eff_loc,
       log_R_eff_imp,
-      epsilon_L
+      kernel_L,
+      epsilon_L,
+      sigma_state,
+      var
     )
   )
   
@@ -6163,7 +6166,7 @@ scenario_dates <- function(scenario) {
   
   switch(
     scenario$phase,
-    importation = seq(as.Date("2020-02-01"),
+    importation = seq(as.Date("2020-02-28"),
                       as.Date("2020-04-30"),
                       by = 1),
     suppression = seq(as.Date("2020-05-01"),
@@ -6220,6 +6223,7 @@ reff_distancing <- function(fitted_model, macro_effect = TRUE, micro_effect = TR
 counterfactual_reffs <- function(scenario, fitted_model) {
   
   data <- fitted_model$data
+  greta_arrays <- fitted_model$greta_arrays
   
   # baseline reff due to household/non-household model
   baseline_local_reff_raw <- reff_distancing(
@@ -6243,9 +6247,33 @@ counterfactual_reffs <- function(scenario, fitted_model) {
   } else {
     contact_tracing_effect <- 1
   }
-
+  
   # overall reff for locally-acquired cases
-  local_reff <- baseline_local_reff * contact_tracing_effect
+  local_reff_c1 <- baseline_local_reff * contact_tracing_effect
+  
+  # add on observed C2 for get a counterfactual C12
+  
+  # hierarchical prior mean on log(local_reff) by state
+  log_local_reff_c1 <- log(local_reff_c1)
+  mu_prior <- log_local_reff_c1 - greta_arrays$var
+  
+  # add the observed c2 trend to get a counterfactual with observed
+  # stochasticity
+  log_local_reff_c12_observed <- mu_prior + greta_arrays$epsilon_L
+  local_reff_c12_observed <- exp(log_local_reff_c12_observed)
+  
+  # add on new simulated C2 to get a counterfactual with full distribution of
+  # potential stochasticity
+  epsilon_L_new <- epsilon_gp(
+    date_nums = data$dates$date_nums,
+    n_states = data$n_states,
+    inducing_date_nums = data$dates$inducing_date_nums,
+    sigma_state = greta_arrays$sigma_state,
+    kernel = greta_arrays$kernel_L
+  )
+  
+  log_local_reff_c12_new <- mu_prior + epsilon_L_new
+  local_reff_c12_new <- exp(log_local_reff_c12_new)
   
   # overall reff for overseas-acquired cases  
   if (scenario$overseas_quarantine) {
@@ -6256,21 +6284,18 @@ counterfactual_reffs <- function(scenario, fitted_model) {
       FUN = "*"
     )
   } else {
-    import_reff <- local_reff
+    import_reff <- local_reff_c1
   }
   
-  # return these scalar greta arrays
-  module(local_reff, import_reff)
+  # return the greta arrays of interest
+  module(
+    local_reff_c1,
+    local_reff_c12_observed,
+    local_reff_c12_new,
+    import_reff
+  )
 
 }
-
-# things to do for each:
-# 1. compute Reff C1s under each scenario
-
-# 2. project case counts under Reff trajectory
-#  - function to create greta array for locally-acquired case trajectories based on two reff trajectories, imported case counts, and initial local case counts
-#  - function to set up imported case counts and initial case counts for each phase
-#  - wrapper function to take in scenario config, do calculation of posteriors, and save outputs 
 
 
 # the vectors of case counts to use for each scenario
@@ -6314,16 +6339,21 @@ simulate_scenario <- function (index, scenarios, fitted_model, nsim = 5000) {
   
   # clip to scenario dates
   keep <- fitted_model$data$dates$infection_project %in% case_data$dates
-  reff_locals <- reffs$local_reff[keep, ]
-  reff_imports <- reffs$import_reff[keep, ]
+  local_reff_c1 <- reffs$local_reff_c1[keep, ]
+  local_reff_c12_observed <- reffs$local_reff_c12_observed[keep, ]
+  local_reff_c12_new <- reffs$local_reff_c12_new[keep, ]
+  
+  local_reff <- local_reff_c12_observed
+  
+  import_reff <- reffs$import_reff[keep, ]
   
   # need to include 3 weeks of pre-simulation local and imported cases, so pad
   # dates. pass in a single column matrix of these things to do national simulations
   simulation <- forecast_locals(
     local_cases = as.matrix(case_data$local_cases),
     imported_cases = as.matrix(case_data$imported_cases),
-    Reff_locals = reff_locals,
-    Reff_imports = reff_imports,
+    Reff_locals = local_reff,
+    Reff_imports = import_reff,
     dates = case_data$dates,
     gi_cdf = gi_cdf,
     simulation_start = case_data$simulation_start
@@ -6336,18 +6366,20 @@ simulate_scenario <- function (index, scenarios, fitted_model, nsim = 5000) {
   
   local_cases_ntnl <- rowSums(local_cases)
   
-  # use state populations here instead and do a matrix multiply on the fractions
-  # relative_population <- state_populations() %>%
-  #   arrange(state) %>%
-  #   mutate(fraction = population / sum(population)) %>%
-  #   dplyr::select(-population)
-  # reff_local_ntnl <- reff_locals[keep, ] %*% relative_population
-  reff_local_ntnl <- apply(reff_locals[keep, ], 1, FUN = "mean")
-  reff_imported_ntnl <- apply(reff_imports[keep, ], 1, FUN = "mean")
-  
+  # # use state populations here instead and do a matrix multiply on the fractions
+  # # relative_population <- state_populations() %>%
+  # #   arrange(state) %>%
+  # #   mutate(fraction = population / sum(population)) %>%
+  # #   dplyr::select(-population)
+  # # reff_local_ntnl <- reff_locals[keep, ] %*% relative_population
+  # local_reff_c1_ntnl <- apply(local_reff_c1[keep, ], 1, FUN = "mean")
+  # import_reff_ntnl <- apply(import_reff[keep, ], 1, FUN = "mean")
+  # 
   # get posterior samples
   sims <- calculate(
-    local_cases_ntnl, reff_local_ntnl, reff_imported_ntnl,
+    local_cases_ntnl,
+    # local_reff_c1_ntnl,
+    # import_reff_ntnl,
     values = fitted_model$draws,
     nsim = nsim
   )
@@ -6356,9 +6388,9 @@ simulate_scenario <- function (index, scenarios, fitted_model, nsim = 5000) {
   results <- tibble(
     sim = rep(seq_len(nsim), each = length(dates)),
     date = rep(dates, nsim),
-    cases = as.vector(t(sims$local_cases_ntnl[, , 1])),
-    reff_local = as.vector(t(sims$reff_local_ntnl[, , 1])),
-    reff_imported = as.vector(t(sims$reff_imported_ntnl[, , 1]))
+    cases = as.vector(t(sims$local_cases_ntnl[, , 1]))  # ,
+    # reff_local = as.vector(t(sims$reff_local_ntnl[, , 1])),
+    # reff_imported = as.vector(t(sims$reff_imported_ntnl[, , 1]))
   )
   
   # save these samples
