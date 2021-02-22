@@ -34,7 +34,7 @@ scenarios <- expand_grid(
   mobility_restrictions = c(FALSE, TRUE),
   physical_distancing = c(FALSE, TRUE),
   contact_tracing = c(FALSE, TRUE),
-  phase = c("importation", "suppression", "community")
+  phase = c("importation", "community", "suppression")
 ) %>%
   mutate(
     n_implemented = overseas_quarantine +
@@ -90,15 +90,15 @@ summarise_scenario <- function(scenario) {
 
 add_scenario_ribbon <- function(base_plot, data, colour = "black") {
   base_plot +
-  geom_ribbon(
-    aes(
-      ymin = bottom,
-      ymax = top
-    ),
-    data = data,
-    fill = colour,
-    alpha = 0.1
-  ) +
+  # geom_ribbon(
+  #   aes(
+  #     ymin = bottom,
+  #     ymax = top
+  #   ),
+  #   data = data,
+  #   fill = colour,
+  #   alpha = 0.1
+  # ) +
     geom_ribbon(
       aes(
         ymin = lower,
@@ -242,16 +242,16 @@ contacts <- mapply(make_plot,
 library(patchwork)
 
 coords <- function(phase = 1, max_cases = 1000) {
-  phase_long <- c("importation", "suppression", "community")[phase]
+  phase_long <- c("importation", "community", "suppression")[phase]
   dates <- scenario_dates(list(phase = phase_long))
   xlim <- range(dates)
   coord_cartesian(xlim = xlim, ylim = c(0, max_cases))
 }
 
 p <- 
-  (quarantine[[1]] + ggtitle("importation phase") + coords(1, 1000) |
-     quarantine[[2]] + ggtitle("suppression phase") + coords(2, 1000) |
-     quarantine[[3]] + ggtitle("outbreak phase") + coords(3)) /
+  (quarantine[[1]] + ggtitle("importation") + coords(1, 1000) |
+     quarantine[[2]] + ggtitle("community transmission") + coords(2, 1000) |
+     quarantine[[3]] + ggtitle("outbreak suppression") + coords(3)) /
   (distancing[[1]] + coords(1, 1000) |
      distancing[[2]] + coords(2, 1000)  |
      distancing[[3]] + coords(3) ) / 
