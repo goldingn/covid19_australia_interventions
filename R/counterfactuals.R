@@ -55,6 +55,7 @@ saveRDS(scenarios, "outputs/counterfactuals/scenario_list.RDS")
 
 # loop through all these scenarios generating posterior samples
 scenarios_to_run <- seq_len(nrow(scenarios))
+
 for (index in scenarios_to_run) {
   
   print(paste("scenario: ", index))
@@ -79,26 +80,17 @@ summarise_scenario <- function(scenario) {
     `[[`("results") %>%
     group_by(date) %>%
     summarise(
-      bottom = quantile(cases, 0.05),
-      lower = quantile(cases, 0.25),
-      median = median(cases),
-      upper = quantile(cases, 0.75),
-      top = quantile(cases, 0.95),
+      bottom = quantile(cases, 0.05, na.rm = TRUE),
+      lower = quantile(cases, 0.25, na.rm = TRUE),
+      median = median(cases, na.rm = TRUE),
+      upper = quantile(cases, 0.75, na.rm = TRUE),
+      top = quantile(cases, 0.95, na.rm = TRUE),
       .groups = "drop"
     )
 }
 
 add_scenario_ribbon <- function(base_plot, data, colour = "black") {
   base_plot +
-  # geom_ribbon(
-  #   aes(
-  #     ymin = bottom,
-  #     ymax = top
-  #   ),
-  #   data = data,
-  #   fill = colour,
-  #   alpha = 0.1
-  # ) +
     geom_ribbon(
       aes(
         ymin = lower,
@@ -107,15 +99,7 @@ add_scenario_ribbon <- function(base_plot, data, colour = "black") {
       data = data,
       fill = colour,
       alpha = 0.2
-    ) # +
-    # geom_line(
-    #   aes(
-    #     date,
-    #     median
-    #   ),
-    #   data = data,
-    #   color = colour
-    # )
+    )
 }
 
 # set up plotting of different scenarios
@@ -249,7 +233,7 @@ coords <- function(phase = 1, max_cases = 1000) {
 }
 
 p <- 
-  (quarantine[[1]] + ggtitle("importation") + coords(1, 1000) |
+  (quarantine[[1]] + ggtitle("initial importations") + coords(1, 1000) |
      quarantine[[2]] + ggtitle("community transmission") + coords(2, 1000) |
      quarantine[[3]] + ggtitle("outbreak suppression") + coords(3)) /
   (distancing[[1]] + coords(1, 1000) |
@@ -262,11 +246,9 @@ p <-
 p
 
 # add in colour label legend on RHS alongside correct row
-# fix the scenarios ('optimal' should now be the observed, so should not skyrocket)
 
 ggsave("~/Desktop/multipanel.png", plot = p, width = 10, height = 8)
 
-
-# Need to debug these. Try simulating with C12 rather than C1. and start on the same date as the Reff calibration check.
+# Use new C2 instead of observed ones for counterfactuals
 
 

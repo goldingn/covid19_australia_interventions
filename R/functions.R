@@ -2561,20 +2561,24 @@ op <- greta::.internals$nodes$constructors$op
 project_local_cases <- function(
   infectiousness,
   R_local,
-  disaggregation_probs
+  disaggregation_probs,
+  size,
+  stochastic = TRUE
 ) {
   
   if (!identical(dim(infectiousness), dim(R_local))) {
     stop ("infectiousness and R_local must have the same dimensions")
   }
-  
+
   op("project_local_cases",
      infectiousness,
      R_local,
      disaggregation_probs,
+     size,
      operation_args = list(
        T = nrow(infectiousness),
-       K = length(disaggregation_probs)
+       K = length(disaggregation_probs),
+       stochastic = stochastic
      ),
      tf_operation = "tf_project_local_cases",
      dim = dim(infectiousness))
@@ -2583,28 +2587,53 @@ project_local_cases <- function(
 
 # tensorflow function to project the expected number of locally-acquired cases
 # into the future
-tf_project_local_cases <- function(infectiousness, R_local, disaggregation_probabilities, T, K) {
+tf_project_local_cases <- function(infectiousness, R_local, disaggregation_probabilities, size, T, K, stochastic) {
   
   # continuing condition of TF while loop
-  cond <- function(C, I, R, p, t, T, K, sequence) {
+  cond <- function(C, I, R, p, t, size, T, K, sequence) {
     tf$less(t, T)
   }
   
   # body of TF while loop
-  body <- function(C, I, R, p, t, T, K, sequence) {
+  body <- function(C, I, R, p, t, size, T, K, sequence) {
+
+    # get the expected number of new cases infected on this day    
+    new_C_expected <- R[, t, ] * I[, t, ]
+    new_C_expected <- tf$expand_dims(new_C_expected, 1L)
     
-    # increase the expected infectiousness on subsequent days due to cases
-    # infected on this day
-    new_C <- R[, t, ] * I[, t, ]
-    new_C <- tf$expand_dims(new_C, 1L)
-    
+    # if stochastic, sample the actual number of locally-acquired cases,
+    # otherwise use the expectation
+    if (stochastic) {
+
+      # negative binomial version
+      prob <- fl(1) / (fl(1) + new_C_expected / size)
+      d <- tfp$distributions$NegativeBinomial(
+        total_count = size,
+        probs = fl(1) - prob
+      )
+
+      # # Poisson version
+      # d <- tfp$distributions$Poisson(
+      #   rate = new_C_expected
+      # )
+      
+      new_C <- d$sample()
+      
+    } else {
+      
+      new_C <- new_C_expected
+      
+    }
+
     # distribute infectiousness of these cases across their infectious profile
     new_I <- new_C * p
-    
-    # add to cases and cumulative infectiousness
+
+    # need to transpose to and fro as scatter_nd_add can only operate on the
+    # first dimension
     perm_to <- c(1L, 2L, 0L)
     perm_from <- c(2L, 0L, 1L)
     
+    # add the the combined infectiousness on future days
     I_t <- tf$transpose(I, perm_to)
     new_I_t <- tf$transpose(new_I, perm_to)
     I_t <- tf$tensor_scatter_nd_add(I_t,
@@ -2612,6 +2641,7 @@ tf_project_local_cases <- function(infectiousness, R_local, disaggregation_proba
                                     updates = new_I_t)
     I <- tf$transpose(I_t, perm_from)
     
+    # track the number of locally-acquired cases infected per day
     C_t <- tf$transpose(C, perm_to)
     new_C_t <- tf$transpose(new_C, perm_to)
     C_t <- tf$tensor_scatter_nd_add(C_t,
@@ -2619,7 +2649,7 @@ tf_project_local_cases <- function(infectiousness, R_local, disaggregation_proba
                                     updates = new_C_t)
     C <- tf$transpose(C_t, perm_from)
     
-    list(C, I, R, p, t + 1L, T, K, sequence)
+    list(C, I, R, p, t + 1L, size, T, K, sequence)
     
   }
   
@@ -2636,7 +2666,7 @@ tf_project_local_cases <- function(infectiousness, R_local, disaggregation_proba
     shape = tf$stack(list(batch_size, T, n_locations)),
     dtype = greta:::tf_float()
   )
-  
+
   # initial variables for loop
   values <- list(
     C,
@@ -2644,6 +2674,7 @@ tf_project_local_cases <- function(infectiousness, R_local, disaggregation_proba
     R,
     disaggregation_probabilities,
     0L,
+    size,
     T,
     K,
     as.matrix((1:K) - 1L)
@@ -2662,6 +2693,7 @@ check_projection <- function(fitted_model, start_date = as.Date("2020-02-28")) {
   
   R_eff_local <- fitted_model$greta_arrays$R_eff_loc_12
   R_eff_imported <- fitted_model$greta_arrays$R_eff_imp_12
+  size <- fitted_model$greta_arrays$size
   gi_vec <- gi_vector(gi_cdf, fitted_model$data$dates$latest, state = "ACT")
   local_infectiousness <- fitted_model$data$local$infectiousness
   imported_infectiousness <- fitted_model$data$imported$infectiousnes
@@ -2737,7 +2769,8 @@ check_projection <- function(fitted_model, start_date = as.Date("2020-02-28")) {
   secondary_locals <- project_local_cases(
     infectiousness = rowSums(local_infectiousness)[sub_idx],
     R_local = R_eff_loc_ntnl[sub_idx],
-    disaggregation_probs = gi_vec
+    disaggregation_probs = gi_vec,
+    size = size[sub_idx]
   )
   
   # compute locally-acquired cases
@@ -4329,8 +4362,9 @@ reff_model <- function(data) {
   
   # negative binomial likelihood for number of cases
   sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf), dim = data$n_states)
-  size <- 1 / sqrt(sqrt_inv_size[valid[, 2]])
-  prob <- 1 / (1 + expected_infections_vec / size)
+  size <- 1 / sqrt(sqrt_inv_size)
+  size_vec <- size[valid[, 2]]
+  prob <- 1 / (1 + expected_infections_vec / size_vec)
   
   # Account for right truncation; underreporting of recent infections which have
   # had less time to be detected. Given the number of cases N_t infected on day t
@@ -4352,7 +4386,7 @@ reff_model <- function(data) {
   # this collapses to prob
   prob_trunc <- 1 / (1 + detection_prob_vec * (1 - prob) / prob)
   
-  distribution(data$local$cases[valid]) <- negative_binomial(size, prob_trunc)
+  distribution(data$local$cases[valid]) <- negative_binomial(size_vec, prob_trunc)
   
   m <- model(expected_infections_vec)
   
@@ -4360,6 +4394,7 @@ reff_model <- function(data) {
     greta_model = m,
     greta_arrays = module(
       expected_infections_vec,
+      size_vec,
       size,
       prob_trunc,
       R_eff_loc_1,
@@ -4984,7 +5019,7 @@ update_past_cases <- function(past_cases_dir = "outputs/past_cases") {
 plot_reff_checks <- function(fitted_model, nsim = 10000) {
   
   cases <- negative_binomial(
-    fitted_model$greta_arrays$size,
+    fitted_model$greta_arrays$size_vec,
     fitted_model$greta_arrays$prob_trunc
   )
   cases_sim <- calculate(cases, values = fitted_model$draws, nsim = nsim)[[1]][, , 1]
@@ -5399,6 +5434,7 @@ lga_infections <- function(linelist, dates, gi_mat, case_type = c("local", "impo
 # close to 0 cases will inevitably lead to a large outbreak if Reff exceeds 1.
 forecast_locals <- function (local_cases, imported_cases,
                              Reff_locals, Reff_imports,
+                             size,
                              dates, gi_cdf,
                              simulation_start = dates[nrow(local_cases)],
                              gi_bounds = c(0, 20),
@@ -5476,12 +5512,13 @@ forecast_locals <- function (local_cases, imported_cases,
   # work out where to simulate from
   start_idx <- match(simulation_start, dates)
   sim_idx <- seq(start_idx, n_dates, by = 1)
-  
+
   # simulate the expected numbers of secondary local cases
   secondary_local_cases <- project_local_cases(
     infectiousness = local_infectiousness[sim_idx, ],
     R_local = Reff_locals[sim_idx, ],
-    disaggregation_probs = gi_vec
+    disaggregation_probs = gi_vec,
+    size = size
   )
   
   # pad the result with 0s to represent simulated cases
@@ -6344,8 +6381,9 @@ simulate_scenario <- function (index, scenarios, fitted_model, nsim = 5000) {
   local_reff_c12_new <- reffs$local_reff_c12_new[keep, ]
   
   local_reff <- local_reff_c12_observed
-  
   import_reff <- reffs$import_reff[keep, ]
+  
+  size <- t(fitted_model$greta_arrays$size)
   
   # need to include 3 weeks of pre-simulation local and imported cases, so pad
   # dates. pass in a single column matrix of these things to do national simulations
@@ -6354,6 +6392,7 @@ simulate_scenario <- function (index, scenarios, fitted_model, nsim = 5000) {
     imported_cases = as.matrix(case_data$imported_cases),
     Reff_locals = local_reff,
     Reff_imports = import_reff,
+    size = size,
     dates = case_data$dates,
     gi_cdf = gi_cdf,
     simulation_start = case_data$simulation_start
