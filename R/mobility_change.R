@@ -1,4 +1,4 @@
-source("spartan/lib.R")
+source("R/lib.R")
 
 source("R/functions.R")
 
@@ -99,10 +99,10 @@ for (this_state in all_states) {
     xlab("") +
     ylab("") +
     ggtitle(
-      paste(
-        this_state,
-        "- data and model fit up to",
-        format(last_date, format = "%B %d")
+      sprintf(
+        "Percentage change in selected mobility datastreams up to %s, %s",
+        format(last_date, format = "%B %d"),
+        format(last_date, format = "%Y")
       )
     ) +
     cowplot::theme_cowplot() +
@@ -114,11 +114,17 @@ for (this_state in all_states) {
           panel.spacing = unit(1.2, "lines"))
   
   dpi <- 150
-  ggsave(filename = paste0("outputs/figures/", this_state, "_datastream_model_fit.png"),
-         width = 1500 / dpi,
-         height = 1250 / dpi,
-         dpi = dpi,
-         scale = 1.2)
+  ggsave(
+    filename = sprintf(
+      "outputs/figures/%s_datastream_model_fit_%s.png",
+      this_state,
+      last_date
+    ),
+    width = 1500 / dpi,
+    height = 1250 / dpi,
+    dpi = dpi,
+    scale = 1.2
+  )
 }
 
 # save predictions in correct format for macro and mobility models
@@ -209,9 +215,10 @@ mobility_fitted %>%
   xlab("") +
   ylab("") +
   ggtitle(
-    paste(
-      "Percentage change in selected mobility datastreams up to",
-      format(last_date, format = "%B %d")
+    sprintf(
+      "Percentage change in selected mobility datastreams up to %s, %s",
+      format(last_date, format = "%B %d"),
+      format(last_date, format = "%Y")
     )
   ) +
   cowplot::theme_cowplot() +
@@ -227,8 +234,13 @@ mobility_fitted %>%
         panel.spacing = unit(1.2, "lines")) 
 
 dpi <- 300
-ggsave(filename = "outputs/figures/multistate_model_fit.png",
-       width = 2481 / dpi,
-       height = 3507 / dpi,
-       dpi = dpi,
-       scale = 1.2)
+ggsave(
+  filename = sprintf(
+    "outputs/figures/multistate_model_fit_%s.png",
+    last_date
+  ),
+  width = 2481 / dpi,
+  height = 3507 / dpi,
+  dpi = dpi,
+  scale = 1.2
+)

@@ -1,4 +1,4 @@
-source("spartan/lib.R")
+source("R/lib.R")
 
 library(readr)
 library(dplyr)
@@ -434,7 +434,7 @@ ideal_regions <- function() {
   )
 }
 
-interventions <- function(which = c("all", "national", "vic", "sa", "qld")) {
+interventions <- function(which = c("all", "national", "vic", "sa", "qld", "wa")) {
   
   which <- match.arg(which)
   
@@ -442,7 +442,8 @@ interventions <- function(which = c("all", "national", "vic", "sa", "qld")) {
     ~date, ~state,
     "2020-07-01", "VIC",
     "2020-07-08", "VIC",
-    "2020-08-02", "VIC"
+    "2020-08-02", "VIC",
+    "2021-02-13", "VIC"
   )
   
   sa_interventions <- tibble::tribble(
@@ -453,6 +454,11 @@ interventions <- function(which = c("all", "national", "vic", "sa", "qld")) {
   qld_interventions <- tibble::tribble(
     ~date, ~state,
     "2021-01-09", "QLD"
+  )
+  
+  wa_interventions <- tibble::tribble(
+    ~date, ~state,
+    "2021-01-31", "WA"
   )
   
   national_interventions <- expand_grid(
@@ -468,11 +474,13 @@ interventions <- function(which = c("all", "national", "vic", "sa", "qld")) {
     vic = vic_interventions,
     sa = sa_interventions,
     qld = qld_interventions,
+    wa = wa_interventions,
     all = bind_rows(
       national_interventions,
       vic_interventions,
       sa_interventions,
-      qld_interventions
+      qld_interventions,
+      wa_interventions
     )
   )
   
@@ -510,113 +518,113 @@ quarantine_dates <- function() {
 # https://www.education.wa.edu.au/future-term-dates/
 school_holiday_dates <- function() {
   dplyr::bind_rows(
-    tibble::tibble(
-      state = "Australian Capital Territory",
-      tibble::tribble(~school_holiday, ~start, ~end,
-                      1, "2020-04-10", "2020-04-26",
-                      2, "2020-07-04", "2020-07-19",
-                      3, "2020-09-26", "2020-10-11",
-                      4, "2020-12-19", "2021-01-28",
-                      5, "2021-04-02", "2021-04-18",
-                      6, "2021-06-26", "2021-07-11",
-                      7, "2021-09-18", "2021-10-04",
-                      8, "2021-12-18", "2022-01-27"
+    tibble::tribble(~school_holiday, ~start, ~end,
+                    1, "2020-04-10", "2020-04-26",
+                    2, "2020-07-04", "2020-07-19",
+                    3, "2020-09-26", "2020-10-11",
+                    4, "2020-12-19", "2021-01-28",
+                    5, "2021-04-02", "2021-04-18",
+                    6, "2021-06-26", "2021-07-11",
+                    7, "2021-09-18", "2021-10-04",
+                    8, "2021-12-18", "2022-01-27"
+    ) %>%
+      mutate(
+        state = "Australian Capital Territory"
+      ),
+    tibble::tribble(~school_holiday, ~start, ~end,
+                    1, "2020-04-10", "2020-04-26",
+                    2, "2020-07-04", "2020-07-19",
+                    3, "2020-09-26", "2020-10-11",
+                    4, "2020-12-19", "2021-01-26",
+                    5, "2021-04-05", "2021-04-16",
+                    6, "2021-06-28", "2021-07-09",
+                    7, "2021-09-20", "2021-10-01",
+                    8, "2021-12-20", "2022-01-27"
+    ) %>%
+      mutate(
+        state = "New South Wales"
+      ),
+    tibble::tribble(~school_holiday, ~start, ~end,
+                    1, "2020-04-10", "2020-04-19",
+                    2, "2020-06-27", "2020-07-20",
+                    3, "2020-09-26", "2020-10-11",
+                    4, "2020-12-18", "2021-01-31",
+                    5, "2021-04-10", "2021-04-18",
+                    6, "2021-06-26", "2021-07-19",
+                    7, "2021-09-25", "2021-10-10",
+                    8, "2021-12-17", "2022-01-30"
+    ) %>%
+      mutate(
+        state = "Northern Territory"
+      ),
+    tibble::tribble(~school_holiday, ~start, ~end,
+                    1, "2020-04-04", "2020-04-19",
+                    2, "2020-06-27", "2020-07-12",
+                    3, "2020-09-19", "2020-10-05",
+                    4, "2020-12-12", "2021-01-26",
+                    5, "2021-04-02", "2021-04-18",
+                    6, "2021-06-26", "2021-07-11",
+                    7, "2021-09-18", "2021-10-05",
+                    8, "2021-12-11", "2022-01-26"
+    ) %>%
+      mutate(
+        state = "Queensland"
+      ),
+    tibble::tribble(~school_holiday, ~start, ~end,
+                    1, "2020-04-10", "2020-04-26",
+                    2, "2020-07-04", "2020-07-19",
+                    3, "2020-09-26", "2020-10-11",
+                    4, "2020-12-12", "2021-01-26",
+                    5, "2021-04-10", "2021-04-26",
+                    6, "2021-07-03", "2021-07-18",
+                    7, "2021-09-25", "2021-10-10",
+                    8, "2021-12-11", "2022-01-30"
+    ) %>%
+      mutate(
+        state = "South Australia"
+      ),
+    tibble::tribble(~school_holiday, ~start, ~end,
+                    1, "2020-04-10", "2020-04-26",
+                    2, "2020-07-04", "2020-07-19",
+                    3, "2020-09-26", "2020-10-11",
+                    4, "2020-12-18", "2021-02-02",
+                    5, "2021-04-10", "2021-04-25",
+                    6, "2021-07-03", "2021-07-19",
+                    7, "2021-09-25", "2021-10-10",
+                    8, "2021-12-17", "2022-02-02"
+    ) %>%
+      mutate(
+        state = "Tasmania"
+      ),
+    tibble::tribble(~school_holiday, ~start, ~end,
+                    # Vic extended each school holiday by a week during the
+                    # pandemic
+                    # https://www.education.vic.gov.au/about/department/Pages/datesterm.aspx
+                    1, "2020-03-25", "2020-04-13",
+                    2, "2020-06-27", "2020-07-19",
+                    3, "2020-09-19", "2020-10-04",
+                    4, "2020-12-19", "2021-01-26",
+                    5, "2021-04-02", "2021-04-18",
+                    6, "2021-06-26", "2021-07-11",
+                    7, "2021-09-18", "2021-10-03",
+                    8, "2021-12-18", "2022-01-27"
+    ) %>%
+      mutate(
+        state = "Victoria"
+      ),
+    tibble::tribble(~school_holiday, ~start, ~end,
+                    1, "2020-04-10", "2020-04-27",
+                    2, "2020-07-04", "2020-07-19",
+                    3, "2020-09-26", "2020-10-11",
+                    4, "2020-12-18", "2021-01-31",
+                    5, "2021-04-02", "2021-04-18",
+                    6, "2021-07-03", "2021-07-18",
+                    7, "2021-09-25", "2021-10-10",
+                    8, "2021-12-17", "2022-01-30"
+    ) %>%
+      mutate(
+        state = "Western Australia"
       )
-    ),
-    tibble::tibble(
-      state = "New South Wales",
-      tibble::tribble(~school_holiday, ~start, ~end,
-                      1, "2020-04-10", "2020-04-26",
-                      2, "2020-07-04", "2020-07-19",
-                      3, "2020-09-26", "2020-10-11",
-                      4, "2020-12-19", "2021-01-26",
-                      5, "2021-04-05", "2021-04-16",
-                      6, "2021-06-28", "2021-07-09",
-                      7, "2021-09-20", "2021-10-01",
-                      8, "2021-12-20", "2022-01-27"
-      )
-    ),
-    tibble::tibble(
-      state = "Northern Territory",
-      tibble::tribble(~school_holiday, ~start, ~end,
-                      1, "2020-04-10", "2020-04-19",
-                      2, "2020-06-27", "2020-07-20",
-                      3, "2020-09-26", "2020-10-11",
-                      4, "2020-12-18", "2021-01-31",
-                      5, "2021-04-10", "2021-04-18",
-                      6, "2021-06-26", "2021-07-19",
-                      7, "2021-09-25", "2021-10-10",
-                      8, "2021-12-17", "2022-01-30"
-      )
-    ),
-    tibble::tibble(
-      state = "Queensland",
-      tibble::tribble(~school_holiday, ~start, ~end,
-                      1, "2020-04-04", "2020-04-19",
-                      2, "2020-06-27", "2020-07-12",
-                      3, "2020-09-19", "2020-10-05",
-                      4, "2020-12-12", "2021-01-26",
-                      5, "2021-04-02", "2021-04-18",
-                      6, "2021-06-26", "2021-07-11",
-                      7, "2021-09-18", "2021-10-05",
-                      8, "2021-12-11", "2022-01-26"
-      )
-    ),
-    tibble::tibble(
-      state = "South Australia",
-      tibble::tribble(~school_holiday, ~start, ~end,
-                      1, "2020-04-10", "2020-04-26",
-                      2, "2020-07-04", "2020-07-19",
-                      3, "2020-09-26", "2020-10-11",
-                      4, "2020-12-12", "2021-01-26",
-                      5, "2021-04-10", "2021-04-26",
-                      6, "2021-07-03", "2021-07-18",
-                      7, "2021-09-25", "2021-10-10",
-                      8, "2021-12-11", "2022-01-30"
-      )
-    ),
-    tibble::tibble(
-      state = "Tasmania",
-      tibble::tribble(~school_holiday, ~start, ~end,
-                      1, "2020-04-10", "2020-04-26",
-                      2, "2020-07-04", "2020-07-19",
-                      3, "2020-09-26", "2020-10-11",
-                      4, "2020-12-18", "2021-02-02",
-                      5, "2021-04-10", "2021-04-25",
-                      6, "2021-07-03", "2021-07-19",
-                      7, "2021-09-25", "2021-10-10",
-                      8, "2021-12-17", "2022-02-02"
-      )
-    ),
-    tibble::tibble(
-      state = "Victoria",
-      tibble::tribble(~school_holiday, ~start, ~end,
-                      # Vic extended each school holiday by a week during the
-                      # pandemic
-                      # https://www.education.vic.gov.au/about/department/Pages/datesterm.aspx
-                      1, "2020-03-25", "2020-04-13",
-                      2, "2020-06-27", "2020-07-19",
-                      3, "2020-09-19", "2020-10-04",
-                      4, "2020-12-19", "2021-01-26",
-                      5, "2021-04-02", "2021-04-18",
-                      6, "2021-06-26", "2021-07-11",
-                      7, "2021-09-18", "2021-10-03",
-                      8, "2021-12-18", "2022-01-27"
-      )
-    ),
-    tibble::tibble(
-      state = "Western Australia",
-      tibble::tribble(~school_holiday, ~start, ~end,
-                      1, "2020-04-10", "2020-04-27",
-                      2, "2020-07-04", "2020-07-19",
-                      3, "2020-09-26", "2020-10-11",
-                      4, "2020-12-18", "2021-01-31",
-                      5, "2021-04-02", "2021-04-18",
-                      6, "2021-07-03", "2021-07-18",
-                      7, "2021-09-25", "2021-10-10",
-                      8, "2021-12-17", "2022-01-30"
-      )
-    )
   ) %>%
     mutate(
       start = lubridate::date(start),
@@ -1483,6 +1491,127 @@ plot_trend <- function(simulations,
   
 }
 
+plot_trend_long <- function(simulations,
+                       data,
+                       base_colour = grey(0.4),
+                       multistate = FALSE,
+                       hline_at = 1,
+                       ylim = c(0, 4),
+                       intervention_at = interventions(),
+                       projection_at = NA,
+                       keep_only_rows = NULL,
+                       max_date = data$dates$latest_mobility,
+                       min_date = as.Date("2020-03-01")) {
+  
+  mean <- colMeans(simulations)
+  ci_90 <- apply(simulations, 2, quantile, c(0.05, 0.95))
+  ci_50 <- apply(simulations, 2, quantile, c(0.25, 0.75))
+  
+  if (multistate) {
+    states <- rep(data$states, each = data$n_dates_project)
+    dates <- rep(data$dates$infection_project, data$n_states)
+  } else {
+    dates <- data$dates$infection_project
+    states <- NA
+  }
+  
+  df <- tibble(date = dates,
+               state = states,
+               mean = mean,
+               ci_50_lo = ci_50[1, ],
+               ci_50_hi = ci_50[2, ],
+               ci_90_lo = ci_90[1, ],
+               ci_90_hi = ci_90[2, ])
+  
+  if (!is.null(keep_only_rows)) {
+    df <- df[keep_only_rows, ]
+  }
+  
+  df <- df %>%
+    filter(
+      date >= min_date,
+      date <= max_date
+    ) %>%
+    mutate(type = "Nowcast")
+  
+  if (is.null(ylim)) {
+    ylim <- c(min(df$ci_90_lo), max(df$ci_90_hi)) 
+  }
+  
+  p <- ggplot(df) + 
+    
+    aes(date, mean, fill = type) +
+    
+    xlab(element_blank()) +
+    
+    coord_cartesian(ylim = ylim) +
+    scale_y_continuous(position = "right") +
+    scale_x_date(date_breaks = "1 month", date_labels = "%e/%m") +
+    scale_alpha(range = c(0, 0.5)) +
+    scale_fill_manual(values = c("Nowcast" = base_colour)) +
+    
+    geom_vline(
+      aes(xintercept = date),
+      data = intervention_at,
+      colour = "grey80"
+    ) +
+    
+    geom_ribbon(aes(ymin = ci_90_lo,
+                    ymax = ci_90_hi),
+                alpha = 0.2) +
+    geom_ribbon(aes(ymin = ci_50_lo,
+                    ymax = ci_50_hi),
+                alpha = 0.5) +
+    geom_line(aes(y = ci_90_lo),
+              colour = base_colour,
+              alpha = 0.8) + 
+    geom_line(aes(y = ci_90_hi),
+              colour = base_colour,
+              alpha = 0.8) + 
+    
+    geom_hline(yintercept = hline_at, linetype = "dotted") +
+    
+    cowplot::theme_cowplot() +
+    cowplot::panel_border(remove = TRUE) +
+    theme(legend.position = "none",
+          strip.background = element_blank(),
+          strip.text = element_text(hjust = 0, face = "bold"),
+          axis.title.y.right = element_text(vjust = 0.5, angle = 90),
+          panel.spacing = unit(1.2, "lines"),
+          axis.text.x = element_text(size = 8))
+  
+  if (multistate) {
+    p <- p + facet_wrap(
+      facets = ~ state,
+      ncol = 2,
+      scales = "free",
+      strip.position = "left"
+    ) +
+      theme(
+        strip.text.y.left = element_text(
+          hjust = 0,
+          vjust = 1,
+          face = "bold",
+          angle = 0
+        )
+      )
+  }
+  
+  if (!is.na(projection_at)) {
+    p <- p +
+      geom_vline(xintercept = projection_at, linetype = "dashed", colour = "grey60") +
+      annotate("rect",
+               xmin = projection_at,
+               xmax = max(df$date),
+               ymin = -Inf,
+               ymax = Inf,
+               fill = grey(0.5), alpha = 0.1)
+  }
+  
+  p    
+  
+}
+
 
 # interpolate proportion of infectious cases that are imports
 proportion_imported <- function (local_infectious, imported_infectious) {
@@ -2064,7 +2193,108 @@ social_distancing_national <- function(dates, n_extra = 0) {
   
 }
 
+prop_voc_date_state <- function(dates){
+  
+  df <- expand_grid(
+    date = dates,
+    state = c("ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA")
+  ) %>%
+    mutate(
+      prop_voc = case_when(
+        date >= "2021-01-27" & state == "VIC" ~ 1,
+        TRUE ~ 0
+      )
+    ) %>%
+    pivot_wider(
+      names_from = state,
+      values_from = prop_voc
+    ) %>%
+    dplyr::select(-date) %>%
+    as.matrix
+  
+  return(df)
+}
+
+
 # greta sub-model for the component R_eff due to macro- and micro-distancing
+distancing_effect_model_new <- function(dates, gi_cdf) {
+  
+  # informative priors on variables for contacts at t = 0 (Hx = household, Ox =
+  # non-household, Tx = total, xC = contacts. xD = duration)
+  baseline_contact_params <- baseline_contact_parameters(gi_cdf)
+  
+  prop_voc <- prop_voc_date_state(dates = dates)
+  
+  # prior on the probability of *not* transmitting, per hour of contact
+  # (define to match moments of R0 prior)
+  logit_p_params <- logit_p_prior(baseline_contact_params, gi_cdf)
+  logit_p <- normal(logit_p_params$meanlogit, logit_p_params$sdlogit)
+  p_wildt <- ilogit(logit_p)
+  #phi <- normal(1.512, 0.084, truncation = c(0, Inf))
+  phi <- 1.512
+  phi_wt <- 1 - prop_voc + prop_voc*phi
+  p <- 1 - (1 - p_wildt) ^ phi_wt
+  
+  
+  infectious_days <- infectious_period(gi_cdf)
+  
+  HC_0 <- normal(baseline_contact_params$mean_contacts[1],
+                 baseline_contact_params$se_contacts[1],
+                 truncation = c(0, Inf))
+  HD_0 <- normal(baseline_contact_params$mean_duration[1],
+                 baseline_contact_params$se_duration[1],
+                 truncation = c(0, Inf))
+  OD_0 <- normal(baseline_contact_params$mean_duration[2],
+                 baseline_contact_params$se_duration[2],
+                 truncation = c(0, Inf))
+  
+  # get HD_t in each state
+  h_t <- h_t_state(dates)
+  HD_t <- HD_0 * h_t
+  
+  # trends in non-household contacts in each state over time
+  OC_t_state <- trends_date_state(
+    "outputs/macrodistancing_trends.RDS",
+    dates
+  )
+  OC_0 <- OC_t_state[1, 1]
+  
+  # model gamma_t: reduction in duration and transmission probability of
+  # non-household contacts over time, per state
+  
+  # load probability of microdistancing and divide by the maximum value to get
+  # an index of per-contact transmission probability
+  microdistancing_prob <- trends_date_state(
+    "outputs/microdistancing_trends.RDS",
+    dates
+  )
+  d_t_state <- microdistancing_prob / max(microdistancing_prob)
+  
+  beta <- uniform(0, 1)
+  gamma_t_state <- 1 - beta * d_t_state
+  
+  # compute component of R_eff for local cases
+  household_infections <- HC_0 * (1 - p ^ HD_t)
+  non_household_infections <- OC_t_state * gamma_t_state *
+    infectious_days * (1 - p ^ OD_0)
+  R_t <- household_infections + non_household_infections
+  
+  # return greta arrays
+  list(R_t = R_t, 
+       gamma_t_state = gamma_t_state,
+       OC_t_state = OC_t_state,
+       p = p,
+       beta = beta,
+       HC_0 = HC_0,
+       HD_0 = HD_0,
+       OC_0 = OC_0,
+       OD_0 = OD_0,
+       dates = dates,
+       phi = phi,
+       phi_wt = phi_wt)
+  
+}
+
 distancing_effect_model <- function(dates, gi_cdf) {
   
   # informative priors on variables for contacts at t = 0 (Hx = household, Ox =
@@ -2133,6 +2363,7 @@ distancing_effect_model <- function(dates, gi_cdf) {
        dates = dates)
   
 }
+
 
 plot_fit <- function(observed_cases, cases_sim, data) {
   
@@ -4130,7 +4361,7 @@ reff_model_data <- function(
   
   # the last date with infection data we include
   last_detectable_idx <- which(!apply(detectable, 1, any))[1]
-  latest_infection_date <- dates[last_detectable_idx]
+  latest_infection_date <- dates[ifelse(is.na(last_detectable_idx), length(dates), last_detectable_idx)]
   
   # those infected in the state
   local_cases <- linelist %>%
@@ -4360,7 +4591,7 @@ reff_model <- function(data) {
   distribution(data$local$cases[valid]) <- negative_binomial(size, prob_trunc)
   
   m <- model(expected_infections_vec)
-  
+
   list(
     greta_model = m,
     greta_arrays = module(
@@ -4380,6 +4611,37 @@ reff_model <- function(data) {
       epsilon_L
     )
   )
+  
+  # p <- distancing_effect$p
+  # phi <- distancing_effect$phi
+  # phi_wt <- distancing_effect$phi_wt
+  # 
+  # 
+  # m <- model(expected_infections_vec,
+  #            p)
+  # 
+  # list(
+  #   greta_model = m,
+  #   greta_arrays = module(
+  #     expected_infections_vec,
+  #     size,
+  #     prob_trunc,
+  #     R_eff_loc_1,
+  #     R_eff_imp_1,
+  #     R_eff_loc_12,
+  #     R_eff_imp_12,
+  #     log_R0,
+  #     log_q,
+  #     distancing_effect,
+  #     surveillance_reff_local_reduction,
+  #     log_R_eff_loc,
+  #     log_R_eff_imp,
+  #     epsilon_L
+  #   ),
+  #   phi,
+  #   phi_wt
+  # )
+  
   
 }
 
@@ -4802,52 +5064,57 @@ hard_clamp <- function(local_samples, target_date) {
 }
 
 # output simulations
-write_reff_sims <- function(fitted_model, dir = "outputs/projection", write_reff_1 = TRUE) {
-  
-  # find the dates for clamping into the future (where 50%/95% cases so far detected)
-  clip_idx_50 <- (fitted_model$data$detection_prob_mat > 0.5) %>%
-    apply(1, all) %>%
-    which() %>%
-    max()
-  
-  clip_idx_95 <- (fitted_model$data$detection_prob_mat > 0.95) %>%
-    apply(1, all) %>%
-    which() %>%
-    max()
-  
-  date_50 <- fitted_model$data$dates$infection[clip_idx_50]
-  date_95 <- fitted_model$data$dates$infection[clip_idx_95]
-  
-  reff_12 <- reff_sims(fitted_model, which = "R_eff_loc_12")
-
-  reff_12 %>%
-    write_csv(
-      file.path(dir, "r_eff_12_local_samples.csv")
-    )
-  
-  reff_12 %>%
-    soft_clamp(date_50) %>%
-    write_csv(
-      file.path(dir, "r_eff_12_local_samples_soft_clamped_50.csv")
-    )
-  
-  reff_12 %>%
-    soft_clamp(date_95) %>%
-    write_csv(
-      file.path(dir, "r_eff_12_local_samples_soft_clamped_95.csv")
-    )
+write_reff_sims <- function(fitted_model,
+                            dir = "outputs/projection",
+                            write_reff_1 = TRUE,
+                            write_reff_12 = TRUE) {
   
   if (write_reff_1) {
     
     reff_1 <- reff_sims(fitted_model, which = "R_eff_loc_1")
     
     reff_1 %>%
-    write_csv(
-      file.path(dir, "r_eff_1_local_samples.csv")
-    )
+      write_csv(
+        file.path(dir, "r_eff_1_local_samples.csv")
+      )
     
   }
   
+  if (write_reff_12) {
+    
+    # find the dates for clamping into the future (where 50%/95% cases so far detected)
+    clip_idx_50 <- (fitted_model$data$detection_prob_mat > 0.5) %>%
+      apply(1, all) %>%
+      which() %>%
+      max()
+    
+    clip_idx_95 <- (fitted_model$data$detection_prob_mat > 0.95) %>%
+      apply(1, all) %>%
+      which() %>%
+      max()
+    
+    date_50 <- fitted_model$data$dates$infection[clip_idx_50]
+    date_95 <- fitted_model$data$dates$infection[clip_idx_95]
+    
+    reff_12 <- reff_sims(fitted_model, which = "R_eff_loc_12")
+    
+    reff_12 %>%
+      write_csv(
+        file.path(dir, "r_eff_12_local_samples.csv")
+      )
+    
+    reff_12 %>%
+      soft_clamp(date_50) %>%
+      write_csv(
+        file.path(dir, "r_eff_12_local_samples_soft_clamped_50.csv")
+      )
+    
+    reff_12 %>%
+      soft_clamp(date_95) %>%
+      write_csv(
+        file.path(dir, "r_eff_12_local_samples_soft_clamped_95.csv")
+      )
+  }
   
 }
 
@@ -6829,7 +7096,9 @@ plot_delays <- function(
           strip.background = element_blank(),
           strip.text = element_text(hjust = 0, face = "bold"),
           axis.title.y.right = element_text(vjust = 0.5, angle = 90),
-          panel.spacing = unit(1.2, "lines"))
+          panel.spacing = unit(1.2, "lines"),
+          axis.text.x = element_text(size = 8)
+          )
   
   p
   
@@ -6852,6 +7121,9 @@ predict_mobility_trend <- function(
   min_date = min(mobility$date),
   max_date = max(mobility$date)
 ) {
+  
+  print(mobility$state[[1]])
+  print(mobility$datastream[[1]])
   
   all_dates <- seq(min_date, max_date, by = 1)
   
@@ -6884,7 +7156,16 @@ predict_mobility_trend <- function(
         date = as.Date("2021-01-12"),
         state = "QLD"
       ),
+      tibble(
+        date = as.Date("2021-02-05"),
+        state = "WA"
+      ),
+      tibble(
+        date = as.Date("2021-02-18"),
+        state = "VIC"
+      )
     ) %>%
+    filter(date <= max_data_date) %>%
     mutate(
       intervention_id = paste0(
         "intervention_",

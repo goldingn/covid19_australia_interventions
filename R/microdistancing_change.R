@@ -1,8 +1,10 @@
   # analyse change in microdistancing behaviour by state, using survey questions
 # from the BETA barometer
-source("spartan/lib.R")
+source("R/lib.R")
 
 source("R/functions.R")
+
+library(bayesplot)
 
 # sync aggregated data for Dennis
 format_raw_survey_data()
@@ -44,9 +46,14 @@ draws <- mcmc(m,
               sampler = hmc(
                 Lmin = 35,
                 Lmax = 40
-              ))
-draws <- extra_samples(draws, 3000)
+              ),
+              warmup = 2000)
+
+
+draws <- extra_samples(draws, 2000)
 convergence(draws)
+
+mcmc_trace(draws)
 
 prob_pred <- microdistancing_model(data = pred_data, parameters = params)
 

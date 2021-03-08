@@ -1,5 +1,7 @@
 # Run the full Reff pipeline
 
+source("R/lib.R")
+
 # Section A) Independent of NNDSS and survey data update:
 
 # 1. Ingest mobility data, fit mobility models and output figures

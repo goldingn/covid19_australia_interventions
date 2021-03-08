@@ -2,7 +2,7 @@
 # state, using a baseline rate, and survey questions from Freya's survey and the
 # BETA barometer
 
-source("spartan/lib.R")
+source("R/lib.R")
 
 source("R/functions.R")
 
