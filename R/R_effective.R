@@ -65,7 +65,8 @@ write_reff_sims(lshtm_fitted_model, lshtm_dir)
 
 # Results with Oz analysis - use estimate of the relative per-unit-contact-time
 # infection probability and reconstruct component 1 timeseries
-phi <- normal(1.512, 0.084, truncation = c(0, Inf))
+phi <- normal(1.454, 0.051, truncation = c(0, Inf))
+
 
 data <- fitted_model$data
 dates <- data$dates$mobility

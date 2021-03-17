@@ -222,6 +222,8 @@
 # confounding with other parameters - especially $\psi$. For this reason,
 # uncertainty in $\beta$ was not considered in this analysis.
 
+source("spartan/lib.R")
+
 source("R/functions.R")
 
 set.seed(2021-01-17)
@@ -229,20 +231,21 @@ set.seed(2021-01-17)
 # load data
 
 # UK attack rate data:
-# manually copying from Table 6 in Technical briefing 3
+# manually copying from Table 6 in Technical briefing
+# update 9/02/2021 table 4 technical briefing 5
 # https://www.gov.uk/government/publications/investigation-of-novel-sars-cov-2-variant-variant-of-concern-20201201
 
 uk_attack <- tibble::tribble(
-  ~region, ~contacts_voc, ~cases_voc, ~contacts_wt, ~cases_wt, 
-  "East Midlands", 150, 15, 1008, 117,
-  "East of England", 1869, 263, 1199, 153,
-  "London", 3507, 505, 1844, 197,
-  "North East", 235, 29, 738, 79,
-  "North West", 400, 65, 2182, 223,
-  "South East", 2419, 377, 1155, 107,
-  "South West", 230, 43, 380, 50,
-  "West Midlands", 299, 47, 1388, 155,
-  "Yorkshire and Humber", 109, 16, 1339, 158
+  ~region,                ~contacts_voc, ~cases_voc, ~contacts_wt, ~cases_wt, 
+  "East Midlands",                  868,        100,         1734,       185,
+  "East of England",               6801,        876,         2358,       243,
+  "London",                       12883,       1624,         3464,       299,
+  "North East",                    1104,        122,         1795,       178,
+  "North West",                    3577,        542,         5121,       495,
+  "South East",                    7503,        912,         2044,       167,
+  "South West",                    1011,        131,         1459,       160,
+  "West Midlands",                 2806,        392,         2891,       279,
+  "Yorkshire and Humber",           949,        130,         3301,       329
 )
 
 # regions and dates of attack rate data
@@ -820,12 +823,18 @@ bayesplot::ppc_ecdf_overlay(
 
 # summarise the posterior of phi for use in counterfactuals
 phi_sim <- calculate(phi, values = draws, nsim = 5000)[[1]][, 1, 1]
-hist(phi_sim)
+hist(phi_sim)     
 
 # approximate as a normal distribution
 mean(phi_sim)
+#Update 2021-02-09
+# 1.454
+# Original
 # 1.512
 sd(phi_sim)
+# Update 2021-02-09
+# 0.051
+# Original
 # 0.084
 
 # p_star_sim <- calculate(p_star, values = draws, nsim = 5000)[[1]][, 1, 1]
@@ -854,6 +863,21 @@ lapply(r_draws,
        }
 )
 
+
+#Update 2021-02-09
+# $r_overall
+# mean    5%   50%   95% 
+# 40.39 33.45 40.29 47.94 
+# 
+# $r_household
+# mean    5%   50%   95% 
+# 36.89 30.49 36.77 43.95 
+# 
+# $r_non_household
+# mean    5%   50%   95% 
+# 43.75 36.21 43.69 51.73 
+
+# Original
 # $r_overall
 # mean    5%   50%   95% 
 # 43.55 32.34 43.39 55.38 
