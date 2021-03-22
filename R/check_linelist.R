@@ -117,6 +117,8 @@ df <- dat %>%
       CV_SOURCE_INFECTION == 2 ~ "local",
       CV_SOURCE_INFECTION == 3 ~ "local",
       CV_SOURCE_INFECTION == 4 ~ "local",
+      CV_SOURCE_INFECTION == 6 ~ "local",
+      CV_SOURCE_INFECTION == 7 ~ "local",
       # otherwise impute it
       CV_SOURCE_INFECTION == 5 ~ "local",
       grepl("^00038888", PLACE_OF_ACQUISITION) ~ "imported",
