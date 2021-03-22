@@ -12,6 +12,8 @@ source("R/mobility_change.R")
 
 # Section B) Dependent on NNDSS data update:
 
+source("R/check_linelist.R")
+
 # 2. Run surveillance effect models and output figures (surveillance_effect.png
 # and notification_delays.png) and model objects (delay_from_onset_cdfs.RDS)
 # [~60s]

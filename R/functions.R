@@ -4006,22 +4006,48 @@ get_nndss_linelist <- function(date = NULL, dir = "~/not_synced/nndss", strict =
       #   "local",
       #   "imported"
       # )
-      import_status = ifelse(
-        test = grepl("^1101|^00038888", PLACE_OF_ACQUISITION),
-        yes = "local",
-        no = ifelse(
-          test = !is.na(PLACE_OF_ACQUISITION),
-          yes = "imported",
-          no = ifelse(
-            test = is.na(CV_SOURCE_INFECTION),
-            yes = "local",
-            no = ifelse(
-              test = CV_SOURCE_INFECTION == 1,
-              yes = "imported",
-              no = "local"
-            )
-          )
-        )
+      # import_status = ifelse(
+      #   test = grepl("^1101|^00038888", PLACE_OF_ACQUISITION),
+      #   yes = "local",
+      #   no = ifelse(
+      #     test = !is.na(PLACE_OF_ACQUISITION),
+      #     yes = "imported",
+      #     no = ifelse(
+      #       test = is.na(CV_SOURCE_INFECTION),
+      #       yes = "local",
+      #       no = ifelse(
+      #         test = CV_SOURCE_INFECTION == 1,
+      #         yes = "imported",
+      #         no = "local"
+      #       )
+      #     )
+      #   )
+      # )
+      import_status = case_when(
+        # return "ERROR" if place of acquisition and cv_source_infection
+        # indicate opposite import statuses
+        grepl("^1101", PLACE_OF_ACQUISITION) & CV_SOURCE_INFECTION == 1 ~ "ERROR",
+        !is.na(PLACE_OF_ACQUISITION) & 
+          !grepl("^1101|^00038888", PLACE_OF_ACQUISITION) &
+          CV_SOURCE_INFECTION == 2 ~ "ERROR",
+        !is.na(PLACE_OF_ACQUISITION) & 
+          !grepl("^1101|^00038888", PLACE_OF_ACQUISITION) &
+          CV_SOURCE_INFECTION == 3 ~ "ERROR",
+        !is.na(PLACE_OF_ACQUISITION) & 
+          !grepl("^1101|^00038888", PLACE_OF_ACQUISITION) &
+          CV_SOURCE_INFECTION == 4 ~ "ERROR",
+        # where source known us that
+        grepl("^1101", PLACE_OF_ACQUISITION) ~ "local",
+        CV_SOURCE_INFECTION == 1 ~ "imported",
+        CV_SOURCE_INFECTION == 2 ~ "local",
+        CV_SOURCE_INFECTION == 3 ~ "local",
+        CV_SOURCE_INFECTION == 4 ~ "local",
+        # otherwise impute it
+        CV_SOURCE_INFECTION == 5 ~ "local",
+        grepl("^00038888", PLACE_OF_ACQUISITION) ~ "imported",
+        !is.na(PLACE_OF_ACQUISITION) ~ "imported",
+        is.na(PLACE_OF_ACQUISITION) ~ "local",
+        is.na(CV_SOURCE_INFECTION) ~ "local"
       )
     )
   
