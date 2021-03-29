@@ -434,7 +434,10 @@ ideal_regions <- function() {
   )
 }
 
-interventions <- function(which = c("all", "national", "vic", "sa", "qld", "wa")) {
+interventions <- function(
+  which = c("all", "national", "vic", "sa", "qld", "wa"),
+  end_dates = FALSE
+) {
   
   which <- match.arg(which)
   
@@ -453,7 +456,8 @@ interventions <- function(which = c("all", "national", "vic", "sa", "qld", "wa")
   
   qld_interventions <- tibble::tribble(
     ~date, ~state,
-    "2021-01-09", "QLD"
+    "2021-01-09", "QLD",
+    "2021-03-29", "QLD"
   )
   
   wa_interventions <- tibble::tribble(
@@ -465,6 +469,47 @@ interventions <- function(which = c("all", "national", "vic", "sa", "qld", "wa")
     date = c("2020-03-16", "2020-03-24", "2020-03-29"),
     state = c("ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA")
   )
+  
+  
+  if(end_dates){
+    vic_interventions <-  vic_interventions %>%
+      bind_rows(
+        tibble::tribble(
+          ~date, ~state,
+          "2021-02-18", "VIC"
+        )
+      )
+    
+    sa_interventions <-  sa_interventions %>%
+      bind_rows(
+        tibble::tribble(
+          ~date, ~state,
+          "2020-11-22", "SA"
+        )
+      )
+    
+    
+    qld_interventions <-  qld_interventions %>%
+      bind_rows(
+        tibble::tribble(
+          ~date, ~state,
+          "2021-01-12", "QLD"
+        )
+      )
+    
+    
+    wa_interventions <-  wa_interventions %>%
+      bind_rows(
+        tibble::tribble(
+          ~date, ~state,
+          "2021-02-05", "WA"
+        )
+      )
+    
+  }
+    
+    
+  
   
   interventions <- switch(
     which,
@@ -4051,6 +4096,9 @@ get_nndss_linelist <- function(date = NULL, dir = "~/not_synced/nndss", strict =
         is.na(PLACE_OF_ACQUISITION) ~ "local",
         is.na(CV_SOURCE_INFECTION) ~ "local"
       )
+    ) %>%
+    mutate(
+      import_status = ifelse(import_status == "ERROR", "imported", import_status)
     )
   
   # record state of acquisition, and residence

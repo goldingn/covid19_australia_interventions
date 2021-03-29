@@ -1,0 +1,361 @@
+source("R/lib.R")
+
+source("R/functions.R")
+
+# sync aggregated data for Dennis
+format_raw_survey_data()
+
+data <- microdistancing_data()
+
+#saveRDS(data, file = "outputs/cached_micro.RDS")
+#data <- readRDS(file = "outputs/cached_micro.RDS")
+
+
+survey_distance <- data$survey_distance
+pred_data <- data$prediction_data #%>%
+  #mutate(date_num = as.numeric(date_num))
+
+
+
+min_date <- min(survey_distance$date)
+max_date <- max(survey_distance$date)
+
+all_dates <- seq(min_date, max_date, by = 1)
+  
+min_data_date <- min(survey_distance$date)
+max_data_date <- max(survey_distance$date)
+
+
+
+intervention_steps <- interventions(end_dates = TRUE) %>%
+  filter(date <= max_data_date) %>%
+  mutate(
+    intervention_id = paste0(
+      "intervention_",
+      match(date, unique(date))
+    )
+  ) %>%
+  group_by(intervention_id, state) %>%
+  do(
+    tibble(
+      date = all_dates,
+      intervention_effect = as.numeric(all_dates >= .$date)
+    )
+  ) %>%
+  group_by(state, date) %>%
+  summarise(
+    intervention_stage = sum(intervention_effect),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    intervention_stage = factor(intervention_stage)
+  )
+
+
+min_intervention_stage <- intervention_steps %>%
+  filter(date == min_data_date) %>%
+  dplyr::rename(min_intervention_stage = intervention_stage) %>%
+  dplyr::select(-date)
+
+max_intervention_stage <- intervention_steps %>%
+  filter(date == max_data_date) %>%
+  dplyr::rename(max_intervention_stage = intervention_stage) %>%
+  dplyr::select(-date)  
+
+
+
+df_fit <- survey_distance %>%
+  left_join(
+    intervention_steps,
+    by = c("state", "date")
+  )%>%
+  dplyr::select(
+    state,
+    date,
+    count,
+    respondents,
+    intervention_stage,
+    distancing
+  ) %>%
+  nest(
+    fit_dat = c(
+      date,
+      count,
+      respondents,
+      intervention_stage,
+      distancing
+    )
+  )
+
+
+
+df_pred <- pred_data %>%
+  left_join(
+    intervention_steps,
+    by = c("state", "date")
+  ) %>%
+  left_join(
+    min_intervention_stage,
+    by = "state"
+  ) %>%
+  left_join(
+    max_intervention_stage,
+    by = "state"
+  ) %>%
+  mutate(
+    intervention_stage = case_when(
+      is.na(intervention_stage) & date < min_data_date ~ min_intervention_stage,
+      is.na(intervention_stage) & date > max_data_date ~ max_intervention_stage,
+      state == "VIC" & intervention_stage == 4 ~  factor(5, levels = levels(intervention_stage)),
+      TRUE ~ intervention_stage
+    )
+  ) %>%
+  dplyr::select(
+    state,
+    date,
+    intervention_stage,
+    distancing
+  ) %>%
+  nest(
+    pred_dat = c(
+      date,
+      intervention_stage,
+      distancing
+    )
+  )
+
+
+
+df_mic <- full_join(
+  df_fit,
+  df_pred,
+  by = "state"
+) 
+
+
+fit_survey_gam <- function(
+  fit_dat,
+  pred_dat
+){
+  
+  respondents <- fit_dat$respondents
+  count <- fit_dat$count
+  date <- fit_dat$date
+  intervention_stage <- fit_dat$intervention_stage
+  
+  date_num <- as.numeric(date - min(date))
+  
+  m <- mgcv::gam(
+    cbind(count, I(respondents - count)) ~ s(date_num) + intervention_stage,
+    select = TRUE,
+    family = stats::binomial,
+  )
+ 
+  
+  pred_dat$date_num <- as.numeric(pred_dat$date - min(date))
+  
+  #pred <- predict(m, se.fit = TRUE, type = "link")
+  pred <- predict(
+    object = m,
+    newdata = pred_dat,
+    se.fit = TRUE,
+    type = "link"
+  )
+  
+  quantile95 <- qnorm(0.95)
+  quantile75 <- qnorm(0.75)
+  ci_90_hi <- pred$fit + (quantile95 * pred$se.fit)
+  ci_90_lo <- pred$fit - (quantile95 * pred$se.fit)
+  ci_50_hi <- pred$fit + (quantile75 * pred$se.fit)
+  ci_50_lo <- pred$fit - (quantile75 * pred$se.fit)
+  
+  fitted <- m$family$linkinv(pred$fit) * pred_dat$distancing
+  ci_90_hi <- m$family$linkinv(ci_90_hi) * pred_dat$distancing
+  ci_90_lo <- m$family$linkinv(ci_90_lo) * pred_dat$distancing
+  ci_50_hi <- m$family$linkinv(ci_50_hi) * pred_dat$distancing
+  ci_50_lo <- m$family$linkinv(ci_50_lo) * pred_dat$distancing
+  
+  
+  
+  tibble(
+    date = pred_dat$date,
+    mean = fitted ,
+    ci_90_lo,
+    ci_50_lo,
+    ci_50_hi,
+    ci_90_hi
+  )
+  
+}
+
+
+survey_fit <- mapply(
+  FUN = fit_survey_gam,
+  fit_dat = df_mic$fit_dat,
+  pred_dat = df_mic$pred_dat,
+  SIMPLIFY = FALSE
+)
+
+
+survey_fitted <- df_mic %>%
+  mutate(fit = survey_fit) %>% 
+  unnest(fit) %>%
+  dplyr::select(-fit_dat, -pred_dat)
+
+ggplot(survey_fitted) +
+  geom_ribbon(
+    aes(
+      x = date,
+      ymin = ,
+      ymax = upper
+    ),
+    fill = "grey80"
+  ) +
+  geom_line(
+    aes(
+      x = date,
+      y = fitted
+    )
+  ) +
+  facet_wrap(~state, ncol = 2) +
+  geom_point(
+    data = survey_distance,
+    aes(
+      x = date,
+      y = proportion
+    ),
+    size = 0.1
+  )
+
+line_df <- survey_fitted %>%
+  mutate_at(
+    vars(mean, ci_90_lo, ci_90_hi, ci_50_lo, ci_50_hi),
+    ~ . * 100
+  ) %>%
+  filter(date >= as.Date("2020-03-01")) %>%
+  mutate(type = "Nowcast")
+
+
+
+point_df <- survey_distance %>%
+  group_by(state, wave_date) %>%
+  summarise(
+    count =  sum(count),
+    respondents = sum(respondents)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    proportion = count / respondents,
+    percentage = proportion * 100
+  ) %>%
+  rename(date = wave_date) %>%
+  mutate(type = "Nowcast")
+
+# Compute confidence intervals for the proportions for plotting. Need to fudge
+# the sample size for one survey round with 100% adherence on a small sample
+pred <- point_df %>%
+  mutate(
+    id = factor(row_number()),
+    respondents = ifelse(respondents == count,
+                         respondents + 1,
+                         respondents)
+  ) %>%
+  glm(cbind(count, respondents - count) ~ id,
+      data = .,
+      family = stats::binomial) %>%
+  predict(se.fit = TRUE)
+
+# Monte Carlo integration based on normal approximation to logit-probability
+logit_sims <- replicate(
+  10000,
+  rnorm(length(pred$fit),
+        pred$fit,
+        pred$se.fit)
+)
+p_sims <- plogis(logit_sims)
+estimate <- rowMeans(p_sims)
+cis <- t(apply(p_sims, 1, quantile, c(0.025, 0.975)))
+
+point_df <- point_df %>%
+  mutate(
+    percentage = estimate * 100,
+    lower = cis[, 1] * 100,
+    upper = cis[, 2] * 100
+  )
+
+# save these fits for plotting later
+module(line_df, point_df) %>%
+  saveRDS("outputs/micro_plotting_data.RDS")
+
+
+
+base_colour <- purple
+
+p <- ggplot(line_df) +
+  
+  aes(date, mean, fill = type) +
+  
+  xlab(element_blank()) +
+  
+  coord_cartesian(ylim = c(0, 100)) +
+  scale_y_continuous(position = "right") +
+  scale_x_date(date_breaks = "1 month", date_labels = "%e/%m") +
+  scale_alpha(range = c(0, 0.5)) +
+  scale_fill_manual(values = c("Nowcast" = base_colour)) +
+  
+  geom_vline(
+    aes(xintercept = date),
+    data = interventions(),
+    colour = "grey80"
+  ) +
+  
+  geom_ribbon(aes(ymin = ci_90_lo,
+                  ymax = ci_90_hi),
+              alpha = 0.2) +
+  geom_ribbon(aes(ymin = ci_50_lo,
+                  ymax = ci_50_hi),
+              alpha = 0.5) +
+  geom_line(aes(y = ci_90_lo),
+            colour = base_colour,
+            alpha = 0.8) + 
+  geom_line(aes(y = ci_90_hi),
+            colour = base_colour,
+            alpha = 0.8) + 
+  
+  facet_wrap(~state, ncol = 2, scales = "free") +
+  
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  theme(legend.position = "none",
+        strip.background = element_blank(),
+        strip.text = element_text(hjust = 0, face = "bold"),
+        axis.title.y.right = element_text(vjust = 0.5, angle = 90),
+        panel.spacing = unit(1.2, "lines"),
+        axis.text.x = element_text(size = 8)) +
+  
+  # add empirical percentages
+  geom_point(
+    aes(date, percentage),
+    data = point_df,
+    size = 3,
+    pch = "_"
+  ) +
+  
+  geom_errorbar(
+    aes(date, percentage, ymin = lower, ymax = upper),
+    data = point_df,
+    size = 3,
+    alpha = 0.2,
+    width = 0
+  ) +
+  
+  # and titles  
+  ggtitle(
+    label = "Micro-distancing trend",
+    subtitle = "Calibrated against self-reported adherence to physical distancing"
+  ) +
+  ylab("Estimate of percentage 'always' keeping 1.5m distance")
+
+p
+
+

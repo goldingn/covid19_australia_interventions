@@ -132,7 +132,8 @@ df <- dat %>%
 df %>%
   dplyr::select(
     STATE,
-    Diagnosis_Date,
+    NOTIFICATION_DATE,
+    NOTIFICATION_RECEIVE_DATE,
     PLACE_OF_ACQUISITION,
     CV_SOURCE_INFECTION,
     import_status

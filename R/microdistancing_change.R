@@ -10,6 +10,9 @@ library(bayesplot)
 format_raw_survey_data()
 
 data <- microdistancing_data()
+
+saveRDS(data, file = "outputs/cached_micro.RDS")
+
 survey_distance <- data$survey_distance
 pred_data <- data$prediction_data
 
