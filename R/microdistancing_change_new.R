@@ -202,30 +202,6 @@ survey_fitted <- df_mic %>%
   unnest(fit) %>%
   dplyr::select(-fit_dat, -pred_dat)
 
-ggplot(survey_fitted) +
-  geom_ribbon(
-    aes(
-      x = date,
-      ymin = ,
-      ymax = upper
-    ),
-    fill = "grey80"
-  ) +
-  geom_line(
-    aes(
-      x = date,
-      y = fitted
-    )
-  ) +
-  facet_wrap(~state, ncol = 2) +
-  geom_point(
-    data = survey_distance,
-    aes(
-      x = date,
-      y = proportion
-    ),
-    size = 0.1
-  )
 
 line_df <- survey_fitted %>%
   mutate_at(
@@ -272,9 +248,15 @@ logit_sims <- replicate(
         pred$fit,
         pred$se.fit)
 )
+
 p_sims <- plogis(logit_sims)
 estimate <- rowMeans(p_sims)
-cis <- t(apply(p_sims, 1, quantile, c(0.025, 0.975)))
+cis <- t(apply(
+  X = p_sims,
+  MARGIN = 1,
+  FUN = quantile,
+  c(0.025, 0.975)
+))
 
 point_df <- point_df %>%
   mutate(
@@ -357,5 +339,29 @@ p <- ggplot(line_df) +
   ylab("Estimate of percentage 'always' keeping 1.5m distance")
 
 p
+
+
+save_ggplot("microdistancing_effect.png")
+
+# save the model fit
+saveRDS(pred_plot, file = "outputs/microdistancing_trends.RDS")
+
+# estimates at peak and at latest date
+pred_summary <- pred_plot %>%
+  group_by(state) %>%
+  summarise(peak = which.max(mean),
+            peak_estimate = mean[peak] * 100,
+            peak_low = ci_90_lo[peak] * 100,
+            peak_high = ci_90_hi[peak] * 100,
+            peak_date = date[peak],
+            latest = which.max(date),
+            latest_estimate = mean[latest] * 100,
+            latest_low = ci_90_lo[latest] * 100,
+            latest_high = ci_90_hi[latest] * 100,
+            latest_date = date[latest]) %>%
+  select(-peak, -latest)
+
+saveRDS(pred_summary,
+        file = "outputs/microdistancing_trend_summary.RDS")
 
 

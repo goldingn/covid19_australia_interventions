@@ -88,6 +88,7 @@ non_household_infections <- de$OC_t_state * de$gamma_t_state *
 R_t <- household_infections + non_household_infections
 R_eff_loc_1_no_surv <- extend(R_t, data$n_dates_project)
 
+
 # multiply by the surveillance effect to get component 1
 surveillance_reff_local_reduction <- surveillance_effect(
   dates = data$dates$infection_project,
@@ -98,9 +99,11 @@ surveillance_reff_local_reduction <- surveillance_effect(
 oz_fitted_model <- fitted_model
 oz_fitted_model$greta_arrays$R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_reff_local_reduction
 
+
+
 oz_dir <- "outputs/projection/b117_oz_style"
 dir.create(oz_dir, showWarnings = FALSE)
-write_reff_sims(oz_fitted_model, oz_dir, write_reff_12 = FALSE)
+write_reff_sims(oz_fitted_model, oz_dir, write_reff_12 = TRUE) # this TRUE is not actually working as it should yet
 
 # also calculate and write out the equivalent multiplicative factor over time
 ratio <- oz_fitted_model$greta_arrays$R_eff_loc_1 / fitted_model$greta_arrays$R_eff_loc_1

@@ -4096,10 +4096,10 @@ get_nndss_linelist <- function(date = NULL, dir = "~/not_synced/nndss", strict =
         is.na(PLACE_OF_ACQUISITION) ~ "local",
         is.na(CV_SOURCE_INFECTION) ~ "local"
       )
-    ) %>%
-    mutate(
-      import_status = ifelse(import_status == "ERROR", "imported", import_status)
-    )
+    ) #%>%
+    # mutate(
+    #   import_status = ifelse(import_status == "ERROR", "imported", import_status)
+    # )
   
   # record state of acquisition, and residence
   dat <- dat %>%
