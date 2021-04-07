@@ -143,13 +143,13 @@ survey_fit <- mapply(
 )
 
 
-survey_fitted <- df_mic %>%
+pred_plot <- df_mic %>%
   mutate(fit = survey_fit) %>% 
   unnest(fit) %>%
   dplyr::select(-fit_dat, -pred_dat)
 
 
-line_df <- survey_fitted %>%
+line_df <- pred_plot %>%
   mutate_at(
     vars(mean, ci_90_lo, ci_90_hi, ci_50_lo, ci_50_hi),
     ~ . * 100
