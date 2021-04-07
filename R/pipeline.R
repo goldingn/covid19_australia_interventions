@@ -2,6 +2,8 @@
 
 source("R/lib.R")
 
+source("R/functions.R")
+
 # Section A) Independent of NNDSS and survey data update:
 
 # 1. Ingest mobility data, fit mobility models and output figures

@@ -1,5 +1,10 @@
 # check NNDSS linelist for missing entries and local cases in last 3 weeks.
 
+library(dplyr)
+library(readxl)
+
+source("R/functions.R")
+
 dir <- "~/not_synced/nndss"
   
 data <- linelist_date_times(dir) %>%
@@ -85,6 +90,9 @@ ll_date <- data$date_time[[1]]
 filter_date <- ll_date - lubridate::days(21)
 
 
+
+missing_location_assumption <- "imported"
+
 df <- dat %>%
   filter(Diagnosis_Date >= filter_date) %>%
   mutate(
@@ -120,16 +128,16 @@ df <- dat %>%
       CV_SOURCE_INFECTION == 6 ~ "local",
       CV_SOURCE_INFECTION == 7 ~ "local",
       # otherwise impute it
-      CV_SOURCE_INFECTION == 5 ~ "local",
-      grepl("^00038888", PLACE_OF_ACQUISITION) ~ "imported",
+      CV_SOURCE_INFECTION == 5 ~ missing_location_assumption,
+      grepl("^00038888", PLACE_OF_ACQUISITION) ~ missing_location_assumption,
       !is.na(PLACE_OF_ACQUISITION) ~ "imported",
-      is.na(PLACE_OF_ACQUISITION) ~ "local",
-      is.na(CV_SOURCE_INFECTION) ~ "local"
+      is.na(PLACE_OF_ACQUISITION) ~ missing_location_assumption,
+      is.na(CV_SOURCE_INFECTION) ~ missing_location_assumption
     )
   )
 
 
-df %>%
+linelist_check <- df %>%
   dplyr::select(
     STATE,
     NOTIFICATION_DATE,
@@ -138,5 +146,6 @@ df %>%
     CV_SOURCE_INFECTION,
     import_status
   ) %>% 
+  dplyr::arrange(STATE, desc(NOTIFICATION_RECEIVE_DATE)) %>%
   print
 

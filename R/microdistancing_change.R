@@ -1,10 +1,6 @@
-  # analyse change in microdistancing behaviour by state, using survey questions
-# from the BETA barometer
 source("R/lib.R")
 
 source("R/functions.R")
-
-library(bayesplot)
 
 # sync aggregated data for Dennis
 format_raw_survey_data()
@@ -12,72 +8,156 @@ format_raw_survey_data()
 data <- microdistancing_data()
 
 saveRDS(data, file = "outputs/cached_micro.RDS")
+#data <- readRDS(file = "outputs/cached_micro.RDS")
+
 
 survey_distance <- data$survey_distance
-pred_data <- data$prediction_data
-
-n_locations <- max(survey_distance$state_id)
-n_inflections <- 4
-
-# how late can the latest inflection be (not after two weeks before the latest
-# survey date) convert that into a fraction of time between the peak and last datapoint
-post_peak_days <- as.numeric(max(survey_distance$date) - as.Date("2020-04-12"))
-inflection_max <- 1 - 21 / post_peak_days
-
-# get model parameters
-params <- microdistancing_params(
-  n_locations = n_locations,
-  n_inflections = n_inflections,
-  inflection_max = inflection_max
-)
-
-inflections <- params$inflections
-heights <- params$heights
-
-prob <- microdistancing_model(data = survey_distance, parameters = params)
-
-distribution(survey_distance$count) <- binomial(
-  survey_distance$respondents,
-  prob
-)
-
-m <- model(inflections, heights)
-
-set.seed(2021-01-18)
-draws <- mcmc(m,
-              chains = 10,
-              sampler = hmc(
-                Lmin = 35,
-                Lmax = 40
-              ),
-              warmup = 2000)
+pred_data <- data$prediction_data #%>%
+  #mutate(date_num = as.numeric(date_num))
 
 
-draws <- extra_samples(draws, 2000)
-convergence(draws)
 
-mcmc_trace(draws)
+min_date <- min(survey_distance$date)
+max_date <- max(survey_distance$date)
 
-prob_pred <- microdistancing_model(data = pred_data, parameters = params)
-
-prob_pred_sim <- calculate(prob_pred, values = draws, nsim = 5000)[[1]][, , 1]
-quants <- t(apply(prob_pred_sim, 2, quantile, c(0.05, 0.25, 0.75, 0.95)))
-colnames(quants) <- c("ci_90_lo", "ci_50_lo", "ci_50_hi", "ci_90_hi")
-
-# prepare outputs for plotting
-pred_plot <- pred_data %>%
-  select(date, state) %>%
-  # add predictions
-  mutate(mean = colMeans(prob_pred_sim)) %>%
-  bind_cols(as_tibble(quants))
+all_dates <- seq(min_date, max_date, by = 1)
   
-line_df <- pred_plot %>%
+min_data_date <- min(survey_distance$date)
+max_data_date <- max(survey_distance$date)
+
+
+
+intervention_steps <- interventions(end_dates = TRUE) %>%
+  filter(date <= max_data_date) %>%
+  mutate(
+    intervention_id = paste0(
+      "intervention_",
+      match(date, unique(date))
+    )
+  ) %>%
+  group_by(intervention_id, state) %>%
+  do(
+    tibble(
+      date = all_dates,
+      intervention_effect = as.numeric(all_dates >= .$date)
+    )
+  ) %>%
+  group_by(state, date) %>%
+  summarise(
+    intervention_stage = sum(intervention_effect),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    intervention_stage = factor(intervention_stage)
+  )
+
+
+min_intervention_stage <- intervention_steps %>%
+  filter(date == min_data_date) %>%
+  dplyr::rename(min_intervention_stage = intervention_stage) %>%
+  dplyr::select(-date)
+
+max_intervention_stage <- intervention_steps %>%
+  filter(date == max_data_date) %>%
+  dplyr::rename(max_intervention_stage = intervention_stage) %>%
+  dplyr::select(-date)  
+
+
+
+df_fit <- survey_distance %>%
+  left_join(
+    intervention_steps,
+    by = c("state", "date")
+  )%>%
+  dplyr::select(
+    state,
+    date,
+    count,
+    respondents,
+    intervention_stage,
+    distancing
+  ) %>%
+  nest(
+    fit_dat = c(
+      date,
+      count,
+      respondents,
+      intervention_stage,
+      distancing
+    )
+  )
+
+
+
+df_pred <- pred_data %>%
+  left_join(
+    intervention_steps,
+    by = c("state", "date")
+  ) %>%
+  left_join(
+    min_intervention_stage,
+    by = "state"
+  ) %>%
+  left_join(
+    max_intervention_stage,
+    by = "state"
+  ) %>%
+  mutate(
+    intervention_stage = case_when(
+      is.na(intervention_stage) & date < min_data_date ~ min_intervention_stage,
+      is.na(intervention_stage) & date > max_data_date ~ max_intervention_stage,
+      state == "VIC" & intervention_stage == 4 ~  factor(5, levels = levels(intervention_stage)),
+      TRUE ~ intervention_stage
+    )
+  ) %>%
+  dplyr::select(
+    state,
+    date,
+    intervention_stage,
+    distancing
+  ) %>%
+  nest(
+    pred_dat = c(
+      date,
+      intervention_stage,
+      distancing
+    )
+  )
+
+
+
+df_mic <- full_join(
+  df_fit,
+  df_pred,
+  by = "state"
+) 
+
+
+
+
+survey_fit <- mapply(
+  FUN = fit_survey_gam,
+  fit_dat = df_mic$fit_dat,
+  pred_dat = df_mic$pred_dat,
+  SIMPLIFY = FALSE
+)
+
+
+survey_fitted <- df_mic %>%
+  mutate(fit = survey_fit) %>% 
+  unnest(fit) %>%
+  dplyr::select(-fit_dat, -pred_dat)
+
+
+line_df <- survey_fitted %>%
   mutate_at(
     vars(mean, ci_90_lo, ci_90_hi, ci_50_lo, ci_50_hi),
     ~ . * 100
   ) %>%
   filter(date >= as.Date("2020-03-01")) %>%
   mutate(type = "Nowcast")
+
+
 
 point_df <- survey_distance %>%
   group_by(state, wave_date) %>%
@@ -114,9 +194,15 @@ logit_sims <- replicate(
         pred$fit,
         pred$se.fit)
 )
+
 p_sims <- plogis(logit_sims)
 estimate <- rowMeans(p_sims)
-cis <- t(apply(p_sims, 1, quantile, c(0.025, 0.975)))
+cis <- t(apply(
+  X = p_sims,
+  MARGIN = 1,
+  FUN = quantile,
+  c(0.025, 0.975)
+))
 
 point_df <- point_df %>%
   mutate(
@@ -128,6 +214,8 @@ point_df <- point_df %>%
 # save these fits for plotting later
 module(line_df, point_df) %>%
   saveRDS("outputs/micro_plotting_data.RDS")
+
+
 
 base_colour <- purple
 
@@ -198,6 +286,7 @@ p <- ggplot(line_df) +
 
 p
 
+
 save_ggplot("microdistancing_effect.png")
 
 # save the model fit
@@ -220,4 +309,5 @@ pred_summary <- pred_plot %>%
 
 saveRDS(pred_summary,
         file = "outputs/microdistancing_trend_summary.RDS")
+
 
