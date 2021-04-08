@@ -493,7 +493,8 @@ interventions <- function(
       bind_rows(
         tibble::tribble(
           ~date, ~state,
-          "2021-01-12", "QLD"
+          "2021-01-12", "QLD",
+          "2021-04-01", "QLD"
         )
       )
     
@@ -3925,7 +3926,12 @@ sync_nndss <- function(mount_dir = "~/Mounts/nndss", storage_dir = "~/not_synced
 }
 
 # read in the latest linelist and format for analysis
-get_nndss_linelist <- function(date = NULL, dir = "~/not_synced/nndss", strict = TRUE) {
+get_nndss_linelist <- function(
+  date = NULL,
+  dir = "~/not_synced/nndss",
+  strict = TRUE,
+  missing_location_assumption = "imported"
+) {
   
   data <- linelist_date_times(dir)
   
@@ -4090,11 +4096,11 @@ get_nndss_linelist <- function(date = NULL, dir = "~/not_synced/nndss", strict =
         CV_SOURCE_INFECTION == 6 ~ "local",
         CV_SOURCE_INFECTION == 7 ~ "local",
         # otherwise impute it
-        CV_SOURCE_INFECTION == 5 ~ "local",
-        grepl("^00038888", PLACE_OF_ACQUISITION) ~ "imported",
+        CV_SOURCE_INFECTION == 5 ~ missing_location_assumption,
+        grepl("^00038888", PLACE_OF_ACQUISITION) ~ missing_location_assumption,
         !is.na(PLACE_OF_ACQUISITION) ~ "imported",
-        is.na(PLACE_OF_ACQUISITION) ~ "local",
-        is.na(CV_SOURCE_INFECTION) ~ "local"
+        is.na(PLACE_OF_ACQUISITION) ~ missing_location_assumption,
+        is.na(CV_SOURCE_INFECTION) ~ missing_location_assumption
       )
     ) #%>%
     # mutate(
@@ -7285,27 +7291,27 @@ predict_mobility_trend <- function(
     )
   
   # create intervention step-change covariates
-  intervention_steps <- interventions() %>%
+  intervention_steps <- interventions(end_dates = TRUE) %>%
     # add events for SA and QLD ending short lockdowns, to enable effects to be
     # reversed
-    bind_rows(
-      tibble(
-        date = as.Date("2020-11-22"),
-        state = "SA"
-      ),
-      tibble(
-        date = as.Date("2021-01-12"),
-        state = "QLD"
-      ),
-      tibble(
-        date = as.Date("2021-02-05"),
-        state = "WA"
-      ),
-      tibble(
-        date = as.Date("2021-02-18"),
-        state = "VIC"
-      )
-    ) %>%
+    # bind_rows(
+    #   tibble(
+    #     date = as.Date("2020-11-22"),
+    #     state = "SA"
+    #   ),
+    #   tibble(
+    #     date = as.Date("2021-01-12"),
+    #     state = "QLD"
+    #   ),
+    #   tibble(
+    #     date = as.Date("2021-02-05"),
+    #     state = "WA"
+    #   ),
+    #   tibble(
+    #     date = as.Date("2021-02-18"),
+    #     state = "VIC"
+    #   )
+    # ) %>% # this code now superceded by end_dates = TRUE
     filter(date <= max_data_date) %>%
     mutate(
       intervention_id = paste0(
@@ -7514,4 +7520,60 @@ download_tidycovid <- function() {
   download.file(tidycovid_url, destfile = f)
   tmp <- readRDS(f)
   saveRDS(tmp, file = "data/google_cmr/tidycovid_cache.RDS")  
+}
+
+
+fit_survey_gam <- function(
+  fit_dat,
+  pred_dat
+){
+  
+  respondents <- fit_dat$respondents
+  count <- fit_dat$count
+  date <- fit_dat$date
+  intervention_stage <- fit_dat$intervention_stage
+  
+  date_num <- as.numeric(date - min(date))
+  
+  m <- mgcv::gam(
+    cbind(count, I(respondents - count)) ~ s(date_num) + intervention_stage,
+    select = TRUE,
+    family = stats::binomial,
+  )
+  
+  
+  pred_dat$date_num <- as.numeric(pred_dat$date - min(date))
+  
+  #pred <- predict(m, se.fit = TRUE, type = "link")
+  pred <- predict(
+    object = m,
+    newdata = pred_dat,
+    se.fit = TRUE,
+    type = "link"
+  )
+  
+  quantile95 <- qnorm(0.95)
+  quantile75 <- qnorm(0.75)
+  ci_90_hi <- pred$fit + (quantile95 * pred$se.fit)
+  ci_90_lo <- pred$fit - (quantile95 * pred$se.fit)
+  ci_50_hi <- pred$fit + (quantile75 * pred$se.fit)
+  ci_50_lo <- pred$fit - (quantile75 * pred$se.fit)
+  
+  fitted <- m$family$linkinv(pred$fit) * pred_dat$distancing
+  ci_90_hi <- m$family$linkinv(ci_90_hi) * pred_dat$distancing
+  ci_90_lo <- m$family$linkinv(ci_90_lo) * pred_dat$distancing
+  ci_50_hi <- m$family$linkinv(ci_50_hi) * pred_dat$distancing
+  ci_50_lo <- m$family$linkinv(ci_50_lo) * pred_dat$distancing
+  
+  
+  
+  tibble(
+    date = pred_dat$date,
+    mean = fitted ,
+    ci_90_lo,
+    ci_50_lo,
+    ci_50_hi,
+    ci_90_hi
+  )
+  
 }

@@ -52,7 +52,7 @@ ggsave(
 # (data/microdistancing/Barometer wave <wave> compliance.csv and
 # data/contacts/barometer/contact numbers wave <wave>.csv), run microdistancing
 # model, and output figure (microdistancing_effect.png) and trend estimates
-# (microdistancing_trends.RDS) [~0.5-1h]
+# (microdistancing_trends.RDS) [~2 min]
 source("R/microdistancing_change.R")
 
 # 6. Run macrodistancing model and output figure ((microdistancing_effect.png) and
