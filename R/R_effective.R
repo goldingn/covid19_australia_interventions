@@ -103,7 +103,7 @@ oz_fitted_model$greta_arrays$R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_r
 
 oz_dir <- "outputs/projection/b117_oz_style"
 dir.create(oz_dir, showWarnings = FALSE)
-write_reff_sims(oz_fitted_model, oz_dir, write_reff_12 = TRUE) # this TRUE is not actually working as it should yet
+write_reff_sims(oz_fitted_model, oz_dir, write_reff_12 = FALSE) # this TRUE is not actually working as it should yet
 
 # also calculate and write out the equivalent multiplicative factor over time
 ratio <- oz_fitted_model$greta_arrays$R_eff_loc_1 / fitted_model$greta_arrays$R_eff_loc_1

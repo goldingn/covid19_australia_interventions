@@ -22,8 +22,8 @@ source("R/check_linelist.R")
 source("R/rolling_delays.R")
 
 
-# 3. Sync NNDSS data and write out case data (local_cases.csv) for the Robs
-# Hyndman and Moss. RNG seed needs to match that in R_effective.R for imputation to
+# 3. Sync NNDSS data and write out case data (local_cases.csv) for Monash (Rob Hyndman/Mitch)
+# and U of Melbourne (Rob Moss/Ruarai). RNG seed needs to match that in R_effective.R for imputation to
 # be consistent. This is also done in the final script, but I send it to them
 # whilst waiting [~60s]
 set.seed(2020-04-29)
@@ -48,7 +48,7 @@ ggsave(
   height = 10
 )
 
-# 5. Output microdistancing survey data for Dennis
+# 5. Output microdistancing survey data for U of Adelaide (Tobin/Josh, previously Dennis)
 # (data/microdistancing/Barometer wave <wave> compliance.csv and
 # data/contacts/barometer/contact numbers wave <wave>.csv), run microdistancing
 # model, and output figure (microdistancing_effect.png) and trend estimates

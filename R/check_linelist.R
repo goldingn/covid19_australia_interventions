@@ -1,9 +1,12 @@
 # check NNDSS linelist for missing entries and local cases in last 3 weeks.
 
-library(dplyr)
-library(readxl)
+source("R/lib.R")
 
 source("R/functions.R")
+
+#library(dplyr)
+#library(readxl)
+
 
 dir <- "~/not_synced/nndss"
   
