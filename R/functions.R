@@ -2247,6 +2247,7 @@ prop_voc_date_state <- function(dates){
   ) %>%
     mutate(
       prop_voc = case_when(
+        #date >= "2021-01-27" & state == "VIC" ~ 1,
         date >= "2021-01-27" & state == "VIC" ~ 1,
         TRUE ~ 0
       )
@@ -2263,7 +2264,8 @@ prop_voc_date_state <- function(dates){
 
 
 # greta sub-model for the component R_eff due to macro- and micro-distancing
-distancing_effect_model_new <- function(dates, gi_cdf) {
+#distancing_effect_model_new <- function(dates, gi_cdf) {
+distancing_effect_model <- function(dates, gi_cdf) {
   
   # informative priors on variables for contacts at t = 0 (Hx = household, Ox =
   # non-household, Tx = total, xC = contacts. xD = duration)
@@ -2277,9 +2279,9 @@ distancing_effect_model_new <- function(dates, gi_cdf) {
   logit_p <- normal(logit_p_params$meanlogit, logit_p_params$sdlogit)
   p_wildt <- ilogit(logit_p)
   #phi <- normal(1.512, 0.084, truncation = c(0, Inf))
-  phi <- 1.512
+  phi <- 1.453
   phi_wt <- 1 - prop_voc + prop_voc*phi
-  p <- 1 - (1 - p_wildt) ^ phi_wt
+  p <- (p_wildt) ^ phi_wt
   
   
   infectious_days <- infectious_period(gi_cdf)
@@ -2341,7 +2343,8 @@ distancing_effect_model_new <- function(dates, gi_cdf) {
   
 }
 
-distancing_effect_model <- function(dates, gi_cdf) {
+#distancing_effect_model <- function(dates, gi_cdf) {
+distancing_effect_model_old <- function(dates, gi_cdf) {
   
   # informative priors on variables for contacts at t = 0 (Hx = household, Ox =
   # non-household, Tx = total, xC = contacts. xD = duration)
