@@ -1,4 +1,80 @@
 
+write_reff_sims <- function(fitted_model,
+                            dir = "outputs/projection",
+                            write_reff_1 = TRUE,
+                            write_reff_12 = TRUE,
+                            write_reff_2 = FALSE) {
+  
+  if (write_reff_1) {
+    
+    reff_1 <- reff_sims(fitted_model, which = "R_eff_loc_1")
+    
+    reff_1 %>%
+      write_csv(
+        file.path(dir, "r_eff_1_local_samples.csv")
+      )
+    
+  }
+  
+  if (write_reff_12) {
+    
+    # find the dates for clamping into the future (where 50%/95% cases so far detected)
+    clip_idx_50 <- (fitted_model$data$detection_prob_mat > 0.5) %>%
+      apply(1, all) %>%
+      which() %>%
+      max()
+    
+    clip_idx_95 <- (fitted_model$data$detection_prob_mat > 0.95) %>%
+      apply(1, all) %>%
+      which() %>%
+      max()
+    
+    date_50 <- fitted_model$data$dates$infection[clip_idx_50]
+    date_95 <- fitted_model$data$dates$infection[clip_idx_95]
+    
+    reff_12 <- reff_sims(fitted_model, which = "R_eff_loc_12")
+    
+    reff_12 %>%
+      write_csv(
+        file.path(dir, "r_eff_12_local_samples.csv")
+      )
+    
+    reff_12 %>%
+      soft_clamp(date_50) %>%
+      write_csv(
+        file.path(dir, "r_eff_12_local_samples_soft_clamped_50.csv")
+      )
+    
+    reff_12 %>%
+      soft_clamp(date_95) %>%
+      write_csv(
+        file.path(dir, "r_eff_12_local_samples_soft_clamped_95.csv")
+      )
+  }
+  
+  
+  if (write_reff_2) {
+    
+    reff_2 <- reff_sims(fitted_model, which = "epsilon_L")
+    
+    reff_2 %>%
+      write_csv(
+        file.path(dir, "r_eff_2_local_samples.csv")
+      )
+    
+  }
+  
+  
+}
+
+
+source("R/lib.R")
+
+set.seed(2020-04-29)
+source("R/functions.R")
+
+
+fitted_model <- readRDS("outputs/fitted_reff_model.RDS")
 
 # redo this as function to enable running with all voc or non-voc for outputs.
 
@@ -15,6 +91,7 @@ de <- fitted_model$greta_arrays$distancing_effect
 q <- de$p
 p <- 1 - q
 p_star <- 1 - (1 - p) ^ phi
+
 
 infectious_days <- infectious_period(gi_cdf)
 
@@ -40,29 +117,6 @@ surveillance_reff_local_reduction <- surveillance_effect(
 R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_reff_local_reduction
 log_R_eff_loc_1 <- log(R_eff_loc_1)
 
-
-# the reduction from R0 down to R_eff for imported cases due to different
-# quarantine measures each measure applied during a different period. Q_t is
-# R_eff_t / R0 for each time t, modelled as a monotone decreasing step function
-# over three periods with increasingly strict policies
-q_index <- case_when(
-  data$dates$infection < quarantine_dates()$date[1] ~ 1,
-  data$dates$infection < quarantine_dates()$date[2] ~ 2,
-  TRUE ~ 3,
-)
-q_index <- c(q_index, rep(3, data$n_date_nums - data$n_dates))
-
-# q_raw <- uniform(0, 1, dim = 3)
-
-log_q_raw <- -exponential(1, dim = 3)
-log_q <- cumsum(log_q_raw)
-log_Qt <- log_q[q_index]
-# extract R0 from this model and estimate R_t component due to quarantine for
-# overseas-acquired cases
-
-log_R0 <- log_R_eff_loc_1[1, 1]
-log_R_eff_imp_1 <- log_R0 + log_Qt
-R_eff_imp_1 <- exp(log_R_eff_imp_1)
 
 # hierarchical (marginal) prior sd on log(Reff12) by state 
 sigma <- normal(0, 0.5, truncation = c(0, Inf))
@@ -103,7 +157,9 @@ oz_fitted_model$greta_arrays$R_eff_loc_12 <- R_eff_loc_12
 
 oz_dir <- "outputs/projection/b117_oz_style"
 dir.create(oz_dir, showWarnings = FALSE)
-write_reff_sims(oz_fitted_model, oz_dir, write_reff_12 = TRUE)
+write_reff_sims(oz_fitted_model, oz_dir, write_reff_12 = TRUE, write_reff_2 = TRUE)
+
+#write_reff_sims(fitted_model, write_reff_1 =FALSE, write_reff_12 = FALSE, write_reff_2 = TRUE)
 
 # also calculate and write out the equivalent multiplicative factor over time
 ratio <- oz_fitted_model$greta_arrays$R_eff_loc_1 / fitted_model$greta_arrays$R_eff_loc_1
@@ -140,9 +196,12 @@ read_csv("outputs/projection/b117_oz_style/r_eff_1_local_samples.csv") %>%
 
 voc1 <- read_csv(file = "outputs/projection/b117_oz_style/r_eff_1_local_samples.csv")
 voc12 <- read_csv(file = "outputs/projection/b117_oz_style/r_eff_12_local_samples.csv")
+voc2 <- read_csv(file = "outputs/projection/b117_oz_style/r_eff_2_local_samples.csv")
 
 wt1 <- read_csv(file = "outputs/projection/r_eff_1_local_samples.csv")
 wt12 <- read_csv(file = "outputs/projection/r_eff_12_local_samples.csv")
+wt2 <- read_csv(file = "outputs/projection/r_eff_2_local_samples.csv")
+
 
 
 
@@ -152,7 +211,7 @@ v1 <- voc1 %>%
   ) %>%
   group_by(date, state) %>%
   summarise(reff = mean(value)) %>%
-  mutate(strain = "VOC")
+  mutate(strain = "VOC", component = "1")
 
 v12 <- voc12 %>%
   tidyr::pivot_longer(
@@ -160,7 +219,15 @@ v12 <- voc12 %>%
   ) %>%
   group_by(date, state) %>%
   summarise(reff = mean(value)) %>%
-  mutate(strain = "VOC")
+  mutate(strain = "VOC", component = "12")
+
+v2 <- voc2 %>%
+  tidyr::pivot_longer(
+    cols = starts_with("sim")
+  ) %>%
+  group_by(date, state) %>%
+  summarise(reff = mean(value)) %>%
+  mutate(strain = "VOC", component = "2")
 
 w1 <- wt1 %>%
   tidyr::pivot_longer(
@@ -168,7 +235,7 @@ w1 <- wt1 %>%
   ) %>%
   group_by(date, state) %>%
   summarise(reff = mean(value)) %>%
-  mutate(strain = "WT")
+  mutate(strain = "WT", component = "1")
 
 w12 <- wt12 %>%
   tidyr::pivot_longer(
@@ -176,11 +243,24 @@ w12 <- wt12 %>%
   ) %>%
   group_by(date, state) %>%
   summarise(reff = mean(value)) %>%
-  mutate(strain = "WT")
+  mutate(strain = "WT", component = "12")
+
+w2 <- wt2 %>%
+  tidyr::pivot_longer(
+    cols = starts_with("sim")
+  ) %>%
+  group_by(date, state) %>%
+  summarise(reff = mean(value)) %>%
+  mutate(strain = "WT", component = "2")
+
 
 r1 <- bind_rows(v1, w1)
 
 r12 <- bind_rows(v12, w12)
+
+r2 <- bind_rows(v2, w2)
+
+rall <- bind_rows(v1, v12, v2, w1, w12, v2)
 
 
 ggplot(r1) +
@@ -203,3 +283,28 @@ ggplot(r12) +
     )
   ) +
   facet_wrap(~state, ncol = 2)
+
+
+
+ggplot(r2) +
+  geom_line(
+    aes(
+      x = date,
+      y = reff,
+      colour = strain
+    )
+  ) +
+  facet_wrap(~state, ncol = 2)
+
+
+ggplot(rall) +
+  geom_line(
+    aes(
+      x = date,
+      y = reff,
+      colour = strain,
+      linetype = component
+    )
+  ) +
+  facet_wrap(~state, ncol = 2)
+

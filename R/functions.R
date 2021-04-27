@@ -1537,6 +1537,7 @@ plot_trend <- function(simulations,
   
 }
 
+
 plot_trend_long <- function(simulations,
                        data,
                        base_colour = grey(0.4),
@@ -2248,7 +2249,7 @@ prop_voc_date_state <- function(dates){
     mutate(
       prop_voc = case_when(
         #date >= "2021-01-27" & state == "VIC" ~ 1,
-        date >= "2021-01-27" & state == "VIC" ~ 1,
+        date >= "2021-01-27" ~ 1,
         TRUE ~ 0
       )
     ) %>%
@@ -5150,6 +5151,7 @@ reff_plotting <- function(
   save_ggplot("R_eff_2_local.png", dir)
   
 }
+
 
 # given a dataframe of Reff trajectory samples for Rob M, 'soft-clamp' the Reff
 # trajectories so that the log-mean of Reff is constant into the future from the target date, but the
