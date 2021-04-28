@@ -6,7 +6,7 @@ library(tidyr)
 library(rvest)
 
 
-get_ifr <- function() {
+get_ifr <- function(voc = TRUE) {
   
   # Age-structured infection fatality ratio (%) estimates from O'Driscoll et al.
   # 2020 https://doi.org/10.1038/s41586-020-2918-0 (Table S3 in supplement) and
@@ -19,7 +19,7 @@ get_ifr <- function() {
   # category (50% ofover 80s are in 80-84, 30% are in 85-89, and 20% are 90 or
   # older)
   
-  tibble::tribble(
+  ifr <- tibble::tribble(
     ~age,      ~odriscoll,     ~brazeau,
     "0-4",          0.003,         0.00,
     "5-9",          0.001,         0.01,
@@ -39,6 +39,18 @@ get_ifr <- function() {
     "75-79",        3.203,         3.39,
     "80+",          8.292,         5.3*0.5 + 8.28*0.3 + 16.19*0.2
   )
+  
+  
+  if(voc){
+    # multiplier from Davis et al.
+    ifr <- ifr %>%
+      mutate(
+        odriscoll = odriscoll*1.61,
+        brazeau = brazeau*1.61
+      )
+  }
+  
+  return(ifr)
   
 }
 
@@ -313,7 +325,8 @@ get_age_distribution <- function(
     ) %>%
     mutate(
       age = as.integer(age)
-    )
+    ) %>%
+    arrange(age)
   
   # aggregate into age classes and return
   age_class_fractions <- aust_population_2020 %>%
@@ -323,7 +336,8 @@ get_age_distribution <- function(
         breaks = c(ages$lower - 1, Inf),
         labels = ages$classes
       ),
-      age_class = as.character(age_class)
+      age_class = as.character(age_class),
+      age_class = factor(age_class, levels= unique(age_class))
     ) %>%
     group_by(
       age_class
@@ -348,8 +362,13 @@ get_age_distribution <- function(
 # disaggregation vectors for different vaccination groups
 phase_age_populations <- function() {
   
+  
+  # get the age classes and age distributions in national population
   ages <- age_classes(final_age_bin = 80)
-  distribution <- get_age_distribution(final_age_bin = 80)$fraction
+  national_distribution <- get_age_distribution(final_age_bin = 80)$fraction
+  
+  # remove under-15s from all vaccination (vaccines not approved for these ages)
+  distribution <- disaggregation_vec(ages$lower >= 15, national_distribution)
   
   # disaggregation vectors (summing to 1) into age classes for different
   # population groups
@@ -654,14 +673,23 @@ timeseries$overall_ifr_effect <- vapply(
   X = all_effects,
   extract_overall_ifr_effect,
   FUN.VALUE = numeric(1),
-  which = "brazeau"
+  which = "odriscoll"
 )
 
 timeseries$over_70_ifr_effect <- vapply(
   X = all_effects,
   extract_over_70_ifr_effect,
   FUN.VALUE = numeric(1),
-  which = "brazeau"
+  which = "odriscoll"
+)
+
+png(
+  filename = "outputs/figures/vacc_effect_tp_reduction.png",
+  width = 11.69 / 2,
+  height = 8.27 / 3,
+  #scale = 1,
+  units = "in",
+  res = 150
 )
 
 plot(
@@ -675,7 +703,18 @@ plot(
   main = "Vaccination effect on population-wide\nCOVID-19 transmission potential"
 )
 
-plot(
+dev.off()
+
+png(
+  filename = "outputs/figures/vacc_ifr_population.png",
+  width = 11.69 / 2,
+  height = 8.27 / 3,
+  #scale = 1,
+  units = "in",
+  res = 150
+)
+
+  plot(
   overall_ifr_effect ~ date,
   data = timeseries,
   type = "l",
@@ -684,11 +723,22 @@ plot(
   lwd = 2,
   col = "forestgreen",
   las = 1,
-  ylim = c(0, 1),
+  ylim = c(0, 1.2),
   main = "Change in population-wide infection fatality risk"
 )
 
+dev.off()
+
 range(timeseries$overall_ifr_effect)
+
+png(
+  filename = "outputs/figures/vacc_ifr_70plus.png",
+  width = 11.69 / 2,
+  height = 8.27 / 3,
+  #scale = 1,
+  units = "in",
+  res = 150
+)
 
 plot(
   over_70_ifr_effect ~ date,
@@ -699,30 +749,40 @@ plot(
   lwd = 2,
   col = "deepskyblue",
   las = 1,
-  ylim = c(0, 6),
+  ylim = c(0, 8),
   main = "Change in infection fatality risk among over-70s"
 )
 range(timeseries$over_70_ifr_effect)
 
+dev.off()
+
+
 # plot current vaccination coverage by age
-current_effect <- summarise_effect(
-  n_doses = max(timeseries$doses),
-  age_populations = age_populations,
-  age_distribution = age_distribution,
-  next_generation_matrix = next_generation_matrix
+current_coverage_by_age <- all_effects[[1]]$coverage_by_age
+
+png(
+  filename = "outputs/figures/vacc_coverage.png",
+  width = 11.69 / 2,
+  height = 8.27 / 3,
+  #scale = 1,
+  units = "in",
+  res = 150
 )
 
-barplot(100 * current_effect$coverage_by_age,
+barplot(100 * current_coverage_by_age,
         names.arg = age_distribution$age_class,
         axes = FALSE,
+        border = "white",
         xlab = "age group",
-        main = "Assumed current vaccine coverage (single dose)",
+        main = "Assumed current vaccine coverage\n(with only single doses)",
         ylim = c(0, 100))
 y_axis_ticks <- seq(0, 100, by = 20) 
 axis(2,
      at = y_axis_ticks,
      labels = paste0(y_axis_ticks, "%"),
      las = 1)
+
+dev.off()
 
 # # The same, but assuming a complete phase 1 roll out
 # n_doses_phase_1 <- sum(age_populations$phase_1A, age_populations$phase_1B)

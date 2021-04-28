@@ -462,7 +462,8 @@ interventions <- function(
   
   wa_interventions <- tibble::tribble(
     ~date, ~state,
-    "2021-01-31", "WA"
+    "2021-01-31", "WA",
+    "2021-04-24", "WA"
   )
   
   national_interventions <- expand_grid(
@@ -503,7 +504,8 @@ interventions <- function(
       bind_rows(
         tibble::tribble(
           ~date, ~state,
-          "2021-02-05", "WA"
+          "2021-02-05", "WA"#,
+          #"2021-04-27", "WA"
         )
       )
     
