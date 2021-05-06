@@ -94,7 +94,7 @@ filter_date <- ll_date - lubridate::days(21)
 
 
 
-missing_location_assumption <- "imported"
+missing_location_assumption <- "missing"
 
 df <- dat %>%
   filter(Diagnosis_Date >= filter_date) %>%
@@ -136,6 +136,11 @@ df <- dat %>%
       !is.na(PLACE_OF_ACQUISITION) ~ "imported",
       is.na(PLACE_OF_ACQUISITION) ~ missing_location_assumption,
       is.na(CV_SOURCE_INFECTION) ~ missing_location_assumption
+    ),
+    import_status = case_when(
+      import_status == "missing" & STATE == "WA" ~ "local",
+      import_status == "missing" & STATE != "WA" ~ "imported",
+      TRUE ~ import_status
     )
   )
 

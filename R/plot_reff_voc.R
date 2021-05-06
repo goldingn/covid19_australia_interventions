@@ -81,15 +81,20 @@ reff_plotting <- function(
     linetype = 3
   )
   
-  # add counterfactuals to the model object: Reff for locals component 1 under
+  
+  
+  # add counterfactuals to the model object:
+  # add fitted_model_extended obect because fitted_model is modified
+  fitted_model_extended <- fitted_model
+  # Reff for locals component 1 under
   # only micro/macro/surveillance improvements
-  fitted_model$greta_arrays <- c(
+  fitted_model_extended$greta_arrays <- c(
     fitted_model$greta_arrays,
     list(
-      R_eff_loc_1_macro = reff_1_only_macro(fitted_model),
-      R_eff_loc_1_micro = reff_1_only_micro(fitted_model),
-      R_eff_loc_1_surv = reff_1_only_surveillance(fitted_model),
-      R_eff_loc_1_vaccine_effect = reff_1_vaccine_effect(fitted_model, vaccine_timeseries)
+      R_eff_loc_1_macro = reff_1_only_macro(fitted_model_extended),
+      R_eff_loc_1_micro = reff_1_only_micro(fitted_model_extended),
+      R_eff_loc_1_surv = reff_1_only_surveillance(fitted_model_extended),
+      R_eff_loc_1_vaccine_effect = reff_1_vaccine_effect(fitted_model_extended, vaccine_timeseries)
     ) 
   )
   
@@ -105,25 +110,23 @@ reff_plotting <- function(
     "R_eff_loc_1_surv",
     "R_eff_loc_1_vaccine_effect"
   )
-  vector_list <- lapply(fitted_model$greta_arrays[trajectory_types], c)
+  vector_list <- lapply(fitted_model_extended$greta_arrays[trajectory_types], c)
   
   # simulate from posterior for these quantities of interest
-  args <- c(vector_list, list(values = fitted_model$draws, nsim = 10000))
+  args <- c(vector_list, list(values = fitted_model_extended$draws, nsim = 10000))
   sims <- do.call(calculate, args)
   
   # vaccine effect only
-  plot_trend(sims$R_eff_loc_1_vaccine_effect[,1:518,], # fix
-             data = fitted_model$data,
+  plot_trend(sims$R_eff_loc_1_vaccine_effect[,1:fitted_model_extended$data$n_date_nums,], # clunky fix
+             data = fitted_model_extended$data,
              min_date = min_date,
              max_date = max_date,
              multistate = FALSE,
-             #base_colour = "#f1006a",
-             #base_colour = "#4AC0AD",
-             base_colour = "#A8EB12",
-             #base_colour = "#fb4f34",
+             base_colour = fifo,
              projection_at = projection_date,
              ylim = c(0, 5),
-             intervention_at = vaccination_dates()
+             intervention_at = vaccination_dates(),
+             plot_voc = TRUE
              ) + 
     ggtitle(label = "Impact of vaccination",
             subtitle = expression(R["eff"]~"if"~only~vaccination~had~occurred)) +
@@ -134,12 +137,13 @@ reff_plotting <- function(
   
   # microdistancing only
   plot_trend(sims$R_eff_loc_1_micro,
-             data = fitted_model$data,
+             data = fitted_model_extended$data,
              min_date = min_date,
              max_date = max_date,
              multistate = TRUE,
              base_colour = purple,
-             projection_at = projection_date) + 
+             projection_at = projection_date,
+             plot_voc = TRUE) + 
     ggtitle(label = "Impact of micro-distancing",
             subtitle = expression(R["eff"]~"if"~only~"micro-distancing"~behaviour~had~changed)) +
     ylab(expression(R["eff"]~component))
@@ -148,12 +152,13 @@ reff_plotting <- function(
   
   # macrodistancing only
   plot_trend(sims$R_eff_loc_1_macro,
-             data = fitted_model$data,
+             data = fitted_model_extended$data,
              min_date = min_date,
              max_date = max_date,
              multistate = TRUE,
              base_colour = blue,
-             projection_at = projection_date) + 
+             projection_at = projection_date,
+             plot_voc = TRUE) + 
     ggtitle(label = "Impact of macro-distancing",
             subtitle = expression(R["eff"]~"if"~only~"macro-distancing"~behaviour~had~changed)) +
     ylab(expression(R["eff"]~component))
@@ -162,11 +167,12 @@ reff_plotting <- function(
   
   # improved surveilance only
   plot_trend(sims$R_eff_loc_1_surv,
-             data = fitted_model$data,
+             data = fitted_model_extended$data,
              max_date = max_date,
              multistate = TRUE,
              base_colour = yellow,
-             projection_at = projection_date) + 
+             projection_at = projection_date,
+             plot_voc = TRUE) + 
     ggtitle(label = "Impact of improved surveillance",
             subtitle = expression(R["eff"]~"if"~only~surveillance~effectiveness~had~changed)) +
     ylab(expression(R["eff"]~component))
@@ -175,12 +181,13 @@ reff_plotting <- function(
   
   # Component 1 for national / state populations
   plot_trend(sims$R_eff_loc_1,
-             data = fitted_model$data,
+             data = fitted_model_extended$data,
              min_date = min_date,
              max_date = max_date,
              multistate = TRUE,
              base_colour = green,
-             projection_at = projection_date) + 
+             projection_at = projection_date,
+             plot_voc = TRUE) + 
     ggtitle(label = "Impact of social distancing",
             subtitle = expression(Component~of~R["eff"]~due~to~social~distancing)) +
     ylab(expression(R["eff"]~component))
@@ -188,14 +195,15 @@ reff_plotting <- function(
   save_ggplot("R_eff_1_local.png", dir)
   
   plot_trend(sims$R_eff_imp_1,
-             data = fitted_model$data,
+             data = fitted_model_extended$data,
              min_date = min_date,
              max_date = max_date,
              multistate = FALSE,
              base_colour = orange,
              ylim = c(0, 0.4),
              intervention_at = quarantine_dates(),
-             projection_at = projection_date) + 
+             projection_at = projection_date,
+             plot_voc = TRUE) + 
     ggtitle(label = "Impact of quarantine of overseas arrivals",
             subtitle = expression(Component~of~R["eff"]~due~to~quarantine~of~overseas~arrivals)) +
     ylab(expression(R["eff"]~component))
@@ -204,21 +212,22 @@ reff_plotting <- function(
   
   # Reff for active cases
   p <- plot_trend(sims$R_eff_loc_12,
-                  data = fitted_model$data,
+                  data = fitted_model_extended$data,
                   min_date = min_date,
                   max_date = max_date,
                   multistate = TRUE,
                   base_colour = green,
                   ylim = c(0, 5),
-                  projection_at = projection_date) +
+                  projection_at = projection_date,
+                  plot_voc = TRUE) +
     ggtitle(label = "Local to local transmission potential",
             subtitle = "Average across active cases") +
     ylab(expression(R["eff"]~from~"locally-acquired"~cases))
   
   if (mobility_extrapolation_rectangle) {
     p <- p + annotate("rect",
-                      xmin = fitted_model$data$dates$latest_infection,
-                      xmax = fitted_model$data$dates$latest_mobility,
+                      xmin = fitted_model_extended$data$dates$latest_infection,
+                      xmax = fitted_model_extended$data$dates$latest_mobility,
                       ymin = -Inf,
                       ymax = Inf,
                       fill = grey(0.5), alpha = 0.1)
@@ -233,22 +242,23 @@ reff_plotting <- function(
   
   # component 2 (noisy error trends)
   p <- plot_trend(sims$epsilon_L,
-                  data = fitted_model$data,
+                  data = fitted_model_extended$data,
                   min_date = min_date,
                   max_date = max_date,
                   multistate = TRUE,
                   base_colour = pink,
                   hline_at = 0,
                   projection_at = projection_date,
-                  ylim = NULL) + 
+                  ylim = NULL,
+                  plot_voc = TRUE) + 
     ggtitle(label = "Short-term variation in local to local transmission rates",
             subtitle = expression(Deviation~from~log(R["eff"])~of~"local-local"~transmission)) +
     ylab("Deviation")
   
   if (mobility_extrapolation_rectangle) {
     p <- p + annotate("rect",
-                      xmin = fitted_model$data$dates$latest_infection,
-                      xmax = fitted_model$data$dates$latest_mobility,
+                      xmin = fitted_model_extended$data$dates$latest_infection,
+                      xmax = fitted_model_extended$data$dates$latest_mobility,
                       ymin = -Inf,
                       ymax = Inf,
                       fill = grey(0.5), alpha = 0.1)
@@ -266,12 +276,13 @@ reff_plotting <- function(
 
 
 plot_trend(sims$R_eff_loc_1_micro,
-               data = fitted_model$data,
+               data = fitted_model_extended$data,
                min_date = min_date,
                max_date = max_date,
                multistate = TRUE,
                base_colour = purple,
-               projection_at = projection_date) + 
+               projection_at = projection_date,
+           plot_voc = TRUE) + 
   ggtitle(label = "Impact of micro-distancing",
           subtitle = expression(R["eff"]~"if"~only~"micro-distancing"~behaviour~had~changed)) +
   ylab(expression(R["eff"]~component))
@@ -288,18 +299,10 @@ plot_trend <- function(
   projection_at = NA,
   keep_only_rows = NULL,
   max_date = data$dates$latest_mobility,
-  min_date = as.Date("2020-03-01")
+  min_date = as.Date("2020-03-01"),
+  plot_voc = FALSE
 ) {
   
-  
-  # voc_washout_data <- prop_voc_date_state(dates = data$dates$mobility) %>%
-  #   as_tibble %>%
-  #   mutate(date = data$dates$mobility) %>%
-  #   pivot_longer(
-  #     cols = -date,
-  #     names_to = "state",
-  #     values_to = "washout"
-  #   )
 
   mean <- colMeans(simulations)
   ci_90 <- apply(simulations, 2, quantile, c(0.05, 0.95))
@@ -355,25 +358,7 @@ plot_trend <- function(
     scale_alpha(range = c(0, 0.5)) +
     scale_fill_manual(values = c("Nowcast" = base_colour)) +
   
-    # geom_vline(
-    #   aes(
-    #     xintercept = as.Date("2021-01-27")
-    #   ),
-    #   col = "coral"
-    # ) +
-    
-    
-    # geom_ribbon(
-    #   #data = voc_washout_data,
-    #   aes(ymin = -10, ymax = washout * 100 - 10),
-    #   fill = "grey91"#,
-    #   #alpha = 0.2#,
-    #   #colour = "coral",
-    #   #linetype = 3
-    # ) +
-  
-    
-    
+
     geom_vline(
       aes(xintercept = date),
       data = intervention_at,
@@ -395,12 +380,6 @@ plot_trend <- function(
     
     geom_hline(yintercept = hline_at, linetype = "dotted") +
     
-    geom_vline( # quick and dirty - fix
-      aes(xintercept = as.Date("2021-01-27")),
-      colour = "firebrick1",
-      linetype = 5
-    ) +
-    
     cowplot::theme_cowplot() +
     cowplot::panel_border(remove = TRUE) +
     theme(legend.position = "none",
@@ -409,6 +388,16 @@ plot_trend <- function(
           axis.title.y.right = element_text(vjust = 0.5, angle = 90),
           panel.spacing = unit(1.2, "lines"),
           axis.text.x = element_text(size = 8))
+  
+  if(plot_voc){
+    p <- p + 
+      geom_vline(
+        data = prop_voc_date_state(),
+        aes(xintercept = date),
+        colour = "firebrick1",
+        linetype = 5
+      ) # this may caus problems if plot_voc is TRUE but multistate is FALSE
+  }
   
   if (multistate) {
     p <- p + facet_wrap(~ state, ncol = 2, scales = "free")
