@@ -62,7 +62,9 @@ reff_1_vaccine_effect <- function(fitted_model, timeseries){
   
   ote <- df$overall_transmission_effect
   
-  exp(log_R0)*ote
+#  log_R0 <- ga$log_R0  
+  
+#  exp(log_R0)*ote
   
   baseline_surveillance_effect <- ga$surveillance_reff_local_reduction[1]
   de <- ga$distancing_effect

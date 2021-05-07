@@ -7793,31 +7793,67 @@ get_ifr <- function(voc = TRUE) {
 
 
 scrape_doses_timeseries <- function() {
-  # scrape the cumulative number of vaccine doses delivered in Australia by date,
-  # from covidlive.com.au
   
   url <- "https://covidlive.com.au/report/daily-vaccinations/aus"
   
-  cumulative_doses <- url %>%
+  # scrape the cumulative number of doses and convert to daily new doses
+  scraped <- url %>%
     read_html() %>%
-    html_nodes("table") %>%
+    html_nodes(
+      "table"
+    ) %>%
     .[[2]] %>%
-    html_table(fill = TRUE) %>%
+    html_table(
+      fill = TRUE
+    ) %>%
     mutate(
       date = as.Date(DATE, format = "%d %B %y"),
-      doses = DOSES,
-      doses = gsub(",", "", doses),
-      doses = as.numeric(doses)
+      cumulative_doses = DOSES,
+      cumulative_doses = gsub(",", "", cumulative_doses),
+      cumulative_doses = as.numeric(cumulative_doses)
     ) %>%
-    select(date, doses)
+    # compute new doses per day
+    arrange(
+      date
+    ) %>%
+    mutate(
+      new_doses = diff(c(0, cumulative_doses))
+    ) %>%
+    select(
+      date,
+      new_doses
+    )
   
+  # fill in zeroes for any missing datess
+  missing_dates <- expand_grid(
+    date = seq(
+      min(scraped$date),
+      max(scraped$date),
+      by = 1
+    ),
+    new_doses = 0
+  ) %>%
+    anti_join(
+      scraped,
+      by = "date"
+    )
   
-  cumulative_doses
+  # combine, reorder, compute cumulative number, drop leading 0s
+  scraped %>%
+    bind_rows(missing_dates) %>%
+    arrange(date) %>%
+    mutate(
+      doses = cumsum(new_doses)
+    ) %>%
+    filter(
+      doses > 0
+    )
   
 }
 
 
 get_R <- function (transition_matrix, stable_age = NULL, tolerance = 0.001, max_iter = 1000) {
+  #Re(eigen(x)$value[1])
   # function from STEPS
   # https://github.com/steps-dev/steps/blob/74c5359dd4470c4056cd799c53ef56d503ba69da/R/growth_transition_functions-class.R#L211
   # compute R from a transition (next generation) matrix
@@ -8235,8 +8271,8 @@ average_ifr_efficacy <- function() {
 
 average_transmission_efficacy <- function() {
   average_efficacy(
-    efficacy_pf_2_dose = 0.9,
-    efficacy_az_2_dose = 0.7,
+    efficacy_pf_2_dose = 0.9685,
+    efficacy_az_2_dose = 0.93,
   )
 }
 
@@ -8490,3 +8526,67 @@ simulate_wild_type <- function(
   
 }
 
+# given a timeseries of cumulative doses (for contiguous consecutive dates), and
+# an assumed ideal inter-dose period, return the timeseries of the cumulative
+# number of people being fully-vaccinated (having received both doses), assuming
+# that second-doses are prioritised for vaccination and are always given at the
+# earliest availability after the inter-dose period has elapsed.
+model_vaccination_coverage <- function (daily_new_doses, inter_dose_days = 28) {
+  
+  # empty vectors for the number of first and second doses distributed
+  first_doses <- second_doses <- daily_new_doses * 0
+  
+  # empty scalar for the queue of people due to receive their second dose but
+  # who could not yet receive it due to insufficient doses availables
+  queueing_for_second_dose <- 0
+  
+  # iterate through days, 
+  for (day in seq_along(daily_new_doses)) {
+    
+    # the number of new second doses eligible today
+    lagged_day <- day - inter_dose_days
+    if (lagged_day >= 1) {
+      target_second_doses <- first_doses[lagged_day]
+    } else {
+      target_second_doses <- 0
+    }
+    
+    # add on any waiting from previous days
+    target_second_doses <- target_second_doses + queueing_for_second_dose
+    
+    # calculate the maximum number of second doses that can be given out
+    # (assuming these are the priority)
+    second_doses[day] <- min(daily_new_doses[day], target_second_doses)
+    
+    # tally up any second doses in waiting that were not vaccinated today, to
+    # wait for the next day
+    queueing_for_second_dose <- max(0, target_second_doses - second_doses[day])
+    
+    # assign any remaining doses as first doses
+    first_doses[day] <- daily_new_doses[day] - second_doses[day]
+    
+  }
+  
+  # cumulative number of fully-vaccinated people
+  cumsum(second_doses)
+  
+}
+
+# get a dataframe of vaccine coverage estimates
+vaccination_coverage <- function() {
+  
+  # scrape a timeseries of the cumulative number of doses given out
+  scrape_doses_timeseries() %>%
+    # apply an allocation model to compute the cumulative number of people
+    # receiving their second dose (fully vaccinated)
+    mutate(
+      fully_vaccinated = model_vaccination_coverage(new_doses)
+    ) %>%
+    # get the fraction of vaccinated people who are fully vaccinated
+    mutate(
+      partially_vaccinated = doses - (fully_vaccinated * 2),
+      vaccinated = fully_vaccinated + partially_vaccinated,
+      proportion_2_dose = fully_vaccinated / vaccinated
+    )
+  
+}
