@@ -277,9 +277,10 @@ p <- plot_trend(pred_sim,
       estimate,
     ),
     data = survey_points,
-    size = 4,
+    size = 1,
     pch = "_"
   ) +
+  
   geom_errorbar(
     aes(
       wave_date,
@@ -288,7 +289,7 @@ p <- plot_trend(pred_sim,
       ymax = upper,
     ),
     data = survey_points,
-    size = 4,
+    size = 1,
     alpha = 0.2,
     width = 0
   )

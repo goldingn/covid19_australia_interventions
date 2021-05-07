@@ -265,14 +265,14 @@ p <- ggplot(line_df) +
   geom_point(
     aes(date, percentage),
     data = point_df,
-    size = 3,
+    size = 1,
     pch = "_"
   ) +
   
   geom_errorbar(
     aes(date, percentage, ymin = lower, ymax = upper),
     data = point_df,
-    size = 3,
+    size = 1,
     alpha = 0.2,
     width = 0
   ) +
