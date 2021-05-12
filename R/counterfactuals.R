@@ -154,14 +154,19 @@ observed <- tibble(
 large_numbers <- function(n) {
   case_when(
     n < 1e3 ~ as.character(n),
-    n < 1e6 ~ paste0(round(n/1e3), 'k'),
-    n < 1e9 ~ paste0(round(n/1e6), 'M')
+    n < 1e6 ~ paste0(round(n/1e3, 1), 'k'),
+    n < 1e9 ~ paste0(round(n/1e6, 1), 'M')
   )
 }
 
 base <- observed %>%
   ggplot() +
-  aes(date, median) + 
+  aes(date, median) +
+  geom_vline(
+    aes(xintercept = date),
+    data = interventions("national"),
+    color = "grey80"
+  ) + 
   geom_line(
     aes(date, cases),
     data = observed
@@ -178,9 +183,8 @@ base <- observed %>%
   ) +
   scale_x_date(
     date_breaks = "1 month",
-    date_labels = "%b"
-  )
-  
+    date_labels = "%b %y"
+  )  
 
 make_plot <- function(..., base_plot, colours) {
   scenarios <- list(...)
@@ -225,7 +229,7 @@ contacts <- mapply(make_plot,
 
 library(patchwork)
 
-coords <- function(phase = 1, max_cases = 1000) {
+coords <- function(phase = 1, max_cases = 1500) {
   phase_long <- c("importation", "community", "suppression")[phase]
   dates <- scenario_dates(list(phase = phase_long))
   xlim <- range(dates)
@@ -233,14 +237,14 @@ coords <- function(phase = 1, max_cases = 1000) {
 }
 
 p <- 
-  (quarantine[[1]] + ggtitle("initial importations") + coords(1, 1000) |
-     quarantine[[2]] + ggtitle("community transmission") + coords(2, 1000) |
+  (quarantine[[1]] + ggtitle("initial importations") + coords(1) |
+     quarantine[[2]] + ggtitle("community transmission") + coords(2) |
      quarantine[[3]] + ggtitle("outbreak suppression") + coords(3)) /
-  (distancing[[1]] + coords(1, 1000) |
-     distancing[[2]] + coords(2, 1000)  |
+  (distancing[[1]] + coords(1) |
+     distancing[[2]] + coords(2)  |
      distancing[[3]] + coords(3) ) / 
-  (contacts[[1]] + coords(1, 1000) |
-     contacts[[2]] + coords(2, 1000) |
+  (contacts[[1]] + coords(1) |
+     contacts[[2]] + coords(2) |
      contacts[[3]] + coords(3))
 
 p

@@ -6203,13 +6203,13 @@ scenario_dates <- function(scenario) {
   
   switch(
     scenario$phase,
-    importation = seq(as.Date("2020-02-14"),
-                      as.Date("2020-05-31"),
+    importation = seq(as.Date("2020-03-01"),
+                      as.Date("2020-04-30"),
                       by = 1),
     community = seq(as.Date("2020-07-01"),
-                    as.Date("2020-09-30"),
+                    as.Date("2020-08-31"),
                     by = 1),
-    suppression = seq(as.Date("2020-11-01"),
+    suppression = seq(as.Date("2020-12-01"),
                       as.Date("2020-12-31"),
                       by = 1)
   )
