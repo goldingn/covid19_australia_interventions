@@ -1526,7 +1526,7 @@ plot_trend <- function(
           strip.text = element_text(hjust = 0, face = "bold"),
           axis.title.y.right = element_text(vjust = 0.5, angle = 90),
           panel.spacing = unit(1.2, "lines"),
-          axis.text.x = element_text(size = 8))
+          axis.text.x = element_text(size = 7))
   
   if(plot_voc){
     p <- p + 
@@ -3987,7 +3987,9 @@ get_nndss_linelist <- function(
   date = NULL,
   dir = "~/not_synced/nndss",
   strict = TRUE,
-  missing_location_assumption = "missing",
+  #missing_location_assumption = "imported",
+  missing_location_assumption = "local",
+  #missing_location_assumption = "missing",
   write_interim_list = FALSE
 ) {
   
@@ -4109,29 +4111,6 @@ get_nndss_linelist <- function(
       SPECIMEN_DATE = clean_date(SPECIMEN_DATE)
     ) %>%
     mutate(
-      # import_status = ifelse(
-      #   is.na(PLACE_OF_ACQUISITION) |
-      #     grepl("^1101|^00038888", PLACE_OF_ACQUISITION),
-      #   "local",
-      #   "imported"
-      # )
-      # import_status = ifelse(
-      #   test = grepl("^1101|^00038888", PLACE_OF_ACQUISITION),
-      #   yes = "local",
-      #   no = ifelse(
-      #     test = !is.na(PLACE_OF_ACQUISITION),
-      #     yes = "imported",
-      #     no = ifelse(
-      #       test = is.na(CV_SOURCE_INFECTION),
-      #       yes = "local",
-      #       no = ifelse(
-      #         test = CV_SOURCE_INFECTION == 1,
-      #         yes = "imported",
-      #         no = "local"
-      #       )
-      #     )
-      #   )
-      # )
       import_status = case_when(
         # return "ERROR" if place of acquisition and cv_source_infection
         # indicate opposite import statuses
@@ -4159,12 +4138,12 @@ get_nndss_linelist <- function(
         !is.na(PLACE_OF_ACQUISITION) ~ "imported",
         is.na(PLACE_OF_ACQUISITION) ~ missing_location_assumption,
         is.na(CV_SOURCE_INFECTION) ~ missing_location_assumption
-      ),
-      import_status = case_when(
-        import_status == "missing" & STATE == "WA" ~ "local",
-        import_status == "missing" & STATE != "WA" ~ "imported",
-        TRUE ~ import_status
-      )
+      )#,
+      # import_status = case_when(
+      #   import_status == "missing" & STATE == "WA" ~ "local",
+      #   import_status == "missing" & STATE != "WA" ~ "imported",
+      #   TRUE ~ import_status
+      # )
     ) #%>%
     # mutate(
     #   import_status = ifelse(import_status == "ERROR", "imported", import_status)
@@ -8459,6 +8438,8 @@ simulate_wild_type <- function(
   dates <- .fitted_model$data$dates$mobility
   
   de <- .fitted_model$greta_arrays$distancing_effect
+  
+  prop_voc <- prop_voc_date_state_long(dates)
   
   p <- de$p
   phi_wt_star <- 1 - prop_voc + prop_voc*phi

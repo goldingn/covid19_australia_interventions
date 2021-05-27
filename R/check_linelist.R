@@ -90,14 +90,16 @@ ll_date <- data$date_time[[1]]
     col_types = col_types
   )
   
-filter_date <- ll_date - lubridate::days(21)
+filter_date <- ll_date - lubridate::days(28)
 
 
 
-missing_location_assumption <- "missing"
+missing_location_assumption <- "local"
+#missing_location_assumption <- "imported"
+#missing_location_assumption <- "missing"
 
 df <- dat %>%
-  filter(Diagnosis_Date >= filter_date) %>%
+  filter(NOTIFICATION_RECEIVE_DATE >= filter_date) %>%
   mutate(
     check = case_when(
       is.na(PLACE_OF_ACQUISITION) ~ TRUE,
@@ -136,12 +138,12 @@ df <- dat %>%
       !is.na(PLACE_OF_ACQUISITION) ~ "imported",
       is.na(PLACE_OF_ACQUISITION) ~ missing_location_assumption,
       is.na(CV_SOURCE_INFECTION) ~ missing_location_assumption
-    ),
-    import_status = case_when(
-      import_status == "missing" & STATE == "WA" ~ "local",
-      import_status == "missing" & STATE != "WA" ~ "imported",
-      TRUE ~ import_status
-    )
+    )#,
+    # import_status = case_when(
+    #   import_status == "missing" & STATE == "WA" ~ "local",
+    #   import_status == "missing" & STATE != "WA" ~ "imported",
+    #   TRUE ~ import_status
+    # )
   )
 
 
@@ -150,10 +152,12 @@ linelist_check <- df %>%
     STATE,
     NOTIFICATION_DATE,
     NOTIFICATION_RECEIVE_DATE,
+    AGE_AT_ONSET,
+    SEX,
     PLACE_OF_ACQUISITION,
     CV_SOURCE_INFECTION,
     import_status
   ) %>% 
   dplyr::arrange(STATE, desc(NOTIFICATION_RECEIVE_DATE)) %>%
-  print
+  print(n = 40)
 

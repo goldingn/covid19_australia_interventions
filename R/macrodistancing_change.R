@@ -277,7 +277,7 @@ p <- plot_trend(pred_sim,
       estimate,
     ),
     data = survey_points,
-    size = 1,
+    size = 2,
     pch = "_"
   ) +
   

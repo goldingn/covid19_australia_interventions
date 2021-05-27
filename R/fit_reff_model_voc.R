@@ -10,7 +10,7 @@ saveRDS(fitted_model_voc, "outputs/fitted_reff_model_voc.RDS")
 #plot_reff_checks(fitted_model_voc)
 
 # do plots for main period
-reff_plotting_voc(fitted_model_voc, dir = "outputs", washout_cutoff = 5)
+reff_plotting(fitted_model, dir = "long_figs", washout_cutoff = 5)
 
 
 ###

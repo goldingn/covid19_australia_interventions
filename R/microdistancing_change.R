@@ -259,13 +259,13 @@ p <- ggplot(line_df) +
         strip.text = element_text(hjust = 0, face = "bold"),
         axis.title.y.right = element_text(vjust = 0.5, angle = 90),
         panel.spacing = unit(1.2, "lines"),
-        axis.text.x = element_text(size = 8)) +
+        axis.text.x = element_text(size = 7)) +
   
   # add empirical percentages
   geom_point(
     aes(date, percentage),
     data = point_df,
-    size = 1,
+    size = 2,
     pch = "_"
   ) +
   
