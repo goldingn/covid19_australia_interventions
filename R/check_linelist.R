@@ -94,9 +94,9 @@ filter_date <- ll_date - lubridate::days(28)
 
 
 
-missing_location_assumption <- "local"
+#missing_location_assumption <- "local"
 #missing_location_assumption <- "imported"
-#missing_location_assumption <- "missing"
+missing_location_assumption <- "missing"
 
 df <- dat %>%
   filter(NOTIFICATION_RECEIVE_DATE >= filter_date) %>%
@@ -159,5 +159,5 @@ linelist_check <- df %>%
     import_status
   ) %>% 
   dplyr::arrange(STATE, desc(NOTIFICATION_RECEIVE_DATE)) %>%
-  print(n = 40)
+  print(n = 100)
 

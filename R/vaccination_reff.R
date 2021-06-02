@@ -1,4 +1,8 @@
 
+fitted_model <- readRDS("outputs/fitted_reff_model.RDS")
+
+timeseries <- readRDS("outputs/vaccine_timeseries.RDS")
+
 timeseries_1_dose <- timeseries
 
 # simple 2 dose model with lag

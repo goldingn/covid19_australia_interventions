@@ -35,7 +35,15 @@ sync_nndss()
 data <- reff_model_data()
 data$dates$linelist  # check it synced properly
 write_local_cases(data)
-get_nndss_linelist(write_interim_list = TRUE)
+
+# Check no entries classed as "ERROR" (i.e. conflicting PLACE_OF_ACQUISITION and CV_SOURCE_INFECTION)
+# if OK will only list "imported" and "local"
+load_linelist() %>%
+  pull(import_status) %>%
+  table
+
+# write linelist format for UoAdelaide (Tobin/Josh) if necessary
+write_linelist()
 
 # Section C) Dependent on survey data update (the numbered file must be manually
 # copied to data/survey_raw):
