@@ -250,8 +250,9 @@ uk_attack <- tibble::tribble(
 
 # regions and dates of attack rate data
 uk_data_regions <- uk_attack$region
-uk_data_start_date <- as.Date("2020-09-20")
-uk_data_end_date <- as.Date("2021-01-04")
+uk_data_start_date <- as.Date("2020-11-30")
+uk_data_end_date <- as.Date("2021-01-10")
+
 
 # lookup between UK counties and regions:
 # https://geoportal.statistics.gov.uk/datasets/0fa948d8a59d4ba6a46dce9aa32f3513_0/data
