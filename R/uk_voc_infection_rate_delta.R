@@ -226,7 +226,7 @@
 # confounding with other parameters - especially $\psi$. For this reason,
 # uncertainty in $\beta$ was not considered in this analysis.
 
-source("spartan/lib.R")
+source("R/lib.R")
 
 source("R/functions.R")
 
@@ -239,65 +239,82 @@ set.seed(2021-01-17)
 # update 9/02/2021 table 4 technical briefing 5
 # https://www.gov.uk/government/publications/investigation-of-novel-sars-cov-2-variant-variant-of-concern-20201201
 
-uk_attack_wt <- tibble::tribble(
-  ~region,                ~contacts_alpha, ~cases_alpha, ~contacts_wt, ~cases_wt,
-  "East Midlands",                  868,        100,         1734,       185,
-  "East of England",               6801,        876,         2358,       243,
-  "London",                       12883,       1624,         3464,       299,
-  "North East",                    1104,        122,         1795,       178,
-  "North West",                    3577,        542,         5121,       495,
-  "South East",                    7503,        912,         2044,       167,
-  "South West",                    1011,        131,         1459,       160,
-  "West Midlands",                 2806,        392,         2891,       279,
-  "Yorkshire and Humber",           949,        130,         3301,       329
+uk_attack_1 <- tibble::tribble(
+  ~region,                ~contacts_alpha, ~cases_alpha, ~contacts_wt, ~cases_wt, ~period,
+  "East Midlands",                    868,          100,         1734,       185,       1,
+  "East of England",                 6801,          876,         2358,       243,       1,
+  "London",                         12883,         1624,         3464,       299,       1,
+  "North East",                      1104,          122,         1795,       178,       1,
+  "North West",                      3577,          542,         5121,       495,       1,
+  "South East",                      7503,          912,         2044,       167,       1,
+  "South West",                      1011,          131,         1459,       160,       1,
+  "West Midlands",                   2806,          392,         2891,       279,       1,
+  "Yorkshire and Humber",             949,          130,         3301,       329,       1
 )
+# regions and dates of attack rate data
+uk_data_regions_1 <- uk_attack_1$region
 
+uk_data_start_date_1 <- as.Date("2020-11-30")
+uk_data_end_date_1 <- as.Date("2021-01-10")
 
-# total for wt taken from technical briefing #5
-# total for delta and alpha variant from technical briefing #14, table 6 SAR among contacts not travelled
-# here "voc" = alpha
-uk_attack_voc <- tibble::tribble(
-  ~region,  ~contacts_delta, ~cases_delta, ~contacts_alpha, ~cases_alpha,
-  "all",               7987,          987,           76948,         6295
+# total for delta and alpha variant from technical briefing #14
+# table 6 SAR among contacts not travelled
+uk_attack_2 <- tibble::tribble(
+  ~region,  ~contacts_delta, ~cases_delta, ~contacts_alpha, ~cases_alpha, ~period,
+  "all",               7987,          987,           76948,         6295,       2
   )
-
-
-uk_attack_alpha <- bind_rows(
-  uk_attack_wt %>%
-    dplyr::select(region, ends_with("alpha")),
-  uk_attack_voc %>%
-    dplyr::select(region, ends_with("alpha"))
-) %>%
-  rename_with(
-    sub("_alpha", "", .),
-    ends_with("alpha")
-  )
-
-
-uk_attack_alpha <- bind_rows(
-  uk_attack_wt %>%
-    dplyr::select(region, ends_with("alpha")),
-  uk_attack_voc %>%
-    dplyr::select(region, ends_with("alpha"))
-)
-
-
 
 # regions and dates of attack rate data
-uk_data_regions_wt <- uk_attack_wt$region
-uk_data_regions_voc <- uk_attack_voc$region
+uk_data_regions_2 <- uk_attack_2$region
 
-uk_data_start_date_wt <- as.Date("2020-11-30")
-uk_data_end_date_wt <- as.Date("2021-01-10")
+uk_data_start_date_2 <- as.Date("2021-03-29")
+uk_data_end_date_2 <- as.Date("2021-05-11")
 
-uk_data_start_date_voc <- as.Date("2021-03-29")
-uk_data_end_date_voc <- as.Date("2021-05-11")
+## subsets for variants:
+uk_attack_wt <- uk_attack_1 %>%
+    dplyr::select(region, period, ends_with("wt")) %>%
+  mutate(
+    contacts = contacts_wt,
+    cases = cases_wt
+  ) %>%
+  dplyr::select(-ends_with("wt"))
+
+
+uk_attack_alpha <- bind_rows(
+  uk_attack_1 %>%
+    dplyr::select(region, period, ends_with("alpha")),
+  uk_attack_2 %>%
+    dplyr::select(region, period, ends_with("alpha"))
+) %>%
+  mutate(
+    contacts = contacts_alpha,
+    cases = cases_alpha
+  ) %>%
+  dplyr::select(-ends_with("alpha"))
+
+
+uk_attack_alpha_1 <- uk_attack_alpha %>%
+  filter(period == 1)
+
+uk_attack_alpha_2 <- uk_attack_alpha %>%
+  filter(period == 2)
+
+
+uk_attack_delta <- uk_attack_2 %>%
+  dplyr::select(region, period, ends_with("delta")) %>%
+  mutate(
+    contacts = contacts_delta,
+    cases = cases_delta
+  ) %>%
+  dplyr::select(-ends_with("delta"))
+
+
 
 # lookup between UK counties and regions:
 # https://geoportal.statistics.gov.uk/datasets/0fa948d8a59d4ba6a46dce9aa32f3513_0/data
 
 county_region_lookup <- read_csv(
-  "data/uk_voc/Ward_to_Local_Authority_District_to_County_to_Region_to_Country__December_2018__Lookup_in_United_Kingdom_.csv",
+  "data/uk_voc/Ward_to_Local_Authority_District_to_County_to_Region_to_Country_(December_2018)_Lookup_in_United_Kingdom_.csv",
   col_types = cols(
     .default = col_character(),
     FID = col_double()
@@ -350,7 +367,7 @@ uk_google_mobility <- readr::read_csv(
 ) %>%
   filter(
     country_region == "United Kingdom"
-  ) %>%
+  ) #%>%
   # left_join(
   #   county_region_lookup,
   #   by = "sub_region_1"
@@ -416,25 +433,6 @@ uk_google_mobility <- uk_google_mobility_all %>%
   ) %>%
   ungroup()
     
-#   filter(is.na(sub_region_1)) %>%
-# tidyr::pivot_longer(
-#   ends_with("_percent_change_from_baseline"),
-#   names_to = "category",
-#   values_to = "trend"
-# ) %>%
-#   mutate(
-#     region = "all"
-#   ) %>%
-# dplyr::select(
-#   region = region,
-#   category = category,
-#   date = date,
-#   trend = trend
-# ) %>%
-# mutate(
-#   category = str_remove_all(category, "_percent_change_from_baseline"),
-#   category = str_replace_all(category, "_", " ")
-# )
 
 
 # smooth through them in a similar way to the Aus mobility model  
@@ -535,12 +533,12 @@ pred_trend <- uk_location_change_trends %>%
   bind_cols(as_tibble(quants))
 
 # averages over the UK attack rate data period
-OC_i_wt <- pred_trend %>%
+OC_i_1 <- pred_trend %>%
   select(date, state, mean) %>%
   filter(
-    date >= uk_data_start_date_wt,
-    date <= uk_data_end_date_wt,
-    state %in% uk_data_regions_wt
+    date >= uk_data_start_date_1,
+    date <= uk_data_end_date_1,
+    state %in% uk_data_regions_1
   ) %>%
   group_by(
     state
@@ -550,12 +548,12 @@ OC_i_wt <- pred_trend %>%
   ) %>%
   ungroup()
 
-OC_i_voc <- pred_trend %>%
+OC_i_2 <- pred_trend %>%
   select(date, state, mean) %>%
   filter(
-    date >= uk_data_start_date_voc,
-    date <= uk_data_end_date_voc,
-    state %in% uk_data_regions_voc
+    date >= uk_data_start_date_2,
+    date <= uk_data_end_date_2,
+    state %in% uk_data_regions_2
   ) %>%
   group_by(
     state
@@ -656,6 +654,7 @@ micro_data <- yougov %>%
 
 
 micro_responses <- cbind(micro_data$adhering, micro_data$not_adhering)
+
 micro_gam <- mgcv::gam(
   micro_responses ~ s(date_num) + s(date_num, by = region),
   family = stats::binomial,
@@ -713,20 +712,22 @@ d_i <- micro_pred %>%
   # )
 
 
-di_i_wt <- d_i %>%
+d_i_1 <- d_i %>%
   filter(
-    date >= uk_data_start_date_wt,
-    date <= uk_data_end_date_wt,
-    region %in% uk_data_regions_wt
+    date >= uk_data_start_date_1,
+    date <= uk_data_end_date_1,
+    region %in% uk_data_regions_1
   ) %>%
   summarise(
     micro_effect = mean(effect)
   )
 
-di_i_voc <- d_i %>%
+d_i_2 <- d_i %>%
+  ungroup %>%
   filter(
-    date >= uk_data_start_date_voc,
-    date <= uk_data_end_date_voc
+    date >= uk_data_start_date_2,
+    date <= uk_data_end_date_2,
+    region %in% uk_data_regions_1
   ) %>%
   mutate(region = "all") %>%
   summarise(
@@ -736,22 +737,22 @@ di_i_voc <- d_i %>%
 
 # compute the average of the household metric over the attack rate data time
 # period in each region
-h_i_wt <- uk_location_change_trends %>%
+h_i_1 <- uk_location_change_trends %>%
   filter(
-    date >= uk_data_start_date_wt,
-    date <= uk_data_end_date_wt,
-    state %in% uk_data_regions_wt
+    date >= uk_data_start_date_1,
+    date <= uk_data_end_date_1,
+    state %in% uk_data_regions_1
   ) %>%
   group_by(state) %>%
   summarise(
     home = mean(home)
   )
 
-h_i_voc <- uk_location_change_trends %>%
+h_i_2 <- uk_location_change_trends %>%
   filter(
-    date >= uk_data_start_date_voc,
-    date <= uk_data_end_date_voc,
-    state %in% uk_data_regions_voc
+    date >= uk_data_start_date_2,
+    date <= uk_data_end_date_2,
+    state %in% uk_data_regions_2
   ) %>%
   group_by(state) %>%
   summarise(
@@ -804,11 +805,14 @@ OD_0 <- normal(baseline_contact_params$mean_duration[2],
 # prior on the relative per-unit-contact-time infectiousness of the UK VOC strain
 phi_alpha_wt <- normal(1, 1, truncation = c(0, Inf))
 phi_delta_alpha <- normal(1, 1, truncation = c(0, Inf))
+phi_period2 <- normal(1, 1, truncation = c(0, Inf))
 
 # per-unit-contact-time infectiousness of the UK VOC strain
 p_alpha <- 1 - (1 - p) ^ phi_alpha_wt
 
-p_delta <- p_alpha ^ phi_delta_alpha
+p_alpha2 <- p_alpha ^ phi_period2
+
+p_delta2 <- p_alpha2 ^ phi_delta_alpha
 
 
 # bias in sampling of contacts and cases in UK attack rate data (uniformly
@@ -824,38 +828,52 @@ psi <- normal(1, 1, truncation = c(0, Inf))
 infectious_days <- infectious_period(gi_cdf)
 
 # overall microdistancing effect
-gamma_i_wt <- 1 - beta * d_i_wt$micro_effect
-gamma_i_voc <- 1 - beta * d_i_voc$micro_effect
+gamma_i_1 <- 1 - beta * d_i_1$micro_effect
+gamma_i_2 <- 1 - beta * d_i_2$micro_effect
 
 # household and non-household secondary attack rates for the two strains
-hsar_i <- 1 - (1 - p) ^ (HD_0 * h_i$home)
-hsar_alpha_i <- 1 - (1 - p_alpha) ^ (HD_0 * h_i$home)
-hsar_delta_i <- 1 - (1 - p_delta) ^ (HD_0 * h_i$home)
+hsar_wt_i <- 1 - (1 - p) ^ (HD_0 * h_i_1$home)
+hsar_alpha_i <- 1 - (1 - p_alpha) ^ (HD_0 * h_i_1$home)
+hsar_alpha2_i <- 1 - (1 - p_alpha2) ^ (HD_0 * h_i_2$home)
+hsar_delta2_i <- 1 - (1 - p_delta2) ^ (HD_0 * h_i_2$home)
 
-osar_i <- gamma_i * (1 - (1 - p) ^ OD_0)
-osar_alpha_i <- gamma_i  * (1 - (1 - p_star) ^ OD_0)
+osar_i <- gamma_i_1 * (1 - (1 - p) ^ OD_0)
+osar_alpha_i <- gamma_i_1  * (1 - (1 - p_alpha) ^ OD_0)
+osar_alpha2_i <- gamma_i_2  * (1 - (1 - p_alpha2) ^ OD_0)
+osar_delta2_i <- gamma_i_2  * (1 - (1 - p_delta2) ^ OD_0)
 
 # proportion of contacts that are household contacts
-w_i <- HC_0 / (HC_0 + OC_i$mean * infectious_days)
+w_i_1 <- HC_0 / (HC_0 + OC_i_1$mean * infectious_days)
+w_i_2 <- HC_0 / (HC_0 + OC_i_2$mean * infectious_days)
 
 # overall secondary attack rates
-sar_i <- w_i * hsar_i + (1 - w_i) * osar_i
-sar_star_i <- w_i * hsar_star_i + (1 - w_i) * osar_star_i
+sar_i <- w_i_1 * hsar_wt_i + (1 - w_i_1) * osar_i
+sar_alpha_i <- w_i_1 * hsar_alpha_i + (1 - w_i_1) * osar_alpha_i
+sar_alpha2_i <- w_i_2 * hsar_alpha2_i + (1 - w_i_2) * osar_alpha2_i
+sar_delta2_i <- w_i_2 * hsar_delta2_i + (1 - w_i_2) * osar_delta2_i
+
 
 # account for biased undersampling of contacts in the SAR data (e.g. sampling
 # all household contacts but only a fraction of non-household contacts) which
 # would cause the observed and expected attack rates to differ.
-sar_observed_i <- sar_i ^ psi
-sar_star_observed_i <- sar_star_i ^ psi
+sar_observed_i        <- sar_i ^ psi
+sar_alpha_observed_i  <- sar_alpha_i ^ psi
+sar_alpha2_observed_i <- sar_alpha2_i ^ psi
+sar_delta2_observed_i <- sar_delta2_i ^ psi
 
-distribution(uk_attack$cases_wt) <- binomial(uk_attack$contacts_wt, sar_observed_i)
-distribution(uk_attack$cases_voc) <- binomial(uk_attack$contacts_voc, sar_star_observed_i)
 
+distribution(uk_attack_wt$cases)      <- binomial(uk_attack_wt$contacts,      sar_observed_i)
+distribution(uk_attack_alpha_1$cases) <- binomial(uk_attack_alpha_1$contacts, sar_alpha_observed_i)
+distribution(uk_attack_alpha_2$cases) <- binomial(uk_attack_alpha_2$contacts, sar_alpha2_observed_i)
+distribution(uk_attack_delta$cases)   <- binomial(uk_attack_delta$contacts,   sar_delta2_observed_i)
 
-m <- model(phi, HC_0, HD_0, OD_0, p, psi)
+#m <- model(phi_alpha_wt, phi_delta_alpha, phi_period2, HC_0, HD_0, OD_0, p, q, psi)
+
+m <- model(phi_alpha_wt, HC_0, HD_0, OD_0, p, q, psi)
+
 
 draws <- mcmc(m, chains = 10)
-draws <- extra_samples(draws, 2000)
+#draws <- extra_samples(draws, 2000)
 convergence(draws)
 bayesplot::mcmc_trace(draws)
 
@@ -864,57 +882,71 @@ bayesplot::mcmc_trace(draws)
 # reff_household_voc <- HC_0 * hsar_voc_i
 
 # compute the ratio of Reff for household, non-household, and overall infections
-r_household <- hsar_star_i / hsar_i
-r_non_household <- osar_star_i / osar_i
-r_overall <- mean(sar_star_i / sar_i)
-r_overall_observed <- mean(sar_star_observed_i / sar_observed_i)
+r_household_alpha_wt        <- hsar_alpha_i / hsar_wt_i
+r_non_household_alpha_wt    <- osar_alpha_i / osar_i
+r_overall_alpha_wt          <- mean(sar_alpha_i / sar_i)
+r_overall_observed_alpha_wt <- mean(sar_alpha_observed_i / sar_observed_i)
+
+r_household_delta_alpha        <- hsar_delta2_i / hsar_alpha2_i
+r_non_household_delta_alpha    <- osar_delta2_i / osar_alpha2_i
+r_overall_delta_alpha          <- mean(sar_delta2_i / sar_alpha2_i)
+r_overall_observed_delta_alpha <- mean(sar_delta2_observed_i / sar_alpha2_observed_i)
 
 # simulate prior and posterior over the ratio of attack rates (and therefore of Reff)
-r_sim_prior <- calculate(r_overall, nsim = 5000)[[1]][, 1, 1]
-r_sim_posterior <- calculate(r_overall, values = draws, nsim = 5000)[[1]][, 1, 1]
-r_observed_sim_prior <- calculate(r_overall_observed, nsim = 5000)[[1]][, 1, 1]
-r_observed_sim_posterior <- calculate(r_overall_observed, values = draws, nsim = 5000)[[1]][, 1, 1]
+## alpha wt
+r_sim_prior_alpha_wt              <- calculate(r_overall_alpha_wt, nsim = 5000)[[1]][, 1, 1]
+r_sim_posterior_alpha_wt          <- calculate(r_overall_alpha_wt, values = draws, nsim = 5000)[[1]][, 1, 1]
+r_observed_sim_prior_alpha_wt     <- calculate(r_overall_observed_alpha_wt, nsim = 5000)[[1]][, 1, 1]
+r_observed_sim_posterior_alpha_wt <- calculate(r_overall_observed_alpha_wt, values = draws, nsim = 5000)[[1]][, 1, 1]
 
 par(mfrow = c(1, 2))
-hist(r_sim_prior, breaks = 50, xlim = c(0, 3))
+hist(r_sim_prior_alpha_wt, breaks = 50, xlim = c(0, 3))
 abline(v = 1, lty = 2)
-hist(r_sim_posterior, breaks = 50, xlim = c(0, 3))
+hist(r_sim_posterior_alpha_wt, breaks = 50, xlim = c(0, 3))
 abline(v = 1, lty = 2)
 
-mean(r_sim_prior)
-mean(r_observed_sim_prior)
+mean(r_sim_prior_alpha_wt)
+mean(r_observed_sim_prior_alpha_wt)
 
-mean(r_sim_posterior)
-quantile(r_sim_posterior, c(0.05, 0.95))
-mean(r_observed_sim_posterior)
-quantile(r_observed_sim_posterior, c(0.05, 0.95))
+mean(r_sim_posterior_alpha_wt)
+quantile(r_sim_posterior_alpha_wt, c(0.05, 0.95))
+mean(r_observed_sim_posterior_alpha_wt)
+quantile(r_observed_sim_posterior_alpha_wt, c(0.05, 0.95))
 
-r_household_posterior <- calculate(r_household, values = draws, nsim = 5000)[[1]][, , 1]
-r_non_household_posterior <- calculate(r_non_household, values = draws, nsim = 5000)[[1]][, , 1]
+r_household_posterior_alpha_wt <- calculate(r_household_alpha_wt, values = draws, nsim = 5000)[[1]][, , 1]
+r_non_household_posterior_alpha_wt <- calculate(r_non_household_alpha_wt, values = draws, nsim = 5000)[[1]][, , 1]
 
-colMeans(r_household_posterior)
-colMeans(r_non_household_posterior)
+colMeans(r_household_posterior_alpha_wt)
+colMeans(r_non_household_posterior_alpha_wt)
+
+## delta alpha
+r_sim_prior_delta_alpha              <- calculate(r_overall_delta_alpha, nsim = 5000)[[1]][, 1, 1]
+r_sim_posterior_delta_alpha          <- calculate(r_overall_delta_alpha, values = draws, nsim = 5000)[[1]][, 1, 1]
+r_observed_sim_prior_delta_alpha     <- calculate(r_overall_observed_delta_alpha, nsim = 5000)[[1]][, 1, 1]
+r_observed_sim_posterior_delta_alpha <- calculate(r_overall_observed_delta_alpha, values = draws, nsim = 5000)[[1]][, 1, 1]
+
+par(mfrow = c(1, 2))
+hist(r_sim_prior_delta_alpha, breaks = 50, xlim = c(0, 3))
+abline(v = 1, lty = 2)
+hist(r_sim_posterior_delta_alpha, breaks = 50, xlim = c(0, 3))
+abline(v = 1, lty = 2)
+
+mean(r_sim_prior_delta_alpha)
+mean(r_observed_sim_prior_delta_alpha)
+
+mean(r_sim_posterior_delta_alpha)
+quantile(r_sim_posterior_delta_alpha, c(0.05, 0.95))
+mean(r_observed_sim_posterior_delta_alpha)
+quantile(r_observed_sim_posterior_delta_alpha, c(0.05, 0.95))
+
+r_household_posterior_delta_alpha <- calculate(r_household_delta_alpha, values = draws, nsim = 5000)[[1]][, , 1]
+r_non_household_posterior_delta_alpha <- calculate(r_non_household_delta_alpha, values = draws, nsim = 5000)[[1]][, , 1]
+
+colMeans(r_household_posterior_delta_alpha)
+colMeans(r_non_household_posterior_delta_alpha)
+
 
 # compare priors and posteriors for all parameters
-
-hist_prior_posterior <- function(greta_array, draws, nsim = 1000, ...)  {
-  
-  prior_sim <- calculate(greta_array, nsim = nsim)[[1]]
-  posterior_sim <- calculate(greta_array, values = draws, nsim = nsim)[[1]]
-  
-  prior_sim <- c(prior_sim)
-  posterior_sim <- c(posterior_sim)
-  xlim <- range(c(prior_sim, posterior_sim))
-  
-  op <- par()
-  on.exit(par(op))
-  par(mfrow = c(1, 2))
-  
-  hist(c(prior_sim), xlim = xlim, ...)
-  hist(c(posterior_sim), xlim = xlim, ...)
-  
-}
-
 
 
 # compare priors and posteriors

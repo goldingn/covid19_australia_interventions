@@ -2321,13 +2321,42 @@ prop_voc_date_state_long <- function(dates) {
 
 # greta sub-model for the component R_eff due to macro- and micro-distancing
 #distancing_effect_model_new <- function(dates, gi_cdf) {
-distancing_effect_model <- function(dates, gi_cdf) {
+distancing_effect_model <- function(
+  dates,
+  gi_cdf,
+  voc_mixture = c("all", "alpha", "delta", "wt")
+) {
+  
+  voc_mixture <- match.arg(voc_mixture)
   
   # informative priors on variables for contacts at t = 0 (Hx = household, Ox =
   # non-household, Tx = total, xC = contacts. xD = duration)
   baseline_contact_params <- baseline_contact_parameters(gi_cdf)
   
+  
   prop_voc <- prop_voc_date_state_long(dates = dates)
+  prop_alpha <- prop_voc$prop_alpha
+  prop_delta <- prop_voc$prop_delta
+  prop_wt    <- prop_voc$prop_wt
+  
+  if(vic_mixture == "alpha") {
+    prop_alpha <- prop_alpha * 0 + 1
+    prop_delta <- prop_wt <- prop_delta * 0
+  }
+  
+  if(vic_mixture == "delta") {
+    prop_delta <- prop_delta * 0 + 1
+    prop_alpha <- prop_wt <- prop_alpha * 0
+  }
+  
+  if(vic_mixture == "wt") {
+    prop_wt <- prop_wt * 0 + 1
+    prop_alpha <- prop_alpha * 0 
+    prop_delta <- prop_delta * 0
+  }
+  
+  
+  
   
   # prior on the probability of *not* transmitting, per hour of contact
   # (define to match moments of R0 prior)
@@ -2335,8 +2364,10 @@ distancing_effect_model <- function(dates, gi_cdf) {
   logit_p <- normal(logit_p_params$meanlogit, logit_p_params$sdlogit)
   p_wildt <- ilogit(logit_p)
   #phi <- normal(1.512, 0.084, truncation = c(0, Inf))
-  phi <- 1.453
-  phi_wt <- 1 - prop_voc + prop_voc*phi
+  
+  phi_alpha <- 1.453 # update with distribution and compare with scalar
+  ###phi_delta <- ???
+  phi_wt <- prop_wt * 1 + prop_alpha * phi_alpha + prop_delta * phi_delta
   p <- (p_wildt) ^ phi_wt
   
   
@@ -5815,7 +5846,7 @@ load_vic <- function (file) {
 } # possibly deprecated?
 
 load_linelist <- function(date = NULL,
-                          use_vic = TRUE,
+                          use_vic = FALSE,
                           use_sa = FALSE,
                           use_nsw = FALSE) {
   
@@ -8866,5 +8897,24 @@ vaccination_coverage <- function() {
       vaccinated = fully_vaccinated + partially_vaccinated,
       proportion_2_dose = fully_vaccinated / vaccinated
     )
+  
+}
+
+
+hist_prior_posterior <- function(greta_array, draws, nsim = 1000, ...)  {
+  
+  prior_sim <- calculate(greta_array, nsim = nsim)[[1]]
+  posterior_sim <- calculate(greta_array, values = draws, nsim = nsim)[[1]]
+  
+  prior_sim <- c(prior_sim)
+  posterior_sim <- c(posterior_sim)
+  xlim <- range(c(prior_sim, posterior_sim))
+  
+  op <- par()
+  on.exit(par(op))
+  par(mfrow = c(1, 2))
+  
+  hist(c(prior_sim), xlim = xlim, ...)
+  hist(c(posterior_sim), xlim = xlim, ...)
   
 }
