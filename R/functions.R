@@ -5815,7 +5815,7 @@ load_vic <- function (file) {
 } # possibly deprecated?
 
 load_linelist <- function(date = NULL,
-                          use_vic = TRUE,
+                          use_vic = FALSE,
                           use_sa = FALSE,
                           use_nsw = FALSE) {
   
