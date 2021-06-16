@@ -400,6 +400,11 @@ uk_google_mobility <- readr::read_csv(
   # ungroup()
 uk_google_mobility_all <- uk_google_mobility
 
+# saveRDS(
+#   uk_google_mobility_all,
+#   "outputs/uk_google_mobility_all_cached.RDS"
+# )
+# uk_google_mobility_all <- readRDS("outputs/uk_google_mobility_all_cached.RDS")
 
 uk_google_mobility <- uk_google_mobility_all %>%
   left_join(
@@ -810,9 +815,9 @@ phi_period2 <- normal(1, 1, truncation = c(0, Inf))
 # per-unit-contact-time infectiousness of the UK VOC strain
 p_alpha <- 1 - (1 - p) ^ phi_alpha_wt
 
-p_alpha2 <- p_alpha ^ phi_period2
+p_alpha2 <- 1 - (1 - p_alpha) ^ phi_period2
 
-p_delta2 <- p_alpha2 ^ phi_delta_alpha
+p_delta2 <- 1 - (1 - p_alpha2) ^ phi_delta_alpha
 
 
 # bias in sampling of contacts and cases in UK attack rate data (uniformly
@@ -867,9 +872,9 @@ distribution(uk_attack_alpha_1$cases) <- binomial(uk_attack_alpha_1$contacts, sa
 distribution(uk_attack_alpha_2$cases) <- binomial(uk_attack_alpha_2$contacts, sar_alpha2_observed_i)
 distribution(uk_attack_delta$cases)   <- binomial(uk_attack_delta$contacts,   sar_delta2_observed_i)
 
-#m <- model(phi_alpha_wt, phi_delta_alpha, phi_period2, HC_0, HD_0, OD_0, p, q, psi)
+m <- model(phi_alpha_wt, phi_delta_alpha, phi_period2, HC_0, HD_0, OD_0, p, q, psi)
 
-m <- model(phi_alpha_wt, HC_0, HD_0, OD_0, p, q, psi)
+#m <- model(phi_alpha_wt, HC_0, HD_0, OD_0, p, q, psi)
 
 
 draws <- mcmc(m, chains = 10)
