@@ -8914,7 +8914,7 @@ hist_prior_posterior <- function(greta_array, draws, nsim = 1000, ...)  {
   on.exit(par(op))
   par(mfrow = c(1, 2))
   
-  hist(c(prior_sim), xlim = xlim, ...)
-  hist(c(posterior_sim), xlim = xlim, ...)
+  hist(c(prior_sim), xlim = xlim, main = "Prior", ...)
+  hist(c(posterior_sim), xlim = xlim, main = "Posterior", ...)
   
 }
