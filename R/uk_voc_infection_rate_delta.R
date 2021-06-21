@@ -308,6 +308,11 @@ uk_attack_delta <- uk_attack_2 %>%
   ) %>%
   dplyr::select(-ends_with("delta"))
 
+# household secondary-attack rate data from tech briefing no. 15, table 10
+hh_alpha_cases <- 7012
+hh_alpha_contacts <- 79792
+hh_delta_cases <- 2483
+hh_delta_contacts <- 20253
 
 
 # lookup between UK counties and regions:
@@ -814,10 +819,12 @@ phi_period2 <- normal(1, 1, truncation = c(0, Inf))
 
 # per-unit-contact-time infectiousness of the UK VOC strain
 p_alpha <- 1 - (1 - p) ^ phi_alpha_wt
-
 p_alpha2 <- 1 - (1 - p_alpha) ^ phi_period2
-
 p_delta2 <- 1 - (1 - p_alpha2) ^ phi_delta_alpha
+
+# cf. above not formatted like this so p moves in same direction as phi
+# p_alpha2 <- p_alpha ^ phi_period2
+# p_delta2 <- p_alpha2 ^ phi_delta_alpha
 
 
 # bias in sampling of contacts and cases in UK attack rate data (uniformly
@@ -844,18 +851,18 @@ hsar_delta2_i <- 1 - (1 - p_delta2) ^ (HD_0 * h_i_2$home)
 
 osar_i <- gamma_i_1 * (1 - (1 - p) ^ OD_0)
 osar_alpha_i <- gamma_i_1  * (1 - (1 - p_alpha) ^ OD_0)
-osar_alpha2_i <- gamma_i_2  * (1 - (1 - p_alpha2) ^ OD_0)
-osar_delta2_i <- gamma_i_2  * (1 - (1 - p_delta2) ^ OD_0)
+# osar_alpha2_i <- gamma_i_2  * (1 - (1 - p_alpha2) ^ OD_0)
+# osar_delta2_i <- gamma_i_2  * (1 - (1 - p_delta2) ^ OD_0)
 
 # proportion of contacts that are household contacts
 w_i_1 <- HC_0 / (HC_0 + OC_i_1$mean * infectious_days)
-w_i_2 <- HC_0 / (HC_0 + OC_i_2$mean * infectious_days)
+#w_i_2 <- HC_0 / (HC_0 + OC_i_2$mean * infectious_days)
 
 # overall secondary attack rates
 sar_i <- w_i_1 * hsar_wt_i + (1 - w_i_1) * osar_i
 sar_alpha_i <- w_i_1 * hsar_alpha_i + (1 - w_i_1) * osar_alpha_i
-sar_alpha2_i <- w_i_2 * hsar_alpha2_i + (1 - w_i_2) * osar_alpha2_i
-sar_delta2_i <- w_i_2 * hsar_delta2_i + (1 - w_i_2) * osar_delta2_i
+#sar_alpha2_i <- w_i_2 * hsar_alpha2_i + (1 - w_i_2) * osar_alpha2_i
+#sar_delta2_i <- w_i_2 * hsar_delta2_i + (1 - w_i_2) * osar_delta2_i
 
 
 # account for biased undersampling of contacts in the SAR data (e.g. sampling
@@ -863,14 +870,21 @@ sar_delta2_i <- w_i_2 * hsar_delta2_i + (1 - w_i_2) * osar_delta2_i
 # would cause the observed and expected attack rates to differ.
 sar_observed_i        <- sar_i ^ psi
 sar_alpha_observed_i  <- sar_alpha_i ^ psi
-sar_alpha2_observed_i <- sar_alpha2_i ^ psi
-sar_delta2_observed_i <- sar_delta2_i ^ psi
+#sar_alpha2_observed_i <- sar_alpha2_i ^ psi
+#sar_delta2_observed_i <- sar_delta2_i ^ psi
 
 
 distribution(uk_attack_wt$cases)      <- binomial(uk_attack_wt$contacts,      sar_observed_i)
 distribution(uk_attack_alpha_1$cases) <- binomial(uk_attack_alpha_1$contacts, sar_alpha_observed_i)
-distribution(uk_attack_alpha_2$cases) <- binomial(uk_attack_alpha_2$contacts, sar_alpha2_observed_i)
-distribution(uk_attack_delta$cases)   <- binomial(uk_attack_delta$contacts,   sar_delta2_observed_i)
+# distribution(uk_attack_alpha_2$cases) <- binomial(uk_attack_alpha_2$contacts, sar_alpha2_observed_i)
+# distribution(uk_attack_delta$cases)   <- binomial(uk_attack_delta$contacts,   sar_delta2_observed_i)
+
+
+
+
+distribution(hh_alpha_cases) <- binomial(hh_alpha_contacts, hsar_alpha2_i)
+distribution(hh_delta_cases) <- binomial(hh_delta_contacts, hsar_delta2_i)
+
 
 m <- model(phi_alpha_wt, phi_delta_alpha, phi_period2, HC_0, HD_0, OD_0, p, q, psi)
 
@@ -878,7 +892,7 @@ m <- model(phi_alpha_wt, phi_delta_alpha, phi_period2, HC_0, HD_0, OD_0, p, q, p
 
 
 draws <- mcmc(m, chains = 10)
-#draws <- extra_samples(draws, 2000)
+draws <- extra_samples(draws, 2000)
 convergence(draws)
 bayesplot::mcmc_trace(draws)
 
@@ -893,9 +907,11 @@ r_overall_alpha_wt          <- mean(sar_alpha_i / sar_i)
 r_overall_observed_alpha_wt <- mean(sar_alpha_observed_i / sar_observed_i)
 
 r_household_delta_alpha        <- hsar_delta2_i / hsar_alpha2_i
-r_non_household_delta_alpha    <- osar_delta2_i / osar_alpha2_i
-r_overall_delta_alpha          <- mean(sar_delta2_i / sar_alpha2_i)
-r_overall_observed_delta_alpha <- mean(sar_delta2_observed_i / sar_alpha2_observed_i)
+#r_non_household_delta_alpha    <- osar_delta2_i / osar_alpha2_i
+#r_overall_delta_alpha          <- mean(sar_delta2_i / sar_alpha2_i)
+#r_overall_observed_delta_alpha <- mean(sar_delta2_observed_i / sar_alpha2_observed_i)
+
+r_household_alpha2_alpha <- hsar_alpha2_i / hsar_alpha_i
 
 # simulate prior and posterior over the ratio of attack rates (and therefore of Reff)
 ## alpha wt
@@ -925,30 +941,30 @@ colMeans(r_household_posterior_alpha_wt)
 colMeans(r_non_household_posterior_alpha_wt)
 
 ## delta alpha
-r_sim_prior_delta_alpha              <- calculate(r_overall_delta_alpha, nsim = 5000)[[1]][, 1, 1]
-r_sim_posterior_delta_alpha          <- calculate(r_overall_delta_alpha, values = draws, nsim = 5000)[[1]][, 1, 1]
-r_observed_sim_prior_delta_alpha     <- calculate(r_overall_observed_delta_alpha, nsim = 5000)[[1]][, 1, 1]
-r_observed_sim_posterior_delta_alpha <- calculate(r_overall_observed_delta_alpha, values = draws, nsim = 5000)[[1]][, 1, 1]
-
-par(mfrow = c(1, 2))
-hist(r_sim_prior_delta_alpha, breaks = 50, xlim = c(0, 3))
-abline(v = 1, lty = 2)
-hist(r_sim_posterior_delta_alpha, breaks = 50, xlim = c(0, 3))
-abline(v = 1, lty = 2)
-
-mean(r_sim_prior_delta_alpha)
-mean(r_observed_sim_prior_delta_alpha)
-
-mean(r_sim_posterior_delta_alpha)
-quantile(r_sim_posterior_delta_alpha, c(0.05, 0.95))
-mean(r_observed_sim_posterior_delta_alpha)
-quantile(r_observed_sim_posterior_delta_alpha, c(0.05, 0.95))
+# r_sim_prior_delta_alpha              <- calculate(r_overall_delta_alpha, nsim = 5000)[[1]][, 1, 1]
+# r_sim_posterior_delta_alpha          <- calculate(r_overall_delta_alpha, values = draws, nsim = 5000)[[1]][, 1, 1]
+# r_observed_sim_prior_delta_alpha     <- calculate(r_overall_observed_delta_alpha, nsim = 5000)[[1]][, 1, 1]
+# r_observed_sim_posterior_delta_alpha <- calculate(r_overall_observed_delta_alpha, values = draws, nsim = 5000)[[1]][, 1, 1]
+# 
+# par(mfrow = c(1, 2))
+# hist(r_sim_prior_delta_alpha, breaks = 50, xlim = c(0, 3))
+# abline(v = 1, lty = 2)
+# hist(r_sim_posterior_delta_alpha, breaks = 50, xlim = c(0, 3))
+# abline(v = 1, lty = 2)
+# 
+# mean(r_sim_prior_delta_alpha)
+# #mean(r_observed_sim_prior_delta_alpha)
+# 
+# mean(r_sim_posterior_delta_alpha)
+# quantile(r_sim_posterior_delta_alpha, c(0.05, 0.95))
+# mean(r_observed_sim_posterior_delta_alpha)
+# quantile(r_observed_sim_posterior_delta_alpha, c(0.05, 0.95))
 
 r_household_posterior_delta_alpha <- calculate(r_household_delta_alpha, values = draws, nsim = 5000)[[1]][, , 1]
-r_non_household_posterior_delta_alpha <- calculate(r_non_household_delta_alpha, values = draws, nsim = 5000)[[1]][, , 1]
+# r_non_household_posterior_delta_alpha <- calculate(r_non_household_delta_alpha, values = draws, nsim = 5000)[[1]][, , 1]
 
-colMeans(r_household_posterior_delta_alpha)
-colMeans(r_non_household_posterior_delta_alpha)
+mean(r_household_posterior_delta_alpha)
+# mean(r_non_household_posterior_delta_alpha)
 
 
 # compare priors and posteriors for all parameters
@@ -957,7 +973,9 @@ colMeans(r_non_household_posterior_delta_alpha)
 # compare priors and posteriors
 
 # parameters we want to estimate
-hist_prior_posterior(phi, draws)
+hist_prior_posterior(phi_alpha_wt, draws)
+hist_prior_posterior(phi_period2, draws)
+hist_prior_posterior(phi_delta_alpha, draws)
 hist_prior_posterior(psi, draws)
 
 # parameters we provide informative priors for
@@ -967,74 +985,179 @@ hist_prior_posterior(OD_0, draws)
 hist_prior_posterior(p, draws)
 
 # derived parameters of interest
-hist_prior_posterior(r_overall, draws)
-hist_prior_posterior(r_household, draws)
-hist_prior_posterior(r_non_household, draws)
+hist_prior_posterior(r_overall_alpha_wt, draws)
+hist_prior_posterior(r_household_alpha_wt, draws)
+hist_prior_posterior(r_non_household_alpha_wt, draws)
+
+# hist_prior_posterior(r_overall_delta_alpha, draws)
+hist_prior_posterior(r_household_delta_alpha, draws)
+# hist_prior_posterior(r_non_household_delta_alpha, draws)
+
+hist_prior_posterior(r_household_alpha2_alpha, draws)
+
+hist_prior_posterior(phi_period2, draws)
 
 # do posterior predictive checks to make sure these align with raw ratios from PHE data
-cases_voc_ga <- binomial(uk_attack$contacts_voc, sar_star_observed_i)
-cases_wt_ga <- binomial(uk_attack$contacts_wt, sar_observed_i)
-cases_voc_sim <- calculate(cases_voc_ga, values = draws, nsim = 1000)[[1]][, , 1]
+cases_alpha_ga <- binomial(uk_attack_alpha_1$contacts, sar_alpha_observed_i)
+cases_wt_ga <- binomial(uk_attack_wt$contacts, sar_observed_i)
+cases_alpha_sim <- calculate(cases_alpha_ga, values = draws, nsim = 1000)[[1]][, , 1]
 cases_wt_sim <- calculate(cases_wt_ga, values = draws, nsim = 1000)[[1]][, , 1]
 bayesplot::ppc_ecdf_overlay(
-  uk_attack$cases_voc,
-  cases_voc_sim,
+  uk_attack_alpha_1$cases,
+  cases_alpha_sim,
   discrete = TRUE
 )
 bayesplot::ppc_ecdf_overlay(
-  uk_attack$cases_wt,
+  uk_attack_wt$cases,
   cases_wt_sim,
   discrete = TRUE
 )
 
+# ppc for alpha and delta hh sars
+hh_alpha_cases_ga <- binomial(hh_alpha_contacts, hsar_alpha2_i)
+hh_delta_cases_ga <- binomial(hh_delta_contacts, hsar_delta2_i)
+hh_alpha_cases_sim <- calculate(hh_alpha_cases_ga, values = draws, nsim = 1000)[[1]][, , 1] %>%
+  matrix(ncol = 1)
+hh_delta_cases_sim <- calculate(hh_delta_cases_ga, values = draws, nsim = 1000)[[1]][, , 1] %>%
+  matrix(ncol = 1)
+
+bayesplot::ppc_ecdf_overlay(
+  hh_alpha_cases,
+  hh_alpha_cases_sim,
+  discrete = TRUE
+)
+bayesplot::ppc_ecdf_overlay(
+  hh_delta_cases,
+  hh_delta_cases_sim,
+  discrete = TRUE
+)
+
 # do posterior predictive check on the empirical ratio of attack rates
-empirical_r_observed <- uk_attack %>%
+empirical_r_alpha_wt_observed <- uk_attack_1 %>%
   mutate(
-    attack_rate_voc = cases_voc / contacts_voc,
+    attack_rate_alpha = cases_alpha / contacts_alpha,
     attack_rate_wt = cases_wt / contacts_wt,
-    ratio = attack_rate_voc / attack_rate_wt
+    ratio = attack_rate_alpha / attack_rate_wt
   ) %>%
   pull(ratio)
 
-empirical_sar_voc_ga <- cases_voc_ga / uk_attack$contacts_voc
-empirical_sar_wt_ga <- cases_wt_ga / uk_attack$contacts_wt
-empirical_r_ga <- empirical_sar_voc_ga / empirical_sar_wt_ga
-empirical_r_sim <- calculate(empirical_r_ga, values = draws, nsim = 1000)[[1]][, , 1]
+empirical_sar_alpha_ga <- cases_alpha_ga / uk_attack_1$contacts_alpha
+empirical_sar_wt_ga <- cases_wt_ga / uk_attack_1$contacts_wt
+empirical_r_alpha_wt_ga <- empirical_sar_alpha_ga / empirical_sar_wt_ga
+empirical_r_alpha_wt_sim <- calculate(empirical_r_alpha_wt_ga, values = draws, nsim = 1000)[[1]][, , 1]
 
 bayesplot::ppc_ecdf_overlay(
-  empirical_r_observed,
-  empirical_r_sim,
+  empirical_r_alpha_wt_observed,
+  empirical_r_alpha_wt_sim,
+  discrete = FALSE
+)
+
+
+# empirical_r_delta_alpha_observed <- uk_attack_2 %>%
+#   mutate(
+#     attack_rate_alpha = cases_alpha / contacts_alpha,
+#     attack_rate_delta = cases_delta / contacts_delta,
+#     ratio = attack_rate_delta / attack_rate_alpha
+#   ) %>%
+#   pull(ratio)
+
+# empirical_sar_alpha2_ga <- cases_alpha2_ga / uk_attack_2$contacts_alpha
+# empirical_sar_delta2_ga <- cases_delta_ga / uk_attack_2$contacts_delta
+# empirical_r_delta_alpha_ga <- empirical_sar_delta2_ga / empirical_sar_alpha2_ga
+# empirical_r_delta_alpha_sim <- calculate(empirical_r_delta_alpha_ga, values = draws, nsim = 1000)[[1]][, , 1] %>%
+#   matrix(ncol = 1)
+# 
+# bayesplot::ppc_ecdf_overlay(
+#   empirical_r_delta_alpha_observed,
+#   empirical_r_delta_alpha_sim,
+#   discrete = FALSE
+# )
+
+
+empirical_hr_delta_alpha <- (hh_delta_cases / hh_delta_contacts) / (hh_alpha_cases / hh_alpha_contacts)
+
+empirical_hsar_alpha2_ga <- hh_alpha_cases_ga / hh_alpha_contacts
+empirical_hsar_delta2_ga <- hh_delta_cases_ga / hh_delta_contacts
+empirical_hr_delta_alpha_ga <- empirical_hsar_delta2_ga / empirical_hsar_alpha2_ga
+empirical_hr_delta_alpha_sim <- calculate(empirical_hr_delta_alpha_ga, values = draws, nsim = 1000)[[1]][, , 1] %>%
+  matrix(ncol = 1)
+
+bayesplot::ppc_ecdf_overlay(
+  empirical_hr_delta_alpha,
+  empirical_hr_delta_alpha_sim,
   discrete = FALSE
 )
 
 
 # summarise the posterior of phi for use in counterfactuals
-phi_sim <- calculate(phi, values = draws, nsim = 5000)[[1]][, 1, 1]
-hist(phi_sim)     
+phi_alpha_wt_sim <- calculate(phi_alpha_wt, values = draws, nsim = 5000)[[1]][, 1, 1]
+phi_period2_sim <- calculate(phi_period2, values = draws, nsim = 5000)[[1]][, 1, 1]
+phi_delta_alpha_sim <- calculate(phi_delta_alpha, values = draws, nsim = 5000)[[1]][, 1, 1]
+hist(phi_alpha_wt_sim)
+hist(phi_period2_sim)
+hist(phi_delta_alpha_sim)
 
 # approximate as a normal distribution
-mean(phi_sim)
-#Update 2021-02-09
+mean(phi_alpha_wt_sim)
+# model w delta 2021-06-16
+# 1.454
+# Update 2021-02-09
 # 1.454
 # Original
 # 1.512
-sd(phi_sim)
+sd(phi_alpha_wt_sim)
+# model w delta 2021-06-16
+# 0.055
 # Update 2021-02-09
 # 0.051
 # Original
 # 0.084
 
-# p_star_sim <- calculate(p_star, values = draws, nsim = 5000)[[1]][, 1, 1]
-# summary(p_star_sim)
+mean(phi_period2_sim)
+# 0.299
+sd(phi_period2_sim)
+# 0.0568
+
+mean(phi_delta_alpha_sim)
+# 1.421
+sd(phi_delta_alpha_sim)
+# 0.0330
+
+
+# We model p_alpha = p_wt ^ phi_alpha_wt
+# where phi_alpha_wt is the parameter for the different between
+# alpha and wt per-contact-time-transmission-probabilities (p_alpha vs p_wt).
 # 
-# p_sim <- calculate(p, values = draws, nsim = 5000)[[1]][, 1, 1]
-# summary(p_sim)
+# So if we compute phi_delta_alpha (difference relative to alpha),
+# 
+# we can compute p_delta as p_delta = (p_wt ^ phi_alpha_wt) ^ phi_delta_alpha,
+# which is the same as p_delta = p_wt ^ (phi_alpha_wt * phi_delta_alpha),
+# so phi_delta_wt = phi_alpha_wt * phi_delta_alpha
+
+
+p_sim <- calculate(p, values = draws, nsim = 5000)[[1]][, 1, 1]
+summary(p_sim)
+# Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+# 0.06583 0.07018 0.07099 0.07099 0.07182 0.07514
+p_alpha_sim <- calculate(p_alpha, values = draws, nsim = 5000)[[1]][, 1, 1]
+summary(p_alpha_sim)
+# Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+# 0.08730 0.09887 0.10142 0.10156 0.10428 0.11613 
+p_alpha2_sim <- calculate(p_alpha2, values = draws, nsim = 5000)[[1]][, 1, 1]
+summary(p_alpha2_sim)
+# Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+# 0.01889 0.02724 0.03033 0.03142 0.03428 0.07995 
+p_delta2_sim <- calculate(p_delta2, values = draws, nsim = 5000)[[1]][, 1, 1]
+summary(p_delta2_sim)
+# Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+# 0.02665 0.03861 0.04318 0.04459 0.04874 0.11381 
 
 # summarise relative infectiousness in UK
 r_draws <- calculate(
-  r_overall,
-  r_household,
-  r_non_household,
+  r_overall_alpha_wt,
+  r_household_alpha_wt,
+  r_non_household_alpha_wt,
+  r_household_delta_alpha,
   values = draws,
   nsim = 5000
 )
@@ -1049,6 +1172,23 @@ lapply(r_draws,
          round(stats, 2)
        }
 )
+
+# delta model
+# $r_overall_alpha_wt
+# mean    5%   50%   95% 
+# 40.46 32.36 40.28 48.85 
+# 
+# $r_household_alpha_wt
+# mean    5%   50%   95% 
+# 38.35 30.59 38.19 46.51 
+# 
+# $r_non_household_alpha_wt
+# mean    5%   50%   95% 
+# 43.63 35.13 43.53 52.24 
+# 
+# $r_household_delta_alpha
+# mean    5%   50%   95% 
+# 39.46 34.42 39.40 44.72 
 
 
 #Update 2021-02-09
