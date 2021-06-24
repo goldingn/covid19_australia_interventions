@@ -268,7 +268,7 @@ uk_attack_2 <- tibble::tribble(
 uk_data_regions_2 <- uk_attack_2$region
 
 uk_data_start_date_2 <- as.Date("2021-03-29")
-uk_data_end_date_2 <- as.Date("2021-05-11")
+uk_data_end_date_2 <- as.Date("2021-05-19")
 
 ## subsets for variants:
 uk_attack_wt <- uk_attack_1 %>%
@@ -796,7 +796,7 @@ q_posterior <- calculate(
 )[[1]]
 
 q <- normal(mean(q_posterior), sd(q_posterior), truncation = c(0, 1))
-p <- 1 - q
+p_wt1 <- 1 - q
 
 # HC, HD_0, OD_0, ID: baseline household contacts and contact durations from Aus
 # model
@@ -818,8 +818,8 @@ phi_delta_alpha <- normal(1, 1, truncation = c(0, Inf))
 phi_period2 <- normal(1, 1, truncation = c(0, Inf))
 
 # per-unit-contact-time infectiousness of the UK VOC strain
-p_alpha <- 1 - (1 - p) ^ phi_alpha_wt
-p_alpha2 <- 1 - (1 - p_alpha) ^ phi_period2
+p_alpha1 <- 1 - (1 - p_wt1) ^ phi_alpha_wt
+p_alpha2 <- 1 - (1 - p_alpha1) ^ phi_period2
 p_delta2 <- 1 - (1 - p_alpha2) ^ phi_delta_alpha
 
 # cf. above not formatted like this so p moves in same direction as phi
@@ -844,13 +844,13 @@ gamma_i_1 <- 1 - beta * d_i_1$micro_effect
 gamma_i_2 <- 1 - beta * d_i_2$micro_effect
 
 # household and non-household secondary attack rates for the two strains
-hsar_wt_i <- 1 - (1 - p) ^ (HD_0 * h_i_1$home)
-hsar_alpha_i <- 1 - (1 - p_alpha) ^ (HD_0 * h_i_1$home)
+hsar_wt_i <- 1 - (1 - p_wt1) ^ (HD_0 * h_i_1$home)
+hsar_alpha_i <- 1 - (1 - p_alpha1) ^ (HD_0 * h_i_1$home)
 hsar_alpha2_i <- 1 - (1 - p_alpha2) ^ (HD_0 * h_i_2$home)
 hsar_delta2_i <- 1 - (1 - p_delta2) ^ (HD_0 * h_i_2$home)
 
-osar_i <- gamma_i_1 * (1 - (1 - p) ^ OD_0)
-osar_alpha_i <- gamma_i_1  * (1 - (1 - p_alpha) ^ OD_0)
+osar_i <- gamma_i_1 * (1 - (1 - p_wt1) ^ OD_0)
+osar_alpha_i <- gamma_i_1  * (1 - (1 - p_alpha1) ^ OD_0)
 # osar_alpha2_i <- gamma_i_2  * (1 - (1 - p_alpha2) ^ OD_0)
 # osar_delta2_i <- gamma_i_2  * (1 - (1 - p_delta2) ^ OD_0)
 
@@ -878,7 +878,6 @@ distribution(uk_attack_wt$cases)      <- binomial(uk_attack_wt$contacts,      sa
 distribution(uk_attack_alpha_1$cases) <- binomial(uk_attack_alpha_1$contacts, sar_alpha_observed_i)
 # distribution(uk_attack_alpha_2$cases) <- binomial(uk_attack_alpha_2$contacts, sar_alpha2_observed_i)
 # distribution(uk_attack_delta$cases)   <- binomial(uk_attack_delta$contacts,   sar_delta2_observed_i)
-
 
 
 
