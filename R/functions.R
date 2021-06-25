@@ -438,7 +438,7 @@ ideal_regions <- function() {
 }
 
 interventions <- function(
-  which = c("all", "national", "vic", "sa", "qld", "wa"),
+  which = c("all", "national", "vic", "sa", "qld", "wa", "nsw"),
   end_dates = FALSE
 ) {
   
@@ -470,6 +470,11 @@ interventions <- function(
     "2021-04-24", "WA"
   )
   
+  nsw_interventions <- tibble::tribble(
+    ~date, ~state,
+    "2021-06-26", "NSW"
+  )
+  
   national_interventions <- expand_grid(
     date = c("2020-03-16", "2020-03-24", "2020-03-29"),
     state = c("ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA")
@@ -494,7 +499,6 @@ interventions <- function(
         )
       )
     
-    
     qld_interventions <-  qld_interventions %>%
       bind_rows(
         tibble::tribble(
@@ -504,13 +508,20 @@ interventions <- function(
         )
       )
     
-    
     wa_interventions <-  wa_interventions %>%
       bind_rows(
         tibble::tribble(
           ~date, ~state,
           "2021-02-05", "WA",
           "2021-04-27", "WA"
+        )
+      )
+    
+    nsw_interventions <-  nsw_interventions %>%
+      bind_rows(
+        tibble::tribble(
+          ~date, ~state,
+          #"2021-07-03", "NSW"
         )
       )
     
@@ -528,12 +539,14 @@ interventions <- function(
     sa = sa_interventions,
     qld = qld_interventions,
     wa = wa_interventions,
+    nsw = nsw_interventions,
     all = bind_rows(
       national_interventions,
       vic_interventions,
       sa_interventions,
       qld_interventions,
-      wa_interventions
+      wa_interventions,
+      nsw_interventions
     )
   )
   

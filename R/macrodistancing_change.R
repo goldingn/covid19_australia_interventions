@@ -109,6 +109,8 @@ pred_trend <- fitted_model$data$location_change_trends %>%
 saveRDS(pred_trend,
         file = "outputs/macrodistancing_trends.RDS")
 
+# run only up to here for reff update
+
 # estimates at peak and at latest date
 pred_summary <- pred_trend %>%
   group_by(state) %>%
