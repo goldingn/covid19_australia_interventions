@@ -20,7 +20,7 @@ write_reff_key_dates(data)
 write_local_cases(data)
 
 # format and write out any new linelists to the past_cases folder for Rob H
-update_past_cases()
+#update_past_cases()
 
 # define the model (and greta arrays) for Reff, and sample until convergence
 fitted_model <- fit_reff_model(data)
@@ -49,3 +49,5 @@ reff_plotting(fitted_model,
 # produce simulations where proportion VOC is zero throughout period for reporting
 # in common operating picture table
 simulate_wild_type()
+
+simulate_delta()
