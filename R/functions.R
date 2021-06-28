@@ -439,7 +439,8 @@ ideal_regions <- function() {
 
 interventions <- function(
   which = c("all", "national", "vic", "sa", "qld", "wa", "nsw"),
-  end_dates = FALSE
+  end_dates = FALSE,
+  exclude_after = NA
 ) {
   
   which <- match.arg(which)
@@ -472,7 +473,7 @@ interventions <- function(
   
   nsw_interventions <- tibble::tribble(
     ~date, ~state,
-    "2021-06-26", "NSW"
+    "2021-06-26", "NSW" # stay-at-home order for 4 LGAs from 11.59 PM 24th, extended to all greater sydney +++ from 11.59 PM 25th. 
   )
   
   national_interventions <- expand_grid(
@@ -548,15 +549,19 @@ interventions <- function(
       wa_interventions,
       nsw_interventions
     )
-  )
-  
-  interventions %>%
+  ) %>%
     mutate(
       date = as.Date(date),
       state = factor(state)
     )
   
+  if(!is.na(exclude_after)){
+    
+    interventions <- interventions %>%
+      filter(date <= as.Date(exclude_after))
+  }
   
+  return(interventions)
 }
 
 quarantine_dates <- function() {
@@ -4001,8 +4006,8 @@ get_nndss_linelist <- function(
   date = NULL,
   dir = "~/not_synced/nndss",
   strict = TRUE,
-  missing_location_assumption = "imported"
-  #missing_location_assumption = "local"
+  #missing_location_assumption = "imported"
+  missing_location_assumption = "local"
   #missing_location_assumption = "missing"
 ) {
   

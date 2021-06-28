@@ -27,7 +27,10 @@ max_data_date <- max(survey_distance$date)
 
 
 
-intervention_steps <- interventions(end_dates = TRUE) %>%
+intervention_steps <- interventions(
+  end_dates = TRUE,
+  exclude_after = "2021-06-24"
+) %>%
   filter(date <= max_data_date) %>%
   mutate(
     intervention_id = paste0(

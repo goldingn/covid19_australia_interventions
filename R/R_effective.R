@@ -20,7 +20,7 @@ write_reff_key_dates(data)
 write_local_cases(data)
 
 # format and write out any new linelists to the past_cases folder for Rob H
-#update_past_cases()
+update_past_cases()
 
 # define the model (and greta arrays) for Reff, and sample until convergence
 fitted_model <- fit_reff_model(data)
