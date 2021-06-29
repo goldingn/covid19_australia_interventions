@@ -438,12 +438,55 @@ ideal_regions <- function() {
 }
 
 interventions <- function(
-  which = c("all", "national", "vic", "sa", "qld", "wa", "nsw"),
+  which = c(
+    "all",
+    "national",
+    "act",
+    "nsw",
+    "nt",
+    "qld",
+    "sa",
+    "tas",
+    "vic",
+    "wa"
+  ),
   end_dates = FALSE,
   exclude_after = NA
 ) {
   
   which <- match.arg(which)
+  
+  act_interventions <- tibble::tribble(
+    ~date, ~state,
+    
+  )
+  
+  nsw_interventions <- tibble::tribble(
+    ~date, ~state,
+    "2021-06-25", "NSW" # stay-at-home order for 4 LGAs from 11.59 PM 24th, extended to all greater sydney +++ from 11.59 PM 25th. 
+  )
+  
+  nt_interventions <- tibble::tribble(
+    ~date, ~state,
+    "2021-06-27", "NT" # https://coronavirus.nt.gov.au/updates/items/2021-06-27-covid-19-update-lockdown-restrictions-in-place
+  )
+  
+  qld_interventions <- tibble::tribble(
+    ~date, ~state,
+    "2021-01-09", "QLD",
+    "2021-03-29", "QLD",
+    "2021-06-29", "QLD" # starts 6 PM on 29th https://www.qld.gov.au/health/conditions/health-alerts/coronavirus-covid-19/current-status/public-health-directions/restrictions-in-qld-update
+  )
+  
+  sa_interventions <- tibble::tribble(
+    ~date, ~state,
+    "2020-11-19", "SA"
+  )
+  
+  tas_interventions <- tibble::tribble(
+    ~date, ~state,
+    
+  )
   
   vic_interventions <- tibble::tribble(
     ~date, ~state,
@@ -454,27 +497,13 @@ interventions <- function(
     "2021-05-28", "VIC"
   )
   
-  sa_interventions <- tibble::tribble(
-    ~date, ~state,
-    "2020-11-19", "SA"
-  )
-  
-  qld_interventions <- tibble::tribble(
-    ~date, ~state,
-    "2021-01-09", "QLD",
-    "2021-03-29", "QLD"
-  )
-  
   wa_interventions <- tibble::tribble(
     ~date, ~state,
     "2021-01-31", "WA",
-    "2021-04-24", "WA"
+    "2021-04-24", "WA",
+    "2021-06-29", "WA" # https://www.wa.gov.au/government/announcements/4-day-lockdown-introduced-perth-and-peel
   )
   
-  nsw_interventions <- tibble::tribble(
-    ~date, ~state,
-    "2021-06-26", "NSW" # stay-at-home order for 4 LGAs from 11.59 PM 24th, extended to all greater sydney +++ from 11.59 PM 25th. 
-  )
   
   national_interventions <- expand_grid(
     date = c("2020-03-16", "2020-03-24", "2020-03-29"),
@@ -483,12 +512,38 @@ interventions <- function(
   
   
   if(end_dates){
-    vic_interventions <-  vic_interventions %>%
+    
+    # act_interventions <-  act_interventions %>%
+    #   bind_rows(
+    #     tibble::tribble(
+    #       ~date, ~state,
+    #   
+    #     )
+    #   )
+    
+    # nsw_interventions <-  nsw_interventions %>%
+    #   bind_rows(
+    #     tibble::tribble(
+    #       ~date, ~state,
+    #       #"2021-07-03", "NSW"
+    #     )
+    #   )
+    
+    # nt_interventions <-  nt_interventions %>%
+    #   bind_rows(
+    #     tibble::tribble(
+    #       ~date, ~state,
+    #       #"2021-07-02", "NT" # https://coronavirus.nt.gov.au/updates/items/2021-06-28-covid-19-update-nt
+    #     )
+    #   )
+    
+    qld_interventions <-  qld_interventions %>%
       bind_rows(
         tibble::tribble(
           ~date, ~state,
-          "2021-02-18", "VIC",
-          "2021-06-11", "VIC"
+          "2021-01-12", "QLD",
+          "2021-04-01", "QLD"#,
+          # "2021-07-03", "QLD" # TBC ending 6 PM 02/07/21? https://www.qld.gov.au/health/conditions/health-alerts/coronavirus-covid-19/current-status/public-health-directions/restrictions-in-qld-update
         )
       )
     
@@ -500,12 +555,20 @@ interventions <- function(
         )
       )
     
-    qld_interventions <-  qld_interventions %>%
+    # tas_interventions <-  tas_interventions %>%
+    #   bind_rows(
+    #     tibble::tribble(
+    #       ~date, ~state,
+    #       
+    #     )
+    #   )
+    
+    vic_interventions <-  vic_interventions %>%
       bind_rows(
         tibble::tribble(
           ~date, ~state,
-          "2021-01-12", "QLD",
-          "2021-04-01", "QLD"
+          "2021-02-18", "VIC",
+          "2021-06-11", "VIC"
         )
       )
     
@@ -514,46 +577,42 @@ interventions <- function(
         tibble::tribble(
           ~date, ~state,
           "2021-02-05", "WA",
-          "2021-04-27", "WA"
+          "2021-04-27", "WA"#,
+          #"2021-07-03", "WA" # https://www.wa.gov.au/government/announcements/4-day-lockdown-introduced-perth-and-peel
         )
       )
-    
-    nsw_interventions <-  nsw_interventions %>%
-      bind_rows(
-        tibble::tribble(
-          ~date, ~state,
-          #"2021-07-03", "NSW"
-        )
-      )
-    
   }
-    
-    
-  
   
   interventions <- switch(
     which,
     national = national_interventions %>%
       filter(state == "ACT") %>%
       mutate(state = "all"),
-    vic = vic_interventions,
-    sa = sa_interventions,
-    qld = qld_interventions,
-    wa = wa_interventions,
+    act = act_interventions,
     nsw = nsw_interventions,
+    nt  = nt_interventions,
+    qld = qld_interventions,
+    sa  = sa_interventions,
+    tas = tas_interventions,
+    vic = vic_interventions,
+    wa =  wa_interventions,
     all = bind_rows(
       national_interventions,
-      vic_interventions,
-      sa_interventions,
+      act_interventions,
+      nsw_interventions,
+      nt_interventions,
       qld_interventions,
+      sa_interventions,
+      tas_interventions,
+      vic_interventions,
       wa_interventions,
-      nsw_interventions
     )
   ) %>%
     mutate(
       date = as.Date(date),
       state = factor(state)
-    )
+    ) %>% 
+    arrange(state, date)
   
   if(!is.na(exclude_after)){
     
@@ -8753,7 +8812,7 @@ simulate_wild_type <- function(
   prop_voc <- prop_voc_date_state_long(dates)
   
   p <- de$p
-  phi_wt_star <- 1 - prop_voc + prop_voc*phi
+  phi_wt_star <- 1 - prop_voc + prop_voc*phi_alpha_wt
   p_star <- p ^ (1/phi_wt_star)
   
   infectious_days <- infectious_period(gi_cdf)
