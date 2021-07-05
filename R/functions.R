@@ -577,8 +577,8 @@ interventions <- function(
         tibble::tribble(
           ~date, ~state,
           "2021-02-05", "WA",
-          "2021-04-27", "WA"#,
-          #"2021-07-03", "WA" # https://www.wa.gov.au/government/announcements/4-day-lockdown-introduced-perth-and-peel
+          "2021-04-27", "WA",
+          "2021-07-03", "WA" # https://www.wa.gov.au/government/announcements/end-of-lockdown-perth-and-peel-1201am-saturday-3-july
         )
       )
   }
