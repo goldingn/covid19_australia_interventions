@@ -8,7 +8,7 @@ format_raw_survey_data()
 data <- microdistancing_data()
 
 saveRDS(data, file = "outputs/cached_micro.RDS")
-#data <- readRDS(file = "outputs/cached_micro.RDS")
+# data <- readRDS(file = "outputs/cached_micro.RDS")
 
 
 survey_distance <- data$survey_distance
@@ -28,8 +28,8 @@ max_data_date <- max(survey_distance$date)
 
 
 intervention_steps <- interventions(
-  end_dates = TRUE,
-  exclude_after = "2021-06-24"
+  end_dates = TRUE#,
+  # exclude_after = "2021-07-01"
 ) %>%
   filter(date <= max_data_date) %>%
   mutate(

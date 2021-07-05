@@ -529,21 +529,21 @@ interventions <- function(
     #     )
     #   )
     
-    # nt_interventions <-  nt_interventions %>%
-    #   bind_rows(
-    #     tibble::tribble(
-    #       ~date, ~state,
-    #       #"2021-07-02", "NT" # https://coronavirus.nt.gov.au/updates/items/2021-06-28-covid-19-update-nt
-    #     )
-    #   )
+    nt_interventions <-  nt_interventions %>%
+      bind_rows(
+        tibble::tribble(
+          ~date, ~state,
+          "2021-07-02", "NT" # https://coronavirus.nt.gov.au/updates/items/2021-06-28-covid-19-update-nt
+        )
+      )
     
     qld_interventions <-  qld_interventions %>%
       bind_rows(
         tibble::tribble(
           ~date, ~state,
           "2021-01-12", "QLD",
-          "2021-04-01", "QLD"#,
-          # "2021-07-03", "QLD" # TBC ending 6 PM 02/07/21? https://www.qld.gov.au/health/conditions/health-alerts/coronavirus-covid-19/current-status/public-health-directions/restrictions-in-qld-update
+          "2021-04-01", "QLD",
+          "2021-07-04", "QLD" # Lifted 6 PM 3rd July https://www.qld.gov.au/health/conditions/health-alerts/coronavirus-covid-19/current-status/public-health-directions/restrictions-impacted-areas
         )
       )
     
