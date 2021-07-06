@@ -1524,13 +1524,17 @@ plot_trend <- function(
   projection_at = NA,
   keep_only_rows = NULL,
   max_date = data$dates$latest_mobility,
-  min_date = as.Date("2020-03-01"),
+  #min_date = as.Date("2020-03-01"),
+  min_date = NA,
   plot_voc = FALSE
 ) {
   
+  if(is.na(min_date)){
+    min_date <- max_date - months(6)
+  }
   
   mean <- colMeans(simulations)
-  ci_90 <- apply(simulations, 2, quantile, c(0.05, 0.95))
+  ci_90 <- apply(simulations, 2, quantile, c(0.05, 0.95)) 
   ci_50 <- apply(simulations, 2, quantile, c(0.25, 0.75))
   
   if (multistate) {
@@ -1559,6 +1563,8 @@ plot_trend <- function(
       date <= max_date
     ) %>%
     mutate(type = "Nowcast")
+  
+  x_text_size <- ifelse(length(unique(df$date)) < 200, 10, 7)
   
   if (is.null(ylim)) {
     ylim <- c(min(df$ci_90_lo), max(df$ci_90_hi)) 
@@ -1605,7 +1611,7 @@ plot_trend <- function(
           strip.text = element_text(hjust = 0, face = "bold"),
           axis.title.y.right = element_text(vjust = 0.5, angle = 90),
           panel.spacing = unit(1.2, "lines"),
-          axis.text.x = element_text(size = 7))
+          axis.text.x = element_text(size = x_text_size))
   
   if(plot_voc){
     p <- p + 
@@ -5263,13 +5269,18 @@ constrain_run_length <- function(x, min_run_length = 7) {
 reff_plotting <- function(
   fitted_model,
   dir = "outputs",
-  min_date = as.Date("2020-03-01"),
+  #min_date = as.Date("2020-03-01"),
+  min_date = NA,
   max_date = fitted_model$data$dates$latest_mobility,
   mobility_extrapolation_rectangle = TRUE,
   projection_date = NA,
   washout_cutoff = 0,
   vaccine_timeseries = timeseries
 ) {
+  
+  if(is.na(min_date)){
+    min_date <- max_date - months(6)
+  }
   
   # reformat case data for plotting (C1 and C12)
   local_cases_long <- fitted_model$data$local$cases %>%
