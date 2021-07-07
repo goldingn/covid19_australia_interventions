@@ -525,7 +525,7 @@ interventions <- function(
     #   bind_rows(
     #     tibble::tribble(
     #       ~date, ~state,
-    #       #"2021-07-03", "NSW"
+    #       #"2021-07-17", "NSW" # https://www.abc.net.au/news/2021-07-07/covid-live-updates-coronavirus-press-conference-sydney-lockdown/100270832?utm_campaign=abc_news_web&utm_content=link&utm_medium=content_shared&utm_source=abc_news_web#live-blog-post-1201975138
     #     )
     #   )
     
