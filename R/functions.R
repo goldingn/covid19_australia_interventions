@@ -2266,56 +2266,143 @@ social_distancing_national <- function(dates, n_extra = 0) {
 }
 
 
-prop_voc_date_state <- function() {
+# prop_voc_date_state <- function() {
+#   tibble::tribble(
+#     ~state,        ~date, ~prop_voc,
+#      "ACT", "2021-01-27",         1,
+#      "NSW", "2021-01-27",         1,
+#       "NT", "2021-01-27",         1,
+#      "QLD", "2021-01-27",         1,
+#       "SA", "2021-01-27",         1,
+#      "TAS", "2021-01-27",         1,
+#      "VIC", "2021-01-27",         1,
+#       "WA", "2021-01-27",         1
+#   ) %>%
+#     mutate(
+#       date = as.Date(date)
+#     )
+# }
+# 
+# prop_voc_date_state_long <- function(dates) {
+#   
+#   df <- expand_grid(
+#     date = dates,
+#     state = c("ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA")
+#   ) %>%
+#     full_join(
+#       prop_voc_date_state()
+#     )%>%
+#     pivot_wider(
+#       names_from = state,
+#       values_from = prop_voc
+#     ) %>%
+#     dplyr::select(-date) %>%
+#     as.matrix
+#   
+#   
+#   df[1,] <- apply(
+#     X = df[1,] %>% as.matrix,
+#     MARGIN = 2,
+#     FUN = function(x){
+#       ifelse(is.na(x), 0, x)
+#     }
+#   ) %>%
+#     t
+#   
+#   df <- df %>%
+#     as_tibble %>%
+#     fill(everything()) %>%
+#     as.matrix
+#   
+#   
+#   return(df)
+# }
+
+prop_variant_dates <- function(){
   tibble::tribble(
-    ~state,        ~date, ~prop_voc,
-     "ACT", "2021-01-27",         1,
-     "NSW", "2021-01-27",         1,
-      "NT", "2021-01-27",         1,
-     "QLD", "2021-01-27",         1,
-      "SA", "2021-01-27",         1,
-     "TAS", "2021-01-27",         1,
-     "VIC", "2021-01-27",         1,
-      "WA", "2021-01-27",         1
+    ~state,        ~date, ~prop_wt, ~prop_alpha, ~prop_delta,
+    "ACT",  "2020-01-01",        1,           0,          0,
+    "NSW",  "2020-01-01",        1,           0,          0,
+    "NT",   "2020-01-01",        1,           0,          0,
+    "QLD",  "2020-01-01",        1,           0,          0,
+    "SA",   "2020-01-01",        1,           0,          0,
+    "TAS",  "2020-01-01",        1,           0,          0,
+    "VIC",  "2020-01-01",        1,           0,          0,
+    "WA",   "2020-01-01",        1,           0,          0,
+    
+    "ACT",  "2021-01-27",        0,           1,          0,
+    "NSW",  "2021-01-27",        0,           1,          0,
+    "NT",   "2021-01-27",        0,           1,          0,
+    "QLD",  "2021-01-27",        0,           1,          0,
+    "SA",   "2021-01-27",        0,           1,          0,
+    "TAS",  "2021-01-27",        0,           1,          0,
+    "VIC",  "2021-01-27",        0,           1,          0,
+    "WA",   "2021-01-27",        0,           1,          0,
+    
+    "ACT",  "2021-06-07",        0,           0,          1,
+    "NSW",  "2021-06-07",        0,           0,          1,
+    "NT",   "2021-06-07",        0,           0,          1,
+    "QLD",  "2021-06-07",        0,           0,          1,
+    "SA",   "2021-06-07",        0,           0,          1,
+    "TAS",  "2021-06-07",        0,           0,          1,
+    "VIC",  "2021-06-07",        0,           0,          1,
+    "WA",   "2021-06-07",        0,           0,          1
   ) %>%
     mutate(
       date = as.Date(date)
     )
 }
 
-prop_voc_date_state_long <- function(dates) {
+prop_variant <- function(dates){
   
-  df <- expand_grid(
-    date = dates,
-    state = c("ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA")
-  ) %>%
+  df <-  prop_variant_dates() %>%
     full_join(
-      prop_voc_date_state()
-    )%>%
+      y = expand_grid(
+        date = dates,
+        state = c("ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA")
+      )
+    ) %>%
+    arrange(state, date) %>%
+    tidyr::fill(everything()) %>%
+    filter(date %in% dates) # account for "2020-01-01" start date may not be in dates
+    
+  prop_wt <- df %>%
+    dplyr::select(state, date, prop_wt) %>%
     pivot_wider(
       names_from = state,
-      values_from = prop_voc
+      values_from = prop_wt
     ) %>%
-    dplyr::select(-date) %>%
+    arrange(date) %>%
+    dplyr::select(-date)%>%
     as.matrix
   
-  
-  df[1,] <- apply(
-    X = df[1,] %>% as.matrix,
-    MARGIN = 2,
-    FUN = function(x){
-      ifelse(is.na(x), 0, x)
-    }
-  ) %>%
-    t
-  
-  df <- df %>%
-    as_tibble %>%
-    fill(everything()) %>%
+  prop_alpha <- df %>%
+    dplyr::select(state, date, prop_alpha) %>%
+    pivot_wider(
+      names_from = state,
+      values_from = prop_alpha
+    ) %>%
+    arrange(date) %>%
+    dplyr::select(-date)%>%
     as.matrix
   
+  prop_delta <- df %>%
+    dplyr::select(state, date, prop_delta) %>%
+    pivot_wider(
+      names_from = state,
+      values_from = prop_delta
+    ) %>%
+    arrange(date) %>%
+    dplyr::select(-date)%>%
+    as.matrix
   
-  return(df)
+  prop_variant <- list(
+    "prop_wt"    = prop_wt,
+    "prop_alpha" = prop_alpha,
+    "prop_delta" = prop_delta
+  )
+  
+  return(prop_variant)
 }
 
 
@@ -2334,28 +2421,26 @@ distancing_effect_model <- function(
   baseline_contact_params <- baseline_contact_parameters(gi_cdf)
   
   
-  prop_voc <- prop_voc_date_state_long(dates = dates)
-  prop_alpha <- prop_voc$prop_alpha
-  prop_delta <- prop_voc$prop_delta
-  prop_wt    <- prop_voc$prop_wt
+  prop_var <- prop_variant(dates = dates)
+  prop_alpha <- prop_var$prop_alpha
+  prop_delta <- prop_var$prop_delta
+  prop_wt    <- prop_var$prop_wt
   
-  if(vic_mixture == "alpha") {
+  if(voc_mixture == "alpha") {
     prop_alpha <- prop_alpha * 0 + 1
     prop_delta <- prop_wt <- prop_delta * 0
   }
   
-  if(vic_mixture == "delta") {
+  if(voc_mixture == "delta") {
     prop_delta <- prop_delta * 0 + 1
     prop_alpha <- prop_wt <- prop_alpha * 0
   }
   
-  if(vic_mixture == "wt") {
+  if(voc_mixture == "wt") {
     prop_wt <- prop_wt * 0 + 1
     prop_alpha <- prop_alpha * 0 
     prop_delta <- prop_delta * 0
   }
-  
-  
   
   
   # prior on the probability of *not* transmitting, per hour of contact
@@ -2363,10 +2448,12 @@ distancing_effect_model <- function(
   logit_p_params <- logit_p_prior(baseline_contact_params, gi_cdf)
   logit_p <- normal(logit_p_params$meanlogit, logit_p_params$sdlogit)
   p_wildt <- ilogit(logit_p)
-  #phi <- normal(1.512, 0.084, truncation = c(0, Inf))
   
-  phi_alpha <- 1.453 # update with distribution and compare with scalar
-  ###phi_delta <- ???
+  phi_alpha       <- normal(1.454, 0.055, truncation = c(0, Inf))
+  phi_delta_alpha <- normal(1.421, 0.033, truncation = c(0, Inf))
+  
+  phi_delta <- phi_alpha * phi_delta_alpha
+  
   phi_wt <- prop_wt * 1 + prop_alpha * phi_alpha + prop_delta * phi_delta
   p <- (p_wildt) ^ phi_wt
   
@@ -2425,7 +2512,9 @@ distancing_effect_model <- function(
        OC_0 = OC_0,
        OD_0 = OD_0,
        dates = dates,
-       phi = phi,
+       phi_alpha,
+       phi_delta_alpha,
+       phi_delta,
        phi_wt = phi_wt)
   
 }
