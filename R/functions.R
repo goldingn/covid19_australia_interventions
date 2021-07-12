@@ -1519,7 +1519,7 @@ plot_trend <- function(
   base_colour = grey(0.4),
   multistate = FALSE,
   hline_at = 1,
-  ylim = c(0, 5),
+  ylim = c(0, 7),
   intervention_at = interventions(),
   projection_at = NA,
   keep_only_rows = NULL,
@@ -5521,7 +5521,7 @@ reff_plotting <- function(
              multistate = FALSE,
              base_colour = fifo,
              projection_at = projection_date,
-             ylim = c(0, 5),
+             ylim = c(0, 7),
              intervention_at = vaccination_dates(),
              plot_voc = TRUE
   ) + 
@@ -5614,7 +5614,7 @@ reff_plotting <- function(
                   max_date = max_date,
                   multistate = TRUE,
                   base_colour = green,
-                  ylim = c(0, 5),
+                  ylim = c(0, 7),
                   projection_at = projection_date,
                   plot_voc = TRUE) +
     ggtitle(label = "Local to local transmission potential",
