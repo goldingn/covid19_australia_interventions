@@ -1,5 +1,6 @@
 source("R/lib.R")
 
+Sys.setenv(RETICULATE_AUTOCONFIGURE = FALSE)
 library(readr)
 library(dplyr)
 library(stringr)
