@@ -49,3 +49,5 @@ reff_plotting(fitted_model,
 # produce simulations where proportion VOC is zero throughout period for reporting
 # in common operating picture table
 simulate_wild_type()
+
+simulate_delta()

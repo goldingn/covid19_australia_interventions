@@ -438,11 +438,55 @@ ideal_regions <- function() {
 }
 
 interventions <- function(
-  which = c("all", "national", "vic", "sa", "qld", "wa"),
-  end_dates = FALSE
+  which = c(
+    "all",
+    "national",
+    "act",
+    "nsw",
+    "nt",
+    "qld",
+    "sa",
+    "tas",
+    "vic",
+    "wa"
+  ),
+  end_dates = FALSE,
+  exclude_after = NA
 ) {
   
   which <- match.arg(which)
+  
+  act_interventions <- tibble::tribble(
+    ~date, ~state,
+    
+  )
+  
+  nsw_interventions <- tibble::tribble(
+    ~date, ~state,
+    "2021-06-25", "NSW" # stay-at-home order for 4 LGAs from 11.59 PM 24th, extended to all greater sydney +++ from 11.59 PM 25th. 
+  )
+  
+  nt_interventions <- tibble::tribble(
+    ~date, ~state,
+    "2021-06-27", "NT" # https://coronavirus.nt.gov.au/updates/items/2021-06-27-covid-19-update-lockdown-restrictions-in-place
+  )
+  
+  qld_interventions <- tibble::tribble(
+    ~date, ~state,
+    "2021-01-09", "QLD",
+    "2021-03-29", "QLD",
+    "2021-06-29", "QLD" # starts 6 PM on 29th https://www.qld.gov.au/health/conditions/health-alerts/coronavirus-covid-19/current-status/public-health-directions/restrictions-in-qld-update
+  )
+  
+  sa_interventions <- tibble::tribble(
+    ~date, ~state,
+    "2020-11-19", "SA"
+  )
+  
+  tas_interventions <- tibble::tribble(
+    ~date, ~state,
+    
+  )
   
   vic_interventions <- tibble::tribble(
     ~date, ~state,
@@ -453,22 +497,13 @@ interventions <- function(
     "2021-05-28", "VIC"
   )
   
-  sa_interventions <- tibble::tribble(
-    ~date, ~state,
-    "2020-11-19", "SA"
-  )
-  
-  qld_interventions <- tibble::tribble(
-    ~date, ~state,
-    "2021-01-09", "QLD",
-    "2021-03-29", "QLD"
-  )
-  
   wa_interventions <- tibble::tribble(
     ~date, ~state,
     "2021-01-31", "WA",
-    "2021-04-24", "WA"
+    "2021-04-24", "WA",
+    "2021-06-29", "WA" # https://www.wa.gov.au/government/announcements/4-day-lockdown-introduced-perth-and-peel
   )
+  
   
   national_interventions <- expand_grid(
     date = c("2020-03-16", "2020-03-24", "2020-03-29"),
@@ -477,12 +512,38 @@ interventions <- function(
   
   
   if(end_dates){
-    vic_interventions <-  vic_interventions %>%
+    
+    # act_interventions <-  act_interventions %>%
+    #   bind_rows(
+    #     tibble::tribble(
+    #       ~date, ~state,
+    #   
+    #     )
+    #   )
+    
+    # nsw_interventions <-  nsw_interventions %>%
+    #   bind_rows(
+    #     tibble::tribble(
+    #       ~date, ~state,
+    #       #"2021-07-17", "NSW" # https://www.abc.net.au/news/2021-07-07/covid-live-updates-coronavirus-press-conference-sydney-lockdown/100270832?utm_campaign=abc_news_web&utm_content=link&utm_medium=content_shared&utm_source=abc_news_web#live-blog-post-1201975138
+    #     )
+    #   )
+    
+    nt_interventions <-  nt_interventions %>%
       bind_rows(
         tibble::tribble(
           ~date, ~state,
-          "2021-02-18", "VIC"#,
-          #"2021-06-03", "VIC"
+          "2021-07-02", "NT" # https://coronavirus.nt.gov.au/updates/items/2021-06-28-covid-19-update-nt
+        )
+      )
+    
+    qld_interventions <-  qld_interventions %>%
+      bind_rows(
+        tibble::tribble(
+          ~date, ~state,
+          "2021-01-12", "QLD",
+          "2021-04-01", "QLD",
+          "2021-07-04", "QLD" # Lifted 6 PM 3rd July https://www.qld.gov.au/health/conditions/health-alerts/coronavirus-covid-19/current-status/public-health-directions/restrictions-impacted-areas
         )
       )
     
@@ -494,56 +555,72 @@ interventions <- function(
         )
       )
     
+    # tas_interventions <-  tas_interventions %>%
+    #   bind_rows(
+    #     tibble::tribble(
+    #       ~date, ~state,
+    #       
+    #     )
+    #   )
     
-    qld_interventions <-  qld_interventions %>%
+    vic_interventions <-  vic_interventions %>%
       bind_rows(
         tibble::tribble(
           ~date, ~state,
-          "2021-01-12", "QLD",
-          "2021-04-01", "QLD"
+          "2021-02-18", "VIC",
+          "2021-06-11", "VIC"
         )
       )
-    
     
     wa_interventions <-  wa_interventions %>%
       bind_rows(
         tibble::tribble(
           ~date, ~state,
           "2021-02-05", "WA",
-          "2021-04-27", "WA"
+          "2021-04-27", "WA",
+          "2021-07-03", "WA" # https://www.wa.gov.au/government/announcements/end-of-lockdown-perth-and-peel-1201am-saturday-3-july
         )
       )
-    
   }
-    
-    
-  
   
   interventions <- switch(
     which,
     national = national_interventions %>%
       filter(state == "ACT") %>%
       mutate(state = "all"),
-    vic = vic_interventions,
-    sa = sa_interventions,
+    act = act_interventions,
+    nsw = nsw_interventions,
+    nt  = nt_interventions,
     qld = qld_interventions,
-    wa = wa_interventions,
+    sa  = sa_interventions,
+    tas = tas_interventions,
+    vic = vic_interventions,
+    wa =  wa_interventions,
     all = bind_rows(
       national_interventions,
-      vic_interventions,
-      sa_interventions,
+      act_interventions,
+      nsw_interventions,
+      nt_interventions,
       qld_interventions,
-      wa_interventions
+      sa_interventions,
+      tas_interventions,
+      vic_interventions,
+      wa_interventions,
     )
-  )
-  
-  interventions %>%
+  ) %>%
     mutate(
       date = as.Date(date),
       state = factor(state)
-    )
+    ) %>% 
+    arrange(state, date)
   
+  if(!is.na(exclude_after)){
+    
+    interventions <- interventions %>%
+      filter(date <= as.Date(exclude_after))
+  }
   
+  return(interventions)
 }
 
 quarantine_dates <- function() {
@@ -1447,13 +1524,17 @@ plot_trend <- function(
   projection_at = NA,
   keep_only_rows = NULL,
   max_date = data$dates$latest_mobility,
-  min_date = as.Date("2020-03-01"),
+  #min_date = as.Date("2020-03-01"),
+  min_date = NA,
   plot_voc = FALSE
 ) {
   
+  if(is.na(min_date)){
+    min_date <- max_date - months(6)
+  }
   
   mean <- colMeans(simulations)
-  ci_90 <- apply(simulations, 2, quantile, c(0.05, 0.95))
+  ci_90 <- apply(simulations, 2, quantile, c(0.05, 0.95)) 
   ci_50 <- apply(simulations, 2, quantile, c(0.25, 0.75))
   
   if (multistate) {
@@ -1482,6 +1563,8 @@ plot_trend <- function(
       date <= max_date
     ) %>%
     mutate(type = "Nowcast")
+  
+  x_text_size <- ifelse(length(unique(df$date)) < 200, 10, 7)
   
   if (is.null(ylim)) {
     ylim <- c(min(df$ci_90_lo), max(df$ci_90_hi)) 
@@ -1528,7 +1611,7 @@ plot_trend <- function(
           strip.text = element_text(hjust = 0, face = "bold"),
           axis.title.y.right = element_text(vjust = 0.5, angle = 90),
           panel.spacing = unit(1.2, "lines"),
-          axis.text.x = element_text(size = 7))
+          axis.text.x = element_text(size = x_text_size))
   
   if(plot_voc){
     p <- p + 
@@ -2408,7 +2491,6 @@ prop_variant <- function(dates){
 
 
 # greta sub-model for the component R_eff due to macro- and micro-distancing
-#distancing_effect_model_new <- function(dates, gi_cdf) {
 distancing_effect_model <- function(
   dates,
   gi_cdf,
@@ -2456,6 +2538,7 @@ distancing_effect_model <- function(
   phi_delta <- phi_alpha * phi_delta_alpha
   
   phi_wt <- prop_wt * 1 + prop_alpha * phi_alpha + prop_delta * phi_delta
+
   p <- (p_wildt) ^ phi_wt
   
   
@@ -4075,11 +4158,14 @@ lga_to_state <- function (lga) {
   
 }
 
-linelist_date_times <- function(dir) {
+linelist_date_times <- function(
+  dir,
+  name_pattern = "^COVID-19 UoM "
+) {
   # find the files
   files <- list.files(dir, pattern = ".xlsx$", full.names = TRUE)
   # pull out the date time stamp
-  date_time_text <- gsub("^COVID-19 UoM ", "", basename(files)) 
+  date_time_text <- gsub(name_pattern, "", basename(files)) 
   date_time_text <- gsub(".xlsx$", "", date_time_text)
   date_times <- as.POSIXct(date_time_text, format = "%d%b%Y %H%M")
   # return as a dataframe
@@ -4110,8 +4196,8 @@ get_nndss_linelist <- function(
   date = NULL,
   dir = "~/not_synced/nndss",
   strict = TRUE,
-  missing_location_assumption = "imported"
-  #missing_location_assumption = "local"
+  #missing_location_assumption = "imported"
+  missing_location_assumption = "local"
   #missing_location_assumption = "missing"
 ) {
   
@@ -4568,67 +4654,139 @@ col_nsw_date <- function(type = c("short", "long")) {
 # get latest NSW linelist
 get_nsw_linelist <- function () {
   
-  files <- list.files(
-    "~/not_synced/nsw",
-    pattern = ".csv",
-    full.names = TRUE
-  )
+  # files <- list.files(
+  #   "~/not_synced/nsw",
+  #   pattern = ".csv",
+  #   full.names = TRUE
+  # )
+  # 
+  # dates <- files %>%
+  #   basename() %>%
+  #   substr(1, 8) %>%
+  #   as.Date(format = "%Y%m%d")
+  # 
+  # latest <- which.max(dates)
+  # file <- files[latest]
+  # date <- dates[latest]
+  # 
+  # 
+  # file %>%
+  #   read_csv(
+  #     col_types = cols(
+  #       .default = col_character(),
+  #       CASE_ID = col_double(),
+  #       EARLIEST_CONFIRMED_OR_PROBABLE = col_nsw_date(),
+  #       SYMPTOM_ONSET_DATE = col_nsw_date(),
+  #       CALCULATED_ONSET_DATE = col_nsw_date(),
+  #       AGE_AT_EVENT_YEARS = col_double(),
+  #       DATE_ISOLATION_BEGAN = col_nsw_date(),
+  #       SETTING_OF_TRANSMISSION_DATE = col_nsw_date("long"),
+  #       INTERVIEWED_DATE = col_nsw_date()
+  #     )
+  #   ) %>%
+  #   # remove some bogus dates
+  #   mutate(across(
+  #     all_of(c(
+  #       "EARLIEST_CONFIRMED_OR_PROBABLE",
+  #       "SYMPTOM_ONSET_DATE",
+  #       "SETTING_OF_TRANSMISSION_DATE",
+  #       "CALCULATED_ONSET_DATE",
+  #       "DATE_ISOLATION_BEGAN",
+  #       "SETTING_OF_TRANSMISSION_DATE",
+  #       "INTERVIEWED_DATE"
+  #     )),
+  #     clean_date
+  #   )
+  #   ) %>%
+  #   # if any infection dates are after onset, or on/after confirmation, set the infection date to NA
+  #   mutate(
+  #     SETTING_OF_TRANSMISSION_DATE = case_when(
+  #       SETTING_OF_TRANSMISSION_DATE > SYMPTOM_ONSET_DATE ~ as.Date(NA),
+  #       SETTING_OF_TRANSMISSION_DATE >= EARLIEST_CONFIRMED_OR_PROBABLE ~ as.Date(NA),
+  #       TRUE ~ SETTING_OF_TRANSMISSION_DATE
+  #     )
+  #   ) %>%
+  #   mutate(
+  #     date_onset = case_when(
+  #       !is.na(SETTING_OF_TRANSMISSION_DATE) ~ SETTING_OF_TRANSMISSION_DATE + 5,
+  #       TRUE ~ SYMPTOM_ONSET_DATE
+  #     ),
+  #     date_detection = NA,
+  #     date_confirmation = EARLIEST_CONFIRMED_OR_PROBABLE,
+  #     state = "NSW",
+  #     import_status = ifelse(
+  #       PLACE_ACQUISITION == "Acquired in NSW",
+  #       "local",
+  #       "imported"
+  #     ),
+  #     postcode_of_acquisition = NA,
+  #     postcode_of_residence = NA,
+  #     state_of_acquisition = "NSW",
+  #     state_of_residence = NA,
+  #     report_delay = NA,
+  #     date_linelist = date,
+  #     interstate_import = FALSE
+  #   ) %>%
+  #   select(
+  #     date_onset,
+  #     date_detection,
+  #     date_confirmation = EARLIEST_CONFIRMED_OR_PROBABLE,
+  #     state,
+  #     import_status,
+  #     postcode_of_acquisition,
+  #     postcode_of_residence,
+  #     state_of_acquisition,
+  #     state_of_residence,
+  #     report_delay,
+  #     date_linelist,
+  #     interstate_import
+  #   ) %>%
+  #   arrange(
+  #     desc(date_onset)
+  #   )
   
-  dates <- files %>%
-    basename() %>%
-    substr(1, 8) %>%
-    as.Date(format = "%Y%m%d")
-  
-  latest <- which.max(dates)
-  file <- files[latest]
-  date <- dates[latest]
+  # edit for excel file  
+  file <- "~/not_synced/nsw/cases_freya.xlsx"
+  date <- as.Date("2021-06-28")
   
   file %>%
-    read_csv(
-      col_types = cols(
-        .default = col_character(),
-        CASE_ID = col_double(),
-        EARLIEST_CONFIRMED_OR_PROBABLE = col_nsw_date(),
-        SYMPTOM_ONSET_DATE = col_nsw_date(),
-        CALCULATED_ONSET_DATE = col_nsw_date(),
-        AGE_AT_EVENT_YEARS = col_double(),
-        DATE_ISOLATION_BEGAN = col_nsw_date(),
-        SETTING_OF_TRANSMISSION_DATE = col_nsw_date("long"),
-        INTERVIEWED_DATE = col_nsw_date()
+    readxl::read_xlsx(
+      col_types = c(
+        "text",
+        "date",
+        "date",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "date",
+        "text"
       )
     ) %>%
-    # remove some bogus dates
-    mutate(across(
-      all_of(c(
-        "EARLIEST_CONFIRMED_OR_PROBABLE",
-        "SYMPTOM_ONSET_DATE",
-        "SETTING_OF_TRANSMISSION_DATE",
-        "CALCULATED_ONSET_DATE",
-        "DATE_ISOLATION_BEGAN",
-        "SETTING_OF_TRANSMISSION_DATE",
-        "INTERVIEWED_DATE"
-      )),
-      clean_date
-    )
-    ) %>%
-    # if any infection dates are after onset, or on/after confirmation, set the infection date to NA
+    distinct(.keep_all = TRUE) %>% # some duplicated rows can be id'd by project_recid
     mutate(
-      SETTING_OF_TRANSMISSION_DATE = case_when(
-        SETTING_OF_TRANSMISSION_DATE > SYMPTOM_ONSET_DATE ~ as.Date(NA),
-        SETTING_OF_TRANSMISSION_DATE >= EARLIEST_CONFIRMED_OR_PROBABLE ~ as.Date(NA),
-        TRUE ~ SETTING_OF_TRANSMISSION_DATE
-      )
+      EARLIEST_CONFIRMED_OR_PROBABLE = as.Date(EARLIEST_CONFIRMED_OR_PROBABLE),
+      CALCULATED_ONSET_DATE = as.Date(CALCULATED_ONSET_DATE),
+      SETTING_OF_TRANSMISSION_DATE = as.Date(SETTING_OF_TRANSMISSION_DATE)
     ) %>%
+  # if any infection dates are after onset, or on/after confirmation, set the infection date to NA
+  mutate(
+    SETTING_OF_TRANSMISSION_DATE = case_when(
+      SETTING_OF_TRANSMISSION_DATE >= EARLIEST_CONFIRMED_OR_PROBABLE ~ as.Date(NA),
+      TRUE ~ SETTING_OF_TRANSMISSION_DATE
+    )
+  ) %>%
     mutate(
       date_onset = case_when(
         !is.na(SETTING_OF_TRANSMISSION_DATE) ~ SETTING_OF_TRANSMISSION_DATE + 5,
-        TRUE ~ SYMPTOM_ONSET_DATE
+        TRUE ~ CALCULATED_ONSET_DATE
       ),
       date_detection = NA,
       date_confirmation = EARLIEST_CONFIRMED_OR_PROBABLE,
       state = "NSW",
       import_status = ifelse(
-        PLACE_ACQUISITION == "Acquired in NSW",
+        PLACE_ACQUISITION == "Acquired in NSW",# rethink this if goes to prime time
         "local",
         "imported"
       ),
@@ -4637,8 +4795,8 @@ get_nsw_linelist <- function () {
       state_of_acquisition = "NSW",
       state_of_residence = NA,
       report_delay = NA,
-      date_linelist = date,
-      interstate_import = FALSE
+      date_linelist = date#,
+      #interstate_import = FALSE # rethink this if goes to prime time
     ) %>%
     select(
       date_onset,
@@ -4651,13 +4809,13 @@ get_nsw_linelist <- function () {
       state_of_acquisition,
       state_of_residence,
       report_delay,
-      date_linelist,
-      interstate_import
+      date_linelist#,
+      #interstate_import
     ) %>%
     arrange(
       desc(date_onset)
     )
-    
+  
 }
 
 # given a date-by-state matrix of case counts by date of infection,
@@ -5235,13 +5393,18 @@ constrain_run_length <- function(x, min_run_length = 7) {
 reff_plotting <- function(
   fitted_model,
   dir = "outputs",
-  min_date = as.Date("2020-03-01"),
+  #min_date = as.Date("2020-03-01"),
+  min_date = NA,
   max_date = fitted_model$data$dates$latest_mobility,
   mobility_extrapolation_rectangle = TRUE,
   projection_date = NA,
   washout_cutoff = 0,
   vaccine_timeseries = timeseries
 ) {
+  
+  if(is.na(min_date)){
+    min_date <- max_date - months(6)
+  }
   
   # reformat case data for plotting (C1 and C12)
   local_cases_long <- fitted_model$data$local$cases %>%
@@ -5938,7 +6101,7 @@ load_vic <- function (file) {
 load_linelist <- function(date = NULL,
                           use_vic = FALSE,
                           use_sa = FALSE,
-                          use_nsw = FALSE) {
+                          use_nsw = TRUE) {
   
   # load the latest NNDSS linelist (either the latest or specified file)
   linelist <- get_nndss_linelist(date = date)
@@ -8841,16 +9004,13 @@ extract_over_70_ifr_effect <- function(x, which = c("odriscoll", "brazeau")) {
   sum(age_effects * weighting)
 }
 
-
-
 simulate_wild_type <- function(
   .fitted_model = fitted_model,
   dir = "outputs/projection/wild_type",
   ratio_samples = TRUE
 ){
   
-  #phi <- normal(1.454, 0.051, truncation = c(0, Inf))
-  phi <- 1.453
+  phi_alpha_wt <- normal(1.454, 0.055, truncation = c(0, Inf))
   
   data <- .fitted_model$data
   dates <- .fitted_model$data$dates$mobility
@@ -8860,7 +9020,7 @@ simulate_wild_type <- function(
   prop_voc <- prop_voc_date_state_long(dates)
   
   p <- de$p
-  phi_wt_star <- 1 - prop_voc + prop_voc*phi
+  phi_wt_star <- 1 - prop_voc + prop_voc*phi_alpha_wt
   p_star <- p ^ (1/phi_wt_star)
   
   infectious_days <- infectious_period(gi_cdf)
@@ -8924,6 +9084,94 @@ simulate_wild_type <- function(
   }
   
 }
+
+simulate_delta <- function(
+  .fitted_model = fitted_model,
+  dir = "outputs/projection/delta",
+  ratio_samples = TRUE
+){
+  
+  phi_alpha_wt <- normal(1.454, 0.055, truncation = c(0, Inf))
+  phi_delta_alpha <- normal(1.421, 0.033, truncation = c(0, Inf))
+  
+  phi_delta_wt <- phi_alpha_wt * phi_delta_alpha
+  
+  data <- .fitted_model$data
+  dates <- .fitted_model$data$dates$mobility
+  
+  de <- .fitted_model$greta_arrays$distancing_effect
+  
+  prop_voc <- prop_voc_date_state_long(dates)
+  
+  p <- de$p
+  phi_wt_star <- 1 - prop_voc + prop_voc*phi_alpha_wt
+  p_star <- p ^ (1/phi_wt_star)
+  
+  p_delta <- p_star ^ phi_delta_wt
+  
+  infectious_days <- infectious_period(gi_cdf)
+  
+  h_t <- h_t_state(dates)
+  HD_t <- de$HD_0 * h_t
+  
+  household_infections <- de$HC_0 * (1 - p_delta ^ HD_t)
+  non_household_infections <- de$OC_t_state * de$gamma_t_state *
+    infectious_days * (1 - p_delta ^ de$OD_0)
+  R_t <- household_infections + non_household_infections
+  R_eff_loc_1_no_surv <- extend(R_t, data$n_dates_project)
+  
+  
+  # multiply by the surveillance effect to get component 1
+  surveillance_reff_local_reduction <- surveillance_effect(
+    dates = data$dates$infection_project,
+    cdf = gi_cdf,
+    states = data$states
+  )
+  # 
+  
+  wt_fitted_model <- .fitted_model
+  wt_fitted_model$greta_arrays$R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_reff_local_reduction
+  
+  
+  dir.create(dir, showWarnings = FALSE)
+  write_reff_sims(wt_fitted_model, dir, write_reff_12 = FALSE)
+  
+  if(ratio_samples) {
+    ratio <- wt_fitted_model$greta_arrays$R_eff_loc_1 / .fitted_model$greta_arrays$R_eff_loc_1
+    ratio_vec <- c(ratio)
+    ratio_sims <- calculate(ratio_vec, values = .fitted_model$draws, nsim = 2000)
+    ratio_samples <- t(ratio_sims[[1]][, , 1])
+    colnames(ratio_samples) <- paste0("sim", 1:2000)
+    
+    tibble(
+      date = rep(.fitted_model$data$dates$infection_project, .fitted_model$data$n_states),
+      state = rep(.fitted_model$data$states, each = .fitted_model$data$n_dates_project),
+    ) %>%
+      mutate(date_onset = date + 5) %>%
+      cbind(ratio_samples) %>%
+      write_csv(
+        file.path(dir, "r_eff_1_ratio_samples.csv")
+      )
+    
+    # read_csv("outputs/projection/wild_type/r_eff_1_local_samples.csv") %>%
+    #   filter(date == as.Date("2020-04-11")) %>%
+    #   pivot_longer(
+    #     cols = starts_with("sim"),
+    #     names_to = "sim"
+    #   ) %>%
+    #   group_by(state, date) %>%
+    #   summarise(
+    #     mean = mean(value),
+    #     median = median(value),
+    #     lower = quantile(value, 0.05),
+    #     upper = quantile(value, 0.95),
+    #     p_exceedance = mean(value > 1)
+    #   )
+  }
+  
+}
+
+
 
 # given a timeseries of cumulative doses (for contiguous consecutive dates), and
 # an assumed ideal inter-dose period, return the timeseries of the cumulative
