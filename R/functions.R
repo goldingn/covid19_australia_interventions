@@ -3906,6 +3906,47 @@ surveillance_effect <- function(dates, states, cdf,
   
 }
 
+# compute the extra effect of early isolation of cases, on top of the effect
+# of detection of cases. I.e. the multiplicative extra benefit you get from
+# putting cases into isolation before they test positive
+extra_isolation_effect <- function(
+  dates,
+  states,
+  cdf,
+  gi_bounds = c(0, 20),
+  ttd_cdfs = NULL,
+  tti_cdfs = NULL
+) {
+  
+  # compute the surveillance effect
+  surveillance <- surveillance_effect(
+    dates = dates,
+    states = states,
+    cdf = cdf,
+    gi_bounds = gi_bounds,
+    ttd_cdfs = ttd_cdfs
+  )
+  
+  # load the time to isolation CDFs (unless the user provided one)
+  if (is.null(tti_cdfs)) {
+    tti_cdfs <- readRDS("outputs/isolation_cdfs.RDS")
+  }
+  
+  # compute the isolation effect
+  isolation <- surveillance_effect(
+    dates = dates,
+    states = states,
+    cdf = cdf,
+    gi_bounds = gi_bounds,
+    ttd_cdfs = tti_cdfs
+  )
+  
+  # compute the ratio of these too, to get the extra multiplicative effect
+  # of isolation
+  isolation / surveillance
+  
+}
+
 # get the mean date of symptom onset give a date of detection (using the
 # time-varying time to detection distribution)
 impute_one_onset <- function(confirmation_date,

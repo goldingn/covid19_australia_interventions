@@ -12,7 +12,7 @@ nsw_ll <- read_csv(
     AGE_AT_EVENT_YEARS = col_double(),
     DATE_ISOLATION_BEGAN = col_date(),
     SETTING_OF_TRANSMISSION_DATE = col_nsw_date("long"),
-      INTERVIEWED_DATE = col_date()
+    INTERVIEWED_DATE = col_date()
   )
 ) %>%
   # if any infection dates are after onset, set the infection date to NA
@@ -152,4 +152,64 @@ title(
     round(100 * (1 - average_response_reduction)),
     "%"
   )
+)
+
+
+# compute overall ecdf from after cutoff
+ideal_isolation_ecdf <- nsw_ll %>%
+  filter(date_infection > cutoff_date) %>%
+  pull(time_to_isolation) %>%
+  ecdf
+
+surveillance_cdfs <- readRDS("outputs/delay_from_onset_cdfs.RDS")
+head(surveillance_cdfs)
+surveillance <- surveillance_effect(
+  dates = seq(
+    min(surveillance_cdfs$date),
+    max(surveillance_cdfs$date),
+    by = 1
+  ),
+  states = data$states,
+  cdf = gi_cdf
+)
+
+# convert surveillance effect to weights
+
+# compute a weighted cdf for each observation
+isolation_cdfs <- surveillance_cdfs %>%
+  ungroup() %>%
+  rename(
+    surveillance_cdf = ecdf
+  ) %>%
+  mutate(
+    surveillance_effect = c(t(surveillance)),
+    ideal_isolation_ecdf = list(ideal_isolation_ecdf),
+    isolation_weight = 1 - surveillance_effect,
+    isolation_weight = isolation_weight / max(isolation_weight),
+    isolation_ecdf = mapply(
+      FUN = weight_ecdf,
+      surveillance_cdf,
+      ideal_isolation_ecdf,
+      1 - isolation_weight,
+      SIMPLIFY = FALSE
+    )
+  ) %>%
+  select(
+    date,
+    state,
+    ecdf = isolation_ecdf
+  )
+
+# save this
+saveRDS(isolation_cdfs, "outputs/isolation_cdfs.RDS")
+
+# compute the overall isolation effect
+extra_isolation <- extra_isolation_effect(
+  dates = seq(
+    min(surveillance_cdfs$date),
+    max(surveillance_cdfs$date),
+    by = 1
+  ),
+  states = data$states,
+  cdf = gi_cdf
 )
