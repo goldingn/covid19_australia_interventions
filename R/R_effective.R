@@ -38,6 +38,14 @@ plot_reff_checks(fitted_model)
 # do plots for main period
 reff_plotting(fitted_model, dir = "outputs")
 
+# most recent six months
+reff_plotting(
+  fitted_model,
+  dir = "outputs",
+  subdir = "figures/six_month",
+  min_date = NA
+)
+
 # and for projected part
 reff_plotting(fitted_model,
               dir = "outputs/projection",

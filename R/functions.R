@@ -1524,8 +1524,7 @@ plot_trend <- function(
   projection_at = NA,
   keep_only_rows = NULL,
   max_date = data$dates$latest_mobility,
-  #min_date = as.Date("2020-03-01"),
-  min_date = NA,
+  min_date = as.Date("2020-03-01"),
   plot_voc = FALSE
 ) {
   
@@ -5393,8 +5392,9 @@ constrain_run_length <- function(x, min_run_length = 7) {
 reff_plotting <- function(
   fitted_model,
   dir = "outputs",
-  #min_date = as.Date("2020-03-01"),
-  min_date = NA,
+  subdir = "figures",
+  min_date = as.Date("2020-03-01"),
+  #min_date = NA,
   max_date = fitted_model$data$dates$latest_mobility,
   mobility_extrapolation_rectangle = TRUE,
   projection_date = NA,
@@ -5529,7 +5529,7 @@ reff_plotting <- function(
             subtitle = expression(R["eff"]~"if"~only~vaccination~had~occurred)) +
     ylab(expression(R["eff"]~component))
   
-  save_ggplot("R_eff_1_local_vaccine_effect.png", dir, multi = FALSE)
+  save_ggplot("R_eff_1_local_vaccine_effect.png", dir, subdir, multi = FALSE)
   
   
   # microdistancing only
@@ -5545,7 +5545,7 @@ reff_plotting <- function(
             subtitle = expression(R["eff"]~"if"~only~"micro-distancing"~behaviour~had~changed)) +
     ylab(expression(R["eff"]~component))
   
-  save_ggplot("R_eff_1_local_micro.png", dir)
+  save_ggplot("R_eff_1_local_micro.png", dir, subdir)
   
   # macrodistancing only
   plot_trend(sims$R_eff_loc_1_macro,
@@ -5560,7 +5560,7 @@ reff_plotting <- function(
             subtitle = expression(R["eff"]~"if"~only~"macro-distancing"~behaviour~had~changed)) +
     ylab(expression(R["eff"]~component))
   
-  save_ggplot("R_eff_1_local_macro.png", dir)
+  save_ggplot("R_eff_1_local_macro.png", dir, subdir)
   
   # improved surveilance only
   plot_trend(sims$R_eff_loc_1_surv,
@@ -5574,7 +5574,7 @@ reff_plotting <- function(
             subtitle = expression(R["eff"]~"if"~only~surveillance~effectiveness~had~changed)) +
     ylab(expression(R["eff"]~component))
   
-  save_ggplot("R_eff_1_local_surv.png", dir)
+  save_ggplot("R_eff_1_local_surv.png", dir, subdir)
   
   # Component 1 for national / state populations
   plot_trend(sims$R_eff_loc_1,
@@ -5589,7 +5589,7 @@ reff_plotting <- function(
             subtitle = expression(Component~of~R["eff"]~due~to~social~distancing)) +
     ylab(expression(R["eff"]~component))
   
-  save_ggplot("R_eff_1_local.png", dir)
+  save_ggplot("R_eff_1_local.png", dir, subdir)
   
   plot_trend(sims$R_eff_imp_1,
              data = fitted_model_extended$data,
@@ -5605,7 +5605,7 @@ reff_plotting <- function(
             subtitle = expression(Component~of~R["eff"]~due~to~quarantine~of~overseas~arrivals)) +
     ylab(expression(R["eff"]~component))
   
-  save_ggplot("R_eff_1_import.png", dir, multi = FALSE)
+  save_ggplot("R_eff_1_import.png", dir, subdir, multi = FALSE)
   
   # Reff for active cases
   p <- plot_trend(sims$R_eff_loc_12,
@@ -5635,7 +5635,7 @@ reff_plotting <- function(
   p <- p + few_case_washout + case_rug
   p
   
-  save_ggplot("R_eff_12_local.png", dir)
+  save_ggplot("R_eff_12_local.png", dir, subdir)
   
   # component 2 (noisy error trends)
   p <- plot_trend(sims$epsilon_L,
@@ -5667,7 +5667,7 @@ reff_plotting <- function(
   
   p
   
-  save_ggplot("R_eff_2_local.png", dir)
+  save_ggplot("R_eff_2_local.png", dir, subdir)
   
 }
 
@@ -9172,6 +9172,95 @@ simulate_delta <- function(
 }
 
 
+simulate_variant <- function(
+  .fitted_model = fitted_model,
+  dir = "outputs/projection/",
+  subdir,
+  ratio_samples = TRUE,
+  variant = c("wt", "alpha", "delta")
+){
+  
+  variant <- match.arg(variant)
+  
+  phi_alpha_wt <- normal(1.454, 0.055, truncation = c(0, Inf))
+  phi_delta_alpha <- normal(1.421, 0.033, truncation = c(0, Inf))
+  
+  phi_delta_wt <- phi_alpha_wt * phi_delta_alpha
+  
+  data <- .fitted_model$data
+  dates <- .fitted_model$data$dates$mobility
+  
+  de <- .fitted_model$greta_arrays$distancing_effect
+  
+  prop_voc <- prop_voc_date_state_long(dates)
+  
+  p <- de$p
+  phi_wt_star <- 1 - prop_voc + prop_voc*phi_alpha_wt
+  p_star <- p ^ (1/phi_wt_star)
+  
+  p_delta <- p_star ^ phi_delta_wt
+  
+  infectious_days <- infectious_period(gi_cdf)
+  
+  h_t <- h_t_state(dates)
+  HD_t <- de$HD_0 * h_t
+  
+  household_infections <- de$HC_0 * (1 - p_delta ^ HD_t)
+  non_household_infections <- de$OC_t_state * de$gamma_t_state *
+    infectious_days * (1 - p_delta ^ de$OD_0)
+  R_t <- household_infections + non_household_infections
+  R_eff_loc_1_no_surv <- extend(R_t, data$n_dates_project)
+  
+  
+  # multiply by the surveillance effect to get component 1
+  surveillance_reff_local_reduction <- surveillance_effect(
+    dates = data$dates$infection_project,
+    cdf = gi_cdf,
+    states = data$states
+  )
+  # 
+  
+  wt_fitted_model <- .fitted_model
+  wt_fitted_model$greta_arrays$R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_reff_local_reduction
+  
+  
+  dir.create(dir, showWarnings = FALSE)
+  write_reff_sims(wt_fitted_model, dir, write_reff_12 = FALSE)
+  
+  if(ratio_samples) {
+    ratio <- wt_fitted_model$greta_arrays$R_eff_loc_1 / .fitted_model$greta_arrays$R_eff_loc_1
+    ratio_vec <- c(ratio)
+    ratio_sims <- calculate(ratio_vec, values = .fitted_model$draws, nsim = 2000)
+    ratio_samples <- t(ratio_sims[[1]][, , 1])
+    colnames(ratio_samples) <- paste0("sim", 1:2000)
+    
+    tibble(
+      date = rep(.fitted_model$data$dates$infection_project, .fitted_model$data$n_states),
+      state = rep(.fitted_model$data$states, each = .fitted_model$data$n_dates_project),
+    ) %>%
+      mutate(date_onset = date + 5) %>%
+      cbind(ratio_samples) %>%
+      write_csv(
+        file.path(dir, "r_eff_1_ratio_samples.csv")
+      )
+    
+    # read_csv("outputs/projection/wild_type/r_eff_1_local_samples.csv") %>%
+    #   filter(date == as.Date("2020-04-11")) %>%
+    #   pivot_longer(
+    #     cols = starts_with("sim"),
+    #     names_to = "sim"
+    #   ) %>%
+    #   group_by(state, date) %>%
+    #   summarise(
+    #     mean = mean(value),
+    #     median = median(value),
+    #     lower = quantile(value, 0.05),
+    #     upper = quantile(value, 0.95),
+    #     p_exceedance = mean(value > 1)
+    #   )
+  }
+  
+}
 
 # given a timeseries of cumulative doses (for contiguous consecutive dates), and
 # an assumed ideal inter-dose period, return the timeseries of the cumulative
