@@ -1533,7 +1533,8 @@ plot_trend <- function(
   if(plot_voc){
     p <- p + 
       geom_vline(
-        data = prop_voc_date_state(),
+        #data = prop_voc_date_state(),
+        data = prop_variant_dates(),
         aes(xintercept = date),
         colour = "firebrick1",
         linetype = 5
