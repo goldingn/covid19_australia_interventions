@@ -4037,7 +4037,7 @@ lga_to_state <- function (lga) {
   
 }
 
-file_set_date_times <- function(
+linelist_date_times <- function(
   dir,
   name_pattern = "^COVID-19 UoM "
 ) {
@@ -4080,7 +4080,7 @@ get_nndss_linelist <- function(
   #missing_location_assumption = "missing"
 ) {
   
-  data <- file_set_date_times(dir)
+  data <- linelist_date_times(dir)
   
   # subset to this date
   if (!is.null(date)) {
@@ -5751,7 +5751,7 @@ update_past_cases <- function(past_cases_dir = "outputs/past_cases") {
     )
   
   # find all nndss linelists that haven't yet been processed (using only the latest on each date)
-  linelist_files <- file_set_date_times("~/not_synced/nndss") %>%
+  linelist_files <- linelist_date_times("~/not_synced/nndss") %>%
     mutate(
       date = as.Date(date_time),
       file = basename(file)
