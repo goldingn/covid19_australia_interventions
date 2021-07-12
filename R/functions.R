@@ -4742,7 +4742,7 @@ get_nsw_linelist <- function () {
 # distribution by surveillance effectiveness (fraction of cases detected and
 # isolated by each day post infection) and convolve the cases to get the
 # combined infectiousness in each date and state.
-gi_convolution <- function(cases, dates, states, gi_cdf, gi_bounds = c(0, 20)) {
+gi_convolution <- function(cases, dates, states, gi_cdf, ttd_cdfs, gi_bounds = c(0, 20)) {
   
   n_dates <- length(dates)
   n_states <- length(states)
@@ -4759,7 +4759,8 @@ gi_convolution <- function(cases, dates, states, gi_cdf, gi_bounds = c(0, 20)) {
         gi_cdf = gi_cdf,
         dates = dates,
         state = states[i],
-        gi_bounds = gi_bounds
+        gi_bounds = gi_bounds,
+        ttd_cdfs = ttd_cdfs
       )
     
     convolved[, i] <- gi_mat %*% cases[, i]
