@@ -1519,7 +1519,7 @@ plot_trend <- function(
   base_colour = grey(0.4),
   multistate = FALSE,
   hline_at = 1,
-  ylim = c(0, 7),
+  ylim = c(0, 6),
   intervention_at = interventions(),
   projection_at = NA,
   keep_only_rows = NULL,
@@ -1563,11 +1563,33 @@ plot_trend <- function(
     ) %>%
     mutate(type = "Nowcast")
   
-  x_text_size <- ifelse(length(unique(df$date)) < 200, 10, 7)
+  
+  date_breaks <- ifelse(
+    length(unique(df$date)) < 200,
+    "1 month",
+    "2 month"
+  )
+  
+  date_minor_breaks <- ifelse(
+    length(unique(df$date)) < 200,
+    "2 weeks",
+    "1 month"
+  )
+  
+  range(ylim)[2] - range(ylim)[1]
+  
+  x_text_size <- ifelse(length(unique(df$date)) < 200, 10, 9)
+  
   
   if (is.null(ylim)) {
     ylim <- c(min(df$ci_90_lo), max(df$ci_90_hi)) 
   }
+  
+  if(range(ylim)[2] - range(ylim)[1] >= 4 & range(ylim)[2] - range(ylim)[1] <= 10){
+    y_scale <- scale_y_continuous(position = "right", breaks = seq(from = ylim[1], to = ylim[2], by = 1))
+  } else(
+    y_scale <- scale_y_continuous(position = "right")
+  )
   
   p <- ggplot(df) + 
     
@@ -1576,8 +1598,8 @@ plot_trend <- function(
     xlab(element_blank()) +
     
     coord_cartesian(ylim = ylim) +
-    scale_y_continuous(position = "right") +
-    scale_x_date(date_breaks = "1 month", date_labels = "%e/%m") +
+    y_scale +
+    scale_x_date(date_breaks = date_breaks, date_minor_breaks = date_minor_breaks, date_labels = "%e/%m") +
     scale_alpha(range = c(0, 0.5)) +
     scale_fill_manual(values = c("Nowcast" = base_colour)) +
     
@@ -5522,7 +5544,7 @@ reff_plotting <- function(
              multistate = FALSE,
              base_colour = fifo,
              projection_at = projection_date,
-             ylim = c(0, 7),
+             ylim = c(0, 6),
              intervention_at = vaccination_dates(),
              plot_voc = TRUE
   ) + 
@@ -5615,7 +5637,7 @@ reff_plotting <- function(
                   max_date = max_date,
                   multistate = TRUE,
                   base_colour = green,
-                  ylim = c(0, 7),
+                  ylim = c(0, 6),
                   projection_at = projection_date,
                   plot_voc = TRUE) +
     ggtitle(label = "Local to local transmission potential",
