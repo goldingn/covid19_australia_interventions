@@ -7760,6 +7760,8 @@ get_cis <- function(date, state, ecdf, weight, use_national) {
 #   times and places that should not contribute to the national estimate. If
 #   either of the dates are NA, the earliest (or latest) dates in the linelist
 #   are used
+# revert_to_national: a logical for whether to revert to national estimates with
+#   low counts (turn this off to e.g. run for a single state)
 estimate_delays <- function(
   state,
   date,
@@ -7771,7 +7773,8 @@ estimate_delays <- function(
   absolute_min_records = 100,
   min_window = 7,
   max_window = 56,
-  national_exclusions = tibble(state = "VIC", start = as.Date("2020-06-14"), end = NA)
+  national_exclusions = tibble(state = "VIC", start = as.Date("2020-06-14"), end = NA),
+  revert_to_national = TRUE
 ) {
   
   direction <- match.arg(direction)
@@ -7846,74 +7849,91 @@ estimate_delays <- function(
       )
     )
   
-  # fill in exclusion periods
-  national_exclusions <- national_exclusions %>%
-    mutate(
-      start = as.Date(start),
-      end = as.Date(end),
-      start = replace_na(start, min(all_dates)),
-      end = replace_na(end, max(all_dates))
-    )
-  
-  # remove the specified data for estimating the national background distribution
-  for (i in seq_len(nrow(national_exclusions))) {
-    delay_data <- delay_data %>%
-      filter(
-        !(
-          state == national_exclusions$state[i] &
-            date_from >= national_exclusions$start[i] &
-            date_to <= national_exclusions$end[i]
+  if (revert_to_national) {
+    
+    
+    # fill in exclusion periods
+    national_exclusions <- national_exclusions %>%
+      mutate(
+        start = as.Date(start),
+        end = as.Date(end),
+        start = replace_na(start, min(all_dates)),
+        end = replace_na(end, max(all_dates))
+      )
+    
+    # remove the specified data for estimating the national background distribution
+    for (i in seq_len(nrow(national_exclusions))) {
+      delay_data <- delay_data %>%
+        filter(
+          !(
+            state == national_exclusions$state[i] &
+              date_from >= national_exclusions$start[i] &
+              date_to <= national_exclusions$end[i]
+          )
+        )
+    }
+    
+    nationwide <- date_state %>%
+      # arbitrarily pick one set of dates
+      filter(state == "ACT") %>%
+      select(-state) %>%
+      group_by(date) %>%
+      mutate(
+        window = get_window_size(
+          date,
+          all_states,
+          delay_data = delay_data,
+          date_tabulation = date_tabulation,
+          n_min = min_records,
+          window_min = min_window,
+          window_max = absolute_max_window
+        ),
+        national_ecdf = delay_ecdf(
+          date,
+          all_states,
+          window = window,
+          delay_data = delay_data,
+          date_tabulation = date_tabulation
         )
       )
+    
+    # for statewide, replace any invalid ecdfs with the national one
+    state_ecdfs <- statewide %>%
+      right_join(
+        nationwide %>%
+          select(-window)
+      ) %>%
+      mutate(
+        use_national = count < absolute_min_records,
+        weight = pmin(1, count / min_records),
+        weight = ifelse(use_national, 0, weight),
+        ecdf = mapply(
+          FUN = weight_ecdf,
+          state_ecdf,
+          national_ecdf,
+          weight,
+          SIMPLIFY = FALSE
+        )
+      ) %>%
+      select(
+        date, state, ecdf, weight, use_national
+      )
+    
+  } else {
+    
+    state_ecdfs <- statewide %>%
+      mutate(
+        use_national = count < absolute_min_records,
+        weight = pmin(1, count / min_records),
+        weight = ifelse(use_national, 0, weight),
+        ecdf = state_ecdf
+      ) %>%
+      select(
+        date, state, ecdf, weight, use_national
+      )
+    
   }
-  
-  nationwide <- date_state %>%
-    # arbitrarily pick one set of dates
-    filter(state == "ACT") %>%
-    select(-state) %>%
-    group_by(date) %>%
-    mutate(
-      window = get_window_size(
-        date,
-        all_states,
-        delay_data = delay_data,
-        date_tabulation = date_tabulation,
-        n_min = min_records,
-        window_min = min_window,
-        window_max = absolute_max_window
-      ),
-      national_ecdf = delay_ecdf(
-        date,
-        all_states,
-        window = window,
-        delay_data = delay_data,
-        date_tabulation = date_tabulation
-      )
-    )
-  
-  # for statewide, replace any invalid ecdfs with the national one
-  state_ecdfs <- statewide %>%
-    right_join(
-      nationwide %>%
-        select(-window)
-    ) %>%
-    mutate(
-      use_national = count < absolute_min_records,
-      weight = pmin(1, count / min_records),
-      weight = ifelse(use_national, 0, weight),
-      ecdf = mapply(
-        FUN = weight_ecdf,
-        state_ecdf,
-        national_ecdf,
-        weight,
-        SIMPLIFY = FALSE
-      )
-    ) %>%
-    select(
-      date, state, ecdf, weight, use_national
-    )
-  
-  
+
   state_ecdfs
   
 }
@@ -7930,7 +7950,12 @@ plot_delays <- function(
   base_colour = yellow
 ) {
   
-
+  all_states <- unique(state)
+  intervention_at <- intervention_at %>%
+    filter(
+      state %in% all_states
+    )
+  
   # mutate to output quantiles and then plot them
   quantiles <- delay_distributions %>%
     # plot it as the date of infection, not date of onset!

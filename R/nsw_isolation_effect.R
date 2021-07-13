@@ -99,6 +99,8 @@ isolation_delays_from_onset <- estimate_delays(
   date = nsw_ll$date_onset,
   delay = nsw_ll$time_to_isolation,
   direction = "forward",
+  min_records = 300,
+  absolute_min_records = 50,
   revert_to_national = FALSE
 )
 
@@ -107,6 +109,8 @@ detection_delays_from_onset <- estimate_delays(
   date = nsw_ll$date_onset,
   delay = nsw_ll$time_to_detection,
   direction = "forward",
+  min_records = 300,
+  absolute_min_records = 50,
   revert_to_national = FALSE
 )
 
@@ -131,7 +135,7 @@ p_isolation <- isolation_delays_from_onset %>%
 ggsave(
   filename = "nsw_detailed_time_to_isolation.png",
   plot = p_isolation,
-  path = "outputs/figures",
+  path = "~/Desktop",
   width = 6, height = 5,
   bg = "white"
 )
@@ -157,13 +161,140 @@ p_detection <- detection_delays_from_onset %>%
 ggsave(
   filename = "nsw_detailed_time_to_detection.png",
   plot = p_detection,
-  path = "outputs/figures",
+  path = "~/Desktop",
   width = 6, height = 5,
   bg = "white"
 )
 
-# compute overall ecdf
-optimal_isolation_ecdf <- ecdf(nsw_ll$time_to_isolation)
+
+
+# 
+# 
+# 
+# 
+# 
+# nsw_ecdfs <- nsw_ll %>%
+#   group_by(date_infection) %>%
+#   summarise(
+#     ecdf = list(ecdf(time_to_isolation)),
+#     cases = n()
+#   ) %>%
+#   arrange(
+#     desc(date_infection)
+#   ) %>%
+#   mutate(
+#     state = "NSW"
+#   )
+# 
+# # do surveillance_effect using these CDFs, and do it using the statewide ones,
+# # and calculate the ratio
+# 
+# effects <- nsw_ecdfs %>%
+#   mutate(
+#     statewide_effect = surveillance_effect(
+#       dates = date_infection,
+#       cdf = gi_cdf,
+#       states = "NSW"
+#     ),
+#     response_effect = surveillance_effect(
+#       dates = date_infection,
+#       cdf = gi_cdf,
+#       states = "NSW",
+#       ttd_cdfs = mutate(., date = date_infection)
+#     )
+#   ) %>%
+#   select(-ecdf) %>%
+#   mutate(
+#     response_reduction = response_effect / statewide_effect
+#   )
+#   
+# 
+# # compute average effects to plot
+# 
+# # ignore cases infected on or before Avalon super-spreader events (11th and 13th)
+# cutoff_date <- as.Date("2020-12-13")
+# 
+# # compute average reduciton in transmission sue to isolation
+# average_response_effect <- nsw_ll %>%
+#   filter(
+#     date_infection > cutoff_date
+#   ) %>%
+#   summarise(
+#     ecdf = list(ecdf(time_to_isolation)),
+#     state = "NSW",
+#     date = min(date_infection)
+#   ) %>%
+#   surveillance_effect(
+#     dates = .$date,
+#     cdf = gi_cdf,
+#     states = "NSW",
+#     ttd_cdfs = .
+#   ) %>%
+#   c()
+# 
+# # compute average expected surveillance effect (barely changes over this period)
+# average_statewide_effect <- mean(effects$statewide_effect)
+# 
+# # average extra effect of contact tracing from these two
+# average_response_reduction <- average_response_effect / average_statewide_effect
+# 
+# 
+# # extra effect on top of surveillance
+# plot(
+#   response_reduction ~ date_infection,
+#   data = effects,
+#   col = "purple",
+#   pch = 16,
+#   cex = log1p(cases),
+#   ylab = "multiplier on Reff",
+#   xlab = "infection date"
+# )
+# 
+# abline(
+#   h = 1,
+#   lty = 2,
+#   lwd = 2
+# )
+# 
+# abline(
+#   h = average_statewide_effect,
+#   lwd = 2,
+#   col = "yellow"
+# )
+# 
+# abline(
+#   h = average_response_effect,
+#   lwd = 2,
+#   col = grey(0.4)
+# )
+# 
+# abline(
+#   h = average_response_reduction,
+#   lwd = 2,
+#   col = "purple"
+# )
+# 
+# abline(
+#   v = cutoff_date + 0.5,
+#   col = grey(0.7),
+#   lty = 3,
+#   lwd = 2
+# )
+# 
+# title(
+#   main = sprintf(
+#     "Average %i%s reduction in transmission\non top of surveillance effect",
+#     round(100 * (1 - average_response_reduction)),
+#     "%"
+#   )
+# )
+
+
+# compute overall ecdf from after cutoff
+ideal_isolation_ecdf <- nsw_ll %>%
+  # filter(date_infection > cutoff_date) %>%
+  pull(time_to_isolation) %>%
+  ecdf
 
 surveillance_cdfs <- readRDS("outputs/delay_from_onset_cdfs.RDS")
 head(surveillance_cdfs)
