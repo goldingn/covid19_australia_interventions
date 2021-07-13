@@ -5278,8 +5278,8 @@ reff_1_only_macro <- function(fitted_model) {
   infectious_days <- infectious_period(gi_cdf)
   h_t <- h_t_state(fitted_model$data$dates$mobility)
   HD_t <- de$HD_0 * h_t
-  household_infections_macro <- de$HC_0 * (1 - de$p ^ HD_t)
-  non_household_infections_macro <- de$OC_t_state * infectious_days * (1 - de$p ^ de$OD_0)
+  household_infections_macro <- de$HC_0 * (1 - de$p_star ^ HD_t)
+  non_household_infections_macro <- de$OC_t_state * infectious_days * (1 - de$p_star ^ de$OD_0)
   hourly_infections_macro <- household_infections_macro + non_household_infections_macro
   hourly_infections_macro_extended <- extend(
     hourly_infections_macro,
@@ -5294,9 +5294,9 @@ reff_1_only_micro <- function(fitted_model) {
   baseline_surveillance_effect <- ga$surveillance_reff_local_reduction[1]
   de <- ga$distancing_effect
   infectious_days <- infectious_period(gi_cdf)
-  household_infections_micro <- de$HC_0 * (1 - de$p ^ de$HD_0)
+  household_infections_micro <- de$HC_0 * (1 - de$p_star ^ de$HD_0)
   non_household_infections_micro <- de$OC_0 * infectious_days *
-    (1 - de$p ^ de$OD_0) * de$gamma_t_state
+    (1 - de$p_star ^ de$OD_0) * de$gamma_t_state
   hourly_infections_micro <- household_infections_micro +
     non_household_infections_micro
   hourly_infections_micro_extended <- extend(
@@ -5329,9 +5329,9 @@ reff_1_vaccine_effect <- function(fitted_model, timeseries){
   baseline_surveillance_effect <- ga$surveillance_reff_local_reduction[1]
   de <- ga$distancing_effect
   infectious_days <- infectious_period(gi_cdf)
-  household_infections_vacc <- de$HC_0 * (1 - de$p ^ de$HD_0)
+  household_infections_vacc <- de$HC_0 * (1 - de$p_star ^ de$HD_0)
   non_household_infections_vacc <- de$OC_0 * infectious_days *
-    (1 - de$p ^ de$OD_0)
+    (1 - de$p_star ^ de$OD_0)
   hourly_infections_vacc <- household_infections_vacc +
     non_household_infections_vacc
   hourly_infections_vacc_extended <- extend(
