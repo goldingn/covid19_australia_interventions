@@ -35,6 +35,8 @@ write_reff_sims(fitted_model, dir = "outputs/projection")
 # visual checks of model fit
 plot_reff_checks(fitted_model)
 
+timeseries <- readRDS(file = "outputs/vaccine_timeseries.RDS")
+
 # do plots for main period
 reff_plotting(fitted_model, dir = "outputs")
 
@@ -56,6 +58,6 @@ reff_plotting(fitted_model,
 
 # produce simulations where proportion VOC is zero throughout period for reporting
 # in common operating picture table
-simulate_wild_type()
-
-simulate_delta()
+simulate_variant(variant = "wt")
+simulate_variant(variant = "alpha")
+simulate_variant(variant = "delta")

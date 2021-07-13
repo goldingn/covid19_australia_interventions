@@ -2529,16 +2529,16 @@ distancing_effect_model <- function(
   # (define to match moments of R0 prior)
   logit_p_params <- logit_p_prior(baseline_contact_params, gi_cdf)
   logit_p <- normal(logit_p_params$meanlogit, logit_p_params$sdlogit)
-  p_wildt <- ilogit(logit_p)
+  p <- ilogit(logit_p)
   
   phi_alpha       <- normal(1.454, 0.055, truncation = c(0, Inf))
   phi_delta_alpha <- normal(1.421, 0.033, truncation = c(0, Inf))
   
   phi_delta <- phi_alpha * phi_delta_alpha
   
-  phi_wt <- prop_wt * 1 + prop_alpha * phi_alpha + prop_delta * phi_delta
+  phi_star <- prop_wt * 1 + prop_alpha * phi_alpha + prop_delta * phi_delta
 
-  p <- (p_wildt) ^ phi_wt
+  p_star <- p ^ phi_star
   
   
   infectious_days <- infectious_period(gi_cdf)
@@ -2579,9 +2579,9 @@ distancing_effect_model <- function(
   gamma_t_state <- 1 - beta * d_t_state
   
   # compute component of R_eff for local cases
-  household_infections <- HC_0 * (1 - p ^ HD_t)
+  household_infections <- HC_0 * (1 - p_star ^ HD_t)
   non_household_infections <- OC_t_state * gamma_t_state *
-    infectious_days * (1 - p ^ OD_0)
+    infectious_days * (1 - p_star ^ OD_0)
   R_t <- household_infections + non_household_infections
   
   # return greta arrays
@@ -2589,16 +2589,17 @@ distancing_effect_model <- function(
        gamma_t_state = gamma_t_state,
        OC_t_state = OC_t_state,
        p = p,
+       p_star = p_star,
        beta = beta,
        HC_0 = HC_0,
        HD_0 = HD_0,
        OC_0 = OC_0,
        OD_0 = OD_0,
        dates = dates,
-       phi_alpha,
-       phi_delta_alpha,
-       phi_delta,
-       phi_wt = phi_wt)
+       phi_alpha = phi_alpha,
+       phi_delta_alpha = phi_delta_alpha,
+       phi_delta = phi_delta,
+       phi_star = phi_star)
   
 }
 
@@ -9004,210 +9005,68 @@ extract_over_70_ifr_effect <- function(x, which = c("odriscoll", "brazeau")) {
   sum(age_effects * weighting)
 }
 
-simulate_wild_type <- function(
-  .fitted_model = fitted_model,
-  dir = "outputs/projection/wild_type",
-  ratio_samples = TRUE
-){
-  
-  phi_alpha_wt <- normal(1.454, 0.055, truncation = c(0, Inf))
-  
-  data <- .fitted_model$data
-  dates <- .fitted_model$data$dates$mobility
-  
-  de <- .fitted_model$greta_arrays$distancing_effect
-  
-  prop_voc <- prop_voc_date_state_long(dates)
-  
-  p <- de$p
-  phi_wt_star <- 1 - prop_voc + prop_voc*phi_alpha_wt
-  p_star <- p ^ (1/phi_wt_star)
-  
-  infectious_days <- infectious_period(gi_cdf)
-  
-  h_t <- h_t_state(dates)
-  HD_t <- de$HD_0 * h_t
-  
-  household_infections <- de$HC_0 * (1 - p_star ^ HD_t)
-  non_household_infections <- de$OC_t_state * de$gamma_t_state *
-    infectious_days * (1 - p_star ^ de$OD_0)
-  R_t <- household_infections + non_household_infections
-  R_eff_loc_1_no_surv <- extend(R_t, data$n_dates_project)
-  
-  
-  # multiply by the surveillance effect to get component 1
-  surveillance_reff_local_reduction <- surveillance_effect(
-    dates = data$dates$infection_project,
-    cdf = gi_cdf,
-    states = data$states
-  )
-  # 
-  
-  wt_fitted_model <- .fitted_model
-  wt_fitted_model$greta_arrays$R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_reff_local_reduction
-  
-  
-  dir.create(dir, showWarnings = FALSE)
-  write_reff_sims(wt_fitted_model, dir, write_reff_12 = FALSE)
-  
-  if(ratio_samples) {
-    ratio <- wt_fitted_model$greta_arrays$R_eff_loc_1 / .fitted_model$greta_arrays$R_eff_loc_1
-    ratio_vec <- c(ratio)
-    ratio_sims <- calculate(ratio_vec, values = .fitted_model$draws, nsim = 2000)
-    ratio_samples <- t(ratio_sims[[1]][, , 1])
-    colnames(ratio_samples) <- paste0("sim", 1:2000)
-    
-    tibble(
-      date = rep(.fitted_model$data$dates$infection_project, .fitted_model$data$n_states),
-      state = rep(.fitted_model$data$states, each = .fitted_model$data$n_dates_project),
-    ) %>%
-      mutate(date_onset = date + 5) %>%
-      cbind(ratio_samples) %>%
-      write_csv(
-        file.path(dir, "r_eff_1_ratio_samples.csv")
-      )
-    
-    # read_csv("outputs/projection/wild_type/r_eff_1_local_samples.csv") %>%
-    #   filter(date == as.Date("2020-04-11")) %>%
-    #   pivot_longer(
-    #     cols = starts_with("sim"),
-    #     names_to = "sim"
-    #   ) %>%
-    #   group_by(state, date) %>%
-    #   summarise(
-    #     mean = mean(value),
-    #     median = median(value),
-    #     lower = quantile(value, 0.05),
-    #     upper = quantile(value, 0.95),
-    #     p_exceedance = mean(value > 1)
-    #   )
-  }
-  
-}
-
-simulate_delta <- function(
-  .fitted_model = fitted_model,
-  dir = "outputs/projection/delta",
-  ratio_samples = TRUE
-){
-  
-  phi_alpha_wt <- normal(1.454, 0.055, truncation = c(0, Inf))
-  phi_delta_alpha <- normal(1.421, 0.033, truncation = c(0, Inf))
-  
-  phi_delta_wt <- phi_alpha_wt * phi_delta_alpha
-  
-  data <- .fitted_model$data
-  dates <- .fitted_model$data$dates$mobility
-  
-  de <- .fitted_model$greta_arrays$distancing_effect
-  
-  prop_voc <- prop_voc_date_state_long(dates)
-  
-  p <- de$p
-  phi_wt_star <- 1 - prop_voc + prop_voc*phi_alpha_wt
-  p_star <- p ^ (1/phi_wt_star)
-  
-  p_delta <- p_star ^ phi_delta_wt
-  
-  infectious_days <- infectious_period(gi_cdf)
-  
-  h_t <- h_t_state(dates)
-  HD_t <- de$HD_0 * h_t
-  
-  household_infections <- de$HC_0 * (1 - p_delta ^ HD_t)
-  non_household_infections <- de$OC_t_state * de$gamma_t_state *
-    infectious_days * (1 - p_delta ^ de$OD_0)
-  R_t <- household_infections + non_household_infections
-  R_eff_loc_1_no_surv <- extend(R_t, data$n_dates_project)
-  
-  
-  # multiply by the surveillance effect to get component 1
-  surveillance_reff_local_reduction <- surveillance_effect(
-    dates = data$dates$infection_project,
-    cdf = gi_cdf,
-    states = data$states
-  )
-  # 
-  
-  wt_fitted_model <- .fitted_model
-  wt_fitted_model$greta_arrays$R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_reff_local_reduction
-  
-  
-  dir.create(dir, showWarnings = FALSE)
-  write_reff_sims(wt_fitted_model, dir, write_reff_12 = FALSE)
-  
-  if(ratio_samples) {
-    ratio <- wt_fitted_model$greta_arrays$R_eff_loc_1 / .fitted_model$greta_arrays$R_eff_loc_1
-    ratio_vec <- c(ratio)
-    ratio_sims <- calculate(ratio_vec, values = .fitted_model$draws, nsim = 2000)
-    ratio_samples <- t(ratio_sims[[1]][, , 1])
-    colnames(ratio_samples) <- paste0("sim", 1:2000)
-    
-    tibble(
-      date = rep(.fitted_model$data$dates$infection_project, .fitted_model$data$n_states),
-      state = rep(.fitted_model$data$states, each = .fitted_model$data$n_dates_project),
-    ) %>%
-      mutate(date_onset = date + 5) %>%
-      cbind(ratio_samples) %>%
-      write_csv(
-        file.path(dir, "r_eff_1_ratio_samples.csv")
-      )
-    
-    # read_csv("outputs/projection/wild_type/r_eff_1_local_samples.csv") %>%
-    #   filter(date == as.Date("2020-04-11")) %>%
-    #   pivot_longer(
-    #     cols = starts_with("sim"),
-    #     names_to = "sim"
-    #   ) %>%
-    #   group_by(state, date) %>%
-    #   summarise(
-    #     mean = mean(value),
-    #     median = median(value),
-    #     lower = quantile(value, 0.05),
-    #     upper = quantile(value, 0.95),
-    #     p_exceedance = mean(value > 1)
-    #   )
-  }
-  
-}
-
 
 simulate_variant <- function(
   .fitted_model = fitted_model,
   dir = "outputs/projection/",
-  subdir,
-  ratio_samples = TRUE,
+  subdir = NA,
+  ratio_samples = FALSE,
   variant = c("wt", "alpha", "delta")
 ){
   
   variant <- match.arg(variant)
   
-  phi_alpha_wt <- normal(1.454, 0.055, truncation = c(0, Inf))
-  phi_delta_alpha <- normal(1.421, 0.033, truncation = c(0, Inf))
-  
-  phi_delta_wt <- phi_alpha_wt * phi_delta_alpha
-  
+  if(is.na(subdir)){
+    subdir <- variant
+  }
+ 
   data <- .fitted_model$data
   dates <- .fitted_model$data$dates$mobility
   
   de <- .fitted_model$greta_arrays$distancing_effect
   
-  prop_voc <- prop_voc_date_state_long(dates)
+  p_star <- de$p
   
-  p <- de$p
-  phi_wt_star <- 1 - prop_voc + prop_voc*phi_alpha_wt
-  p_star <- p ^ (1/phi_wt_star)
+  prop_var <- prop_variant(dates = dates)
+  prop_alpha <- prop_var$prop_alpha
+  prop_delta <- prop_var$prop_delta
+  prop_wt    <- prop_var$prop_wt
   
-  p_delta <- p_star ^ phi_delta_wt
+  phi_alpha       <- normal(1.454, 0.055, truncation = c(0, Inf))
+  phi_delta_alpha <- normal(1.421, 0.033, truncation = c(0, Inf))
+  
+  phi_delta <- phi_alpha * phi_delta_alpha
+  
+  phi_star <- prop_wt * 1 + prop_alpha * phi_alpha + prop_delta * phi_delta
+  
+  p <- p_star ^ (1/phi_star)
+  
+  if(variant == "wt") {
+    prop_wt_hat    <- prop_wt    * 0 + 1
+    prop_alpha_hat <- prop_alpha * 0 
+    prop_delta_hat <- prop_delta * 0
+  }else if(variant == "alpha") {
+    prop_wt_hat    <- prop_wt    * 0
+    prop_alpha_hat <- prop_alpha * 0 + 1
+    prop_delta_hat <- prop_delta * 0
+  } else if(variant == "delta") {
+    prop_wt_hat    <- prop_wt    * 0
+    prop_alpha_hat <- prop_alpha * 0
+    prop_delta_hat <- prop_delta * 0 + 1
+  } 
+  
+  phi_hat <- prop_wt_hat * 1 + prop_alpha_hat * phi_alpha + prop_delta_hat * phi_delta
+  
+  p_hat <- p ^ phi_hat
   
   infectious_days <- infectious_period(gi_cdf)
   
   h_t <- h_t_state(dates)
   HD_t <- de$HD_0 * h_t
   
-  household_infections <- de$HC_0 * (1 - p_delta ^ HD_t)
+  household_infections <- de$HC_0 * (1 - p_hat ^ HD_t)
   non_household_infections <- de$OC_t_state * de$gamma_t_state *
-    infectious_days * (1 - p_delta ^ de$OD_0)
+    infectious_days * (1 - p_hat ^ de$OD_0)
   R_t <- household_infections + non_household_infections
   R_eff_loc_1_no_surv <- extend(R_t, data$n_dates_project)
   
@@ -9225,7 +9084,7 @@ simulate_variant <- function(
   
   
   dir.create(dir, showWarnings = FALSE)
-  write_reff_sims(wt_fitted_model, dir, write_reff_12 = FALSE)
+  write_reff_sims(wt_fitted_model, paste(dir, subdir, sep = "/"), write_reff_12 = FALSE)
   
   if(ratio_samples) {
     ratio <- wt_fitted_model$greta_arrays$R_eff_loc_1 / .fitted_model$greta_arrays$R_eff_loc_1
@@ -9345,3 +9204,27 @@ hist_prior_posterior <- function(greta_array, draws, nsim = 1000, ...)  {
   hist(c(posterior_sim), xlim = xlim, main = "Posterior", ...)
   
 }
+
+read_reff_samples <- function(
+  sample.file
+){
+  
+  read.csv(sample.file) %>%
+    as_tibble %>%
+    pivot_longer(
+      cols = starts_with("sim"),
+      values_to = "value",
+      names_to = "name"
+    )  %>%
+    group_by(date, state) %>%
+    summarise(
+      med = median(value),
+      lw5 = quantile(value, 0.05),
+      up95 = quantile(value, 0.95),
+      lw25 = quantile(value, 0.25),
+      up75 = quantile(value, 0.75)
+    ) %>%
+    ungroup %>%
+    mutate(date = as.Date(as.character(date)))
+}
+
