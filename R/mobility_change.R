@@ -5,6 +5,8 @@ source("R/functions.R")
 # load, cache, and format the mobility data
 mobility <- all_mobility() %>%
   append_google_data()
+
+write_mobility_dates(mobility)
   
 saveRDS(mobility, file = "outputs/cached_mobility.RDS")
 # mobility <- readRDS("outputs/cached_mobility.RDS")
