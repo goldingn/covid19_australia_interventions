@@ -131,7 +131,7 @@ p_isolation <- isolation_delays_from_onset %>%
 ggsave(
   filename = "nsw_detailed_time_to_isolation.png",
   plot = p_isolation,
-  path = "~/Desktop",
+  path = "outputs/figures",
   width = 6, height = 5,
   bg = "white"
 )
@@ -157,7 +157,7 @@ p_detection <- detection_delays_from_onset %>%
 ggsave(
   filename = "nsw_detailed_time_to_detection.png",
   plot = p_detection,
-  path = "~/Desktop",
+  path = "outputs/figures",
   width = 6, height = 5,
   bg = "white"
 )
@@ -188,7 +188,7 @@ isolation_cdfs <- surveillance_cdfs %>%
   ) %>%
   mutate(
     surveillance_effect = c(t(surveillance)),
-    ideal_isolation_ecdf = list(ideal_isolation_ecdf),
+    ideal_isolation_ecdf = list(optimal_isolation_ecdf),
     isolation_weight = 1 - surveillance_effect,
     isolation_weight = isolation_weight / max(isolation_weight),
     isolation_ecdf = mapply(
