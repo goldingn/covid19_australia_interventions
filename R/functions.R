@@ -8374,11 +8374,11 @@ fit_survey_gam <- function(
   ci_50_hi <- pred$fit + (quantile75 * pred$se.fit)
   ci_50_lo <- pred$fit - (quantile75 * pred$se.fit)
   
-  fitted <- m$family$linkinv(pred$fit) * pred_dat$distancing
-  ci_90_hi <- m$family$linkinv(ci_90_hi) * pred_dat$distancing
-  ci_90_lo <- m$family$linkinv(ci_90_lo) * pred_dat$distancing
-  ci_50_hi <- m$family$linkinv(ci_50_hi) * pred_dat$distancing
-  ci_50_lo <- m$family$linkinv(ci_50_lo) * pred_dat$distancing
+  fitted <- m$family$linkinv(pred$fit) * pred_dat$distancing + pred_dat$distancing2
+  ci_90_hi <- m$family$linkinv(ci_90_hi) * pred_dat$distancing + pred_dat$distancing2
+  ci_90_lo <- m$family$linkinv(ci_90_lo) * pred_dat$distancing + pred_dat$distancing2
+  ci_50_hi <- m$family$linkinv(ci_50_hi) * pred_dat$distancing + pred_dat$distancing2
+  ci_50_lo <- m$family$linkinv(ci_50_lo) * pred_dat$distancing + pred_dat$distancing2
   
   
   

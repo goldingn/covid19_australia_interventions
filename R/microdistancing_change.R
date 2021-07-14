@@ -15,6 +15,29 @@ survey_distance <- data$survey_distance
 pred_data <- data$prediction_data #%>%
   #mutate(date_num = as.numeric(date_num))
 
+# pred_plot %>%
+#   filter(
+#     date > min(survey_distance$date),
+#     date < max(survey_distance$date)
+#   ) %>%
+#   filter(
+#     mean == min(mean)
+#   ) %>%
+#   pull(mean)
+
+# use the lowest modelled compliance proportion (WA on Jan 30th)
+# to get the value to add to the pre-survey period to impute the trend
+min_observed <- 0.16
+pred_data <- pred_data %>%
+  mutate(
+    distancing2 = (1 - distancing) * min_observed
+  )
+  
+range(pred_data$distancing2)
+
+
+# mess with distancing effect in pred_data
+# set to lowest observed distancing metric (relative to highest) in any state
 
 
 min_date <- min(survey_distance$date)
@@ -86,7 +109,8 @@ df_fit <- survey_distance %>%
       count,
       respondents,
       intervention_stage,
-      distancing
+      distancing,
+      distancing2
     )
   )
 
@@ -117,13 +141,15 @@ df_pred <- pred_data %>%
     state,
     date,
     intervention_stage,
-    distancing
+    distancing,
+    distancing2
   ) %>%
   nest(
     pred_dat = c(
       date,
       intervention_stage,
-      distancing
+      distancing,
+      distancing2
     )
   )
 
