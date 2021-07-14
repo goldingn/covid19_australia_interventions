@@ -1,5 +1,6 @@
 source("R/lib.R")
 
+Sys.setenv(RETICULATE_AUTOCONFIGURE = FALSE)
 library(readr)
 library(dplyr)
 library(stringr)
@@ -4048,6 +4049,7 @@ surveillance_effect <- function(dates, states, cdf,
   
 }
 
+
 # get the mean date of symptom onset give a date of detection (using the
 # time-varying time to detection distribution)
 impute_one_onset <- function(confirmation_date,
@@ -7883,6 +7885,7 @@ plot_delays <- function(
   base_colour = yellow
 ) {
   
+
   # mutate to output quantiles and then plot them
   quantiles <- delay_distributions %>%
     # plot it as the date of infection, not date of onset!
