@@ -1577,7 +1577,7 @@ plot_trend <- function(
     "1 month"
   )
   
-  range(ylim)[2] - range(ylim)[1]
+  #range(ylim)[2] - range(ylim)[1]
   
   x_text_size <- ifelse(length(unique(df$date)) < 200, 10, 9)
   

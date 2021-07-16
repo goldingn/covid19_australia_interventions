@@ -48,12 +48,25 @@ reff_plotting(
   min_date = NA
 )
 
+
+reff_plotting(
+  fitted_model,
+  dir = "outputs/projection",
+  max_date = fitted_model$data$dates$latest_project,
+  mobility_extrapolation_rectangle = FALSE,
+  projection_date = fitted_model$data$dates$latest_mobility
+)
+
 # and for projected part
-reff_plotting(fitted_model,
-              dir = "outputs/projection",
-              max_date = fitted_model$data$dates$latest_project,
-              mobility_extrapolation_rectangle = FALSE,
-              projection_date = fitted_model$data$dates$latest_mobility)
+reff_plotting(
+  fitted_model,
+  dir = "outputs/projection",
+  subdir = "figures/six_month",
+  min_date = NA,
+  max_date = fitted_model$data$dates$latest_project,
+  mobility_extrapolation_rectangle = FALSE,
+  projection_date = fitted_model$data$dates$latest_mobility
+)
 
 
 # produce simulations where proportion VOC is zero throughout period for reporting
