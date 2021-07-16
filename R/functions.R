@@ -9050,7 +9050,7 @@ simulate_variant <- function(
   
   de <- .fitted_model$greta_arrays$distancing_effect
   
-  p_star <- de$p
+  p <- de$p
   
   prop_var <- prop_variant(dates = dates)
   prop_alpha <- prop_var$prop_alpha
@@ -9062,9 +9062,9 @@ simulate_variant <- function(
   
   phi_delta <- phi_alpha * phi_delta_alpha
   
-  phi_star <- prop_wt * 1 + prop_alpha * phi_alpha + prop_delta * phi_delta
-  
-  p <- p_star ^ (1/phi_star)
+  # phi_star <- prop_wt * 1 + prop_alpha * phi_alpha + prop_delta * phi_delta
+  # 
+  # p <- p_star ^ (1/phi_star)
   
   if(variant == "wt") {
     prop_wt_hat    <- prop_wt    * 0 + 1
