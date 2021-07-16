@@ -90,7 +90,7 @@ for (this_state in all_states) {
     #   size = 1
     # ) +
     coord_cartesian(
-      xlim = c(as.Date("2020-03-01"), last_date)
+      xlim = c(as.Date("2020-03-01"), last_date)# + 7 * n_weeks_ahead)
     ) +
     scale_y_continuous(position = "right") +
     scale_x_date(
