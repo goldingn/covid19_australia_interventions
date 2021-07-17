@@ -78,15 +78,29 @@ tp_delta <- tp_delta_sims %>%
 
 # make a look up table of reference periods for PHSMs
 phsm_periods <- bind_rows(
-  # single state, single date
+    # VIC vs NSW at the peak of the Vic stage 4 lockdown are high and low
     tibble::tribble(
       ~phsm_scenario, ~state, ~date,
       "high", "VIC", as_date("2020-08-23"),
-      "medium", "SA", as_date("2020-11-20"),
-      "low", "NSW", as_date("2020-08-23"),
-      "baseline_low", "WA", as_date("2020-08-23")
+      "low", "NSW", as_date("2020-08-23")
     ),
-    # single state, multiple dates
+    # Various snap lockdowns as medium
+    # excluding those since the start of June and NT (less data) and QLD in
+    # January (confounded with public holidays) &
+    # taking the behaviour 2 days after the lockdown is imposed
+    tibble::tribble(
+      ~phsm_scenario, ~state, ~date,
+      "medium", "SA", as_date("2020-11-19"),
+      "medium", "QLD", as_date("2021-03-29"),
+      "medium", "VIC", as_date("2021-02-13"),
+      "medium", "VIC", as_date("2021-05-28"),
+      "medium", "WA", as_date("2021-01-31"),
+      "medium", "WA", as_date("2021-04-24")
+    ) %>%
+      mutate(
+        date = date + 2
+      ),
+    # NSW in March 2021 is baseline
     tibble::tibble(
       phsm_scenario = "baseline",
       state = "NSW",
@@ -95,8 +109,19 @@ phsm_periods <- bind_rows(
         as_date("2021-03-31"),
         by = 1
       )
+    ),
+    # WA in March 2021 is an alternative baseline
+    tibble::tibble(
+      phsm_scenario = "baseline_low",
+      state = "WA",
+      date = seq(
+        as_date("2021-03-01"),
+        as_date("2021-03-31"),
+        by = 1
+      )
     )
-  )
+    
+)
 
 # pull out the mean TPs for each PHSM scenario
 phsm_scenarios <- tp_delta %>%
@@ -185,11 +210,6 @@ phsm_scenarios <- tp_delta %>%
 #   ) +
 #   ylab("TP (no contact tracing)") +
 #   theme_minimal()
-  
-phsm_scenarios %>%
-  filter(
-    phase == "B"
-  )
 
 # load vaccination scenarios and compute completion dates
 completion_file <- "data/vaccinatinon/quantium_simulations/20210716 Completion rates over time.xlsx"
@@ -331,6 +351,7 @@ vacc_cohorts %>%
   )
 
 # need to join populations and compute coverages
+# collapse vaccine types to make moderna the same as pfizer
 
 
 
