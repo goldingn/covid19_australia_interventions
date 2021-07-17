@@ -76,11 +76,6 @@ tp_delta <- tp_delta_sims %>%
     tp_with_ttiq = tp_no_ttiq * maximum_effects$extra_ttiq,
   )
 
-# set the date of the peak of the national lockdown effect as shortly after the
-# 3rd increase in restrictions. Don't use minimum in TP for this period as it
-# includes the Easter holiday effect.
-national_lockdown_peak_date <- as_date("2020-04-01")
-
 # make a look up table of reference periods for PHSMs
 phsm_periods <- bind_rows(
   # single state, single date
@@ -91,12 +86,6 @@ phsm_periods <- bind_rows(
       "low", "NSW", as_date("2020-08-23"),
       "baseline_low", "WA", as_date("2020-08-23")
     ),
-    # # single date, multiple states
-    # tibble::tibble(
-    #   phsm_scenario = "medium",
-    #   state = obj$data$states,
-    #   date = national_lockdown_peak_date
-    # ),
     # single state, multiple dates
     tibble::tibble(
       phsm_scenario = "baseline",
@@ -219,7 +208,8 @@ completion <- completion_file %>%
     values_to = "coverage"
   ) %>%
   mutate(
-    vacc_scenario = gsub("^Scenario ", "", vacc_scenario)
+    vacc_scenario = gsub("^Scenario ", "", vacc_scenario),
+    vacc_scenario = as.integer(vacc_scenario)
   ) %>%
   right_join(
     expand_grid(
@@ -241,7 +231,111 @@ completion <- completion_file %>%
   )
 
 # for each of these, pull out the relevant age/dose/type distributions from the simulations
-# vaccinations <- read.csv("data/vaccinatinon/quantium_simulations/vaccinations.csv")
+vaccinations <- read.csv("data/vaccinatinon/quantium_simulations/vaccinations.csv")
+
+# combine this with 'completion' to flag get the final dates of administration for aggregation.
+week_lookup <- read.csv("data/vaccinatinon/quantium_simulations/dim_time.csv") %>%
+  mutate(
+    week = as_date(week_starting)
+  ) %>%
+  select(
+    -week_starting
+  )
+
+vacc_total <- vaccinations %>%
+  group_by(
+    scenario,
+    age_band_id,
+    vaccine,
+    time_dose_1,
+    time_dose_2
+  ) %>%
+  summarise(
+    num_people = sum(num_people),
+    .groups = "drop"
+  ) 
+
+vacc_cohorts <- expand_grid(
+  scenario = unique(completion$vacc_scenario),
+  coverage = unique(completion$target_coverage),
+  time_dose_1 = unique(vacc_total$time_dose_1),
+  time_dose_2 = unique(vacc_total$time_dose_2),
+  age_band_id = unique(vacc_total$age_band_id),
+  vaccine = unique(vacc_total$vaccine)
+) %>%
+  left_join(
+    vacc_total,
+    by = c("scenario", "time_dose_1", "time_dose_2", "age_band_id", "vaccine")
+  ) %>%
+  filter(
+    !is.na(num_people)
+  ) %>%
+  # convert week numbers to dates
+  left_join(
+    rename(week_lookup, week_dose_1 = week),
+    by = c("time_dose_1" = "time")
+  ) %>%
+  left_join(
+    rename(week_lookup, week_dose_2 = week),
+    by = c("time_dose_2" = "time")
+  ) %>%
+  pivot_longer(
+    cols = starts_with("week_dose_"),
+    names_to = "dose",
+    values_to = "week"
+  ) %>%
+  mutate(
+    dose = gsub("week_dose_", "", dose)
+  )
+
+# join to dates of targets being achieved, filter, and sum to get 1 dose and 2 dose counts
+vacc_cohorts %>%
+  left_join(
+    rename(
+      completion,
+      target_week = week
+    ),
+    by = c(
+      "scenario" = "vacc_scenario",
+      "coverage" = "target_coverage"
+    )
+  ) %>%
+  # remove vaccinations after the target week
+  filter(
+    week <= target_week
+  ) %>%
+  # compute cumulative vaccinations by the the groups we need (note dose 1 is *
+  # any* dose 1, so need subtract dose 2s to get population with *only* dose 1)
+  group_by(
+    scenario,
+    coverage,
+    age_band_id,
+    vaccine,
+    dose
+  ) %>%
+  summarise(
+    num_people = sum(num_people),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    dose = paste0("dose_", dose)
+  ) %>%
+  pivot_wider(
+    names_from = "dose",
+    values_from = "num_people"
+  ) %>%
+  mutate(
+    dose_1 = replace_na(dose_1, 0),
+    dose_2 = replace_na(dose_2, 0),
+    only_dose_1 = dose_1 - dose_2
+  )
+
+# need to join populations and compute coverages
+
+
+
+
+
 
 
 # for now, compute fake vaccination coverages for Treasury
