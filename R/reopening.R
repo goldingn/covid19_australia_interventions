@@ -572,13 +572,26 @@ vacc_coverage_5y <- vacc_coverage %>%
     across(
       starts_with("fraction_"),
       ~ replace_na(., 0.25)
-    )
+    ),
+    # average_efficacy_transmission = 
   ) %>%
   arrange(
     scenario,
     target_coverage,
     age_band_5y
   )
+
+# compute the average efficacy for each row from the fractions
+
+# need to adjust the average efficacy function to handle the 2x2 table of
+# fractions
+
+
+# check that that dates computed are actually the minimum dates (coverages seem
+# a bit high in the higher scenarios)
+
+# change how the relative infectiousness of age groups is computed
+
 
 
 # for now, compute fake vaccination coverages for Treasury
