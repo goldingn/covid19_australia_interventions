@@ -574,8 +574,7 @@ vacc_coverage_5y <- vacc_coverage %>%
     across(
       starts_with("fraction_"),
       ~ replace_na(., 0.25)
-    ),
-    # average_efficacy_transmission = 
+    )
   ) %>%
   arrange(
     scenario,
@@ -583,57 +582,59 @@ vacc_coverage_5y <- vacc_coverage %>%
     age_band_5y
   )
 
-# compute the average efficacy for each row from the fractions
-
-# need to adjust the average efficacy function to handle the 2x2 table of
-# fractions
-
-
-# for now, compute fake vaccination coverages for Treasury
-fake_vaccine_effect <- function(two_dose_coverage, remainder_one_dose_coverage = 0.1) {
-  
-  one_dose_coverage <- (1 - two_dose_coverage) * remainder_one_dose_coverage
-  total_coverage <- two_dose_coverage + one_dose_coverage
-  
-  next_generation_matrix <- baseline_matrix()
-  
-  combine_efficacy <- function(infection, transmission) {
-    1 - ((1 - infection) * (1 - transmission)) 
-  }
-  
-  efficacy <- average_efficacy(
-    efficacy_pf_2_dose = combine_efficacy(0.79, 0.65),
-    efficacy_az_2_dose = combine_efficacy(0.60, 0.65),
-    efficacy_pf_1_dose = combine_efficacy(0.30, 0.46),
-    efficacy_az_1_dose = combine_efficacy(0.18, 0.48),
-    proportion_pf = 0.5,
-    proportion_2_dose = two_dose_coverage / total_coverage
+# compute the reduction in transmission from different age-structured 
+# vaccine coverage scenarios
+vacc_effect_by_age <- vacc_coverage_5y %>%
+  mutate(
+    average_efficacy_transmission = average_efficacy(
+      efficacy_pf_2_dose = combine_efficacy(0.79, 0.65),
+      efficacy_az_2_dose = combine_efficacy(0.60, 0.65),
+      efficacy_pf_1_dose = combine_efficacy(0.30, 0.46),
+      efficacy_az_1_dose = combine_efficacy(0.18, 0.48),
+      proportion_pf_2_dose = fraction_dose_2_mRNA,
+      proportion_az_2_dose = fraction_dose_2_AZ,
+      proportion_pf_1_dose = fraction_only_dose_1_mRNA,
+      proportion_az_1_dose = fraction_only_dose_1_AZ
+    )
+  ) %>%
+  select(
+    scenario,
+    target_coverage,
+    age_band_5y,
+    proportion_vaccinated,
+    average_efficacy_transmission
+  ) %>%
+  group_by(
+    scenario,
+    target_coverage
+  ) %>%
+  mutate(
+    vacc_effect = vaccination_transmission_effect(
+      age_coverage = proportion_vaccinated,
+      efficacy_mean = average_efficacy_transmission,
+      next_generation_matrix = baseline_matrix()
+    )$by_age    
+  ) %>%
+  rename(
+    vacc_scenario = scenario,
+    vacc_coverage = target_coverage
   )
-  
-  coverage <- c(rep(0, 3), rep(total_coverage, 14))
-  
-  effect <- vaccination_transmission_effect(
-    age_coverage = coverage,
-    efficacy_mean = efficacy,
-    next_generation_matrix = next_generation_matrix
-  )
-  
-  effect$overall
-  
-}
 
-vaccination_scenarios <- expand_grid(
-  vacc_scenario = 1:2,
-  vacc_coverage = c(50, 60, 70, 80)
-) %>%
+vaccination_scenarios <- vacc_effect_by_age %>%
   group_by(
     vacc_scenario,
     vacc_coverage
   ) %>%
-  mutate(
-    vacc_effect = fake_vaccine_effect(vacc_coverage / 100)
-  ) %>%
-  ungroup()
+  summarise(
+    vacc_effect = vaccination_transmission_effect(
+      age_coverage = proportion_vaccinated,
+      efficacy_mean = average_efficacy_transmission,
+      next_generation_matrix = baseline_matrix()
+    )$overall,
+    .groups = "drop"
+  )
+
+summary(vaccination_scenarios)
 
 # assuming restrictions pulse between two states: baseline and lockdown, with R
 # for baseline greater than 1 (cases grow) and R for lockdown less than 1 (cases
@@ -691,7 +692,7 @@ scenarios <-
 write.csv(
   scenarios,
   file = paste0(
-    "~/Desktop/tp_scenarios_FAKE_",
+    "~/Desktop/tp_scenarios_draft_",
     Sys.Date(),
     ".csv"
   ),
@@ -701,9 +702,11 @@ write.csv(
 
 scenarios %>%
   filter(
-    phase == "B",
-    baseline_type == "standard",
-    vacc_scenario == 1
+    phase == "A",
+    vacc_coverage == 0.8,
+    baseline_type == "standard"
   ) %>%
   as.data.frame()
+
+
 
