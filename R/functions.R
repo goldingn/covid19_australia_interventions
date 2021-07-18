@@ -8672,15 +8672,17 @@ baseline_matrix <- function(R0 = 2.5, final_age_bin = 80) {
   )
   
   # calculate relative infectiousness (using relative differences in clinical
-  # fraction as a proxy) and transmissability by age
-  
+  # fraction by age and assumed relative infectiousness of asymptomatics) and
+  # susceptibility by age
+  asymp_rel_infectious <- 0.5
   age_contribution <- age_disaggregation %>%
     left_join(
       age_data_davies,
       by = c("age_group_10y" = "age_group")
     ) %>%
     mutate(
-      rel_infectiousness = clinical_fraction_mean / max(clinical_fraction_mean),
+      rel_infectiousness = clinical_fraction_mean + asymp_rel_infectious * (1 - clinical_fraction_mean),
+      rel_infectiousness = rel_infectiousness / max(rel_infectiousness),
       rel_susceptibility = rel_susceptibility_mean / max(rel_susceptibility_mean),
     ) %>%
     select(
