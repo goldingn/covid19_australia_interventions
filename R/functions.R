@@ -8617,7 +8617,6 @@ disaggregation_vec <- function(mask, distribution) {
 baseline_matrix <- function(R0 = 2.5, final_age_bin = 80) {
   # construct a next generation matrix for Australia from Prem matrix
   
-  
   # Prem 2017 contact matrix
   contact_matrix_raw <- readxl::read_xlsx(
     path = "data/vaccinatinon/MUestimates_all_locations_1.xlsx",
@@ -8640,58 +8639,69 @@ baseline_matrix <- function(R0 = 2.5, final_age_bin = 80) {
     bin_names
   )
   
-  # relative infectiousness data from Trauer et al 2021
-  age_susceptability <- readr::read_csv(
-    file = "data/vaccinatinon/trauer_2021_supp_table5.csv",
-    col_names = c(
-      "age_group",
-      "clinical_fraction",
-      "relative_susceptability",
-      "infection_fatality_rate",
-      "proportion_symtomatic_hospitalised"
-    ),
+  age_disaggregation <- tibble::tribble(
+    ~age_group_10y, ~age_group_5y,
+    "0_9", "0-4",
+    "0_9", "5-9",
+    "10_19", "10-14",
+    "10_19", "15-19",
+    "20_29", "20-24",
+    "20_29", "25-29",
+    "30_39", "30-34", 
+    "30_39", "35-39",
+    "40_49", "40-44",
+    "40_49", "45-49",
+    "50_59", "50-54",
+    "50_59", "55-59",
+    "60_69", "60-64",
+    "60_69", "65-69",
+    "70+", "70-74",
+    "70+", "75-79",
+    "70+", "80+"
+  )
+  
+  age_data_davies <- read_csv(
+    "data/vaccinatinon/susceptibility_clinical_fraction_age_Davies.csv",
     col_types = cols(
       age_group = col_character(),
-      clinical_fraction = col_double(),
-      relative_susceptability = col_double(),
-      infection_fatality_rate = col_double(),
-      proportion_symtomatic_hospitalised = col_double()
-    ),
-    skip = 1
-  ) %>%
-    # duplicate the final row, and re-use for the 74-79 and 80+ classes
-    add_row(
-      .[16, ]
+      rel_susceptibility_mean = col_double(),
+      rel_susceptibility_median = col_double(),
+      clinical_fraction_mean = col_double(),
+      clinical_fraction_median = col_double()
+    )
+  )
+  
+  # calculate relative infectiousness (using relative differences in clinical
+  # fraction as a proxy) and transmissability by age
+  
+  age_contribution <- age_disaggregation %>%
+    left_join(
+      age_data_davies,
+      by = c("age_group_10y" = "age_group")
     ) %>%
     mutate(
-      age_class = bin_names
+      rel_infectiousness = clinical_fraction_mean / max(clinical_fraction_mean),
+      rel_susceptibility = rel_susceptibility_mean / max(rel_susceptibility_mean),
     ) %>%
-    dplyr::select(
-      age_class,
-      everything(),
-      -age_group
+    select(
+      age_group_5y,
+      rel_infectiousness,
+      rel_susceptibility
     )
   
-  # calculate relative infectiousness - assume asymptomatics are 50% less
-  # infectious, and use age-stratified symptomaticity
-  relative_infectiousness <- age_susceptability$clinical_fraction*1 + 0.5*(1 - age_susceptability$clinical_fraction)
-  q <- relative_infectiousness
-  q_scaled <- q/max(q)
-  
-  # apply the q scaling before computing m
-  contact_matrix_scaled <- sweep(contact_matrix, 2, q_scaled, FUN = "*")
+  # adjust infectiousness on columns and susceptibility on rows
+  contact_matrix <- sweep(contact_matrix, 2, age_contribution$rel_infectiousness, FUN = "*")
+  contact_matrix <- sweep(contact_matrix, 1, age_contribution$rel_susceptibility, FUN = "*")
   
   # calculate m - number of onward infections per relative contact 
   m <- find_m(
     R_target = R0,
-    transition_matrix = contact_matrix_scaled
+    transition_matrix = contact_matrix
   )
   
-  contact_matrix_scaled * m
+  contact_matrix * m
   
 }
-
-
 
 age_classes <- function(final_age_bin = 80, by = 5) {
   

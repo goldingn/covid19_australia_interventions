@@ -380,8 +380,10 @@ fake_vaccine_effect <- function(two_dose_coverage, remainder_one_dose_coverage =
     proportion_2_dose = two_dose_coverage / total_coverage
   )
   
+  coverage <- c(rep(0, 3), rep(total_coverage, 14))
+  
   effect <- vaccination_transmission_effect(
-    age_coverage = rep(total_coverage, 17),
+    age_coverage = coverage,
     efficacy_mean = efficacy,
     next_generation_matrix = next_generation_matrix
   )
