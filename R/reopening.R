@@ -565,10 +565,12 @@ vacc_coverage_5y <- vacc_coverage %>%
     target_coverage = coverage,
     age_band_5y,
     proportion_vaccinated = coverage_any_dose_1,
+    proportion_fully_vaccinated = coverage_any_dose_2,
     starts_with("fraction_")
   ) %>%
   mutate(
     proportion_vaccinated = replace_na(proportion_vaccinated, 0),
+    proportion_fully_vaccinated = replace_na(proportion_fully_vaccinated, 0),
     across(
       starts_with("fraction_"),
       ~ replace_na(., 0.25)
@@ -585,13 +587,6 @@ vacc_coverage_5y <- vacc_coverage %>%
 
 # need to adjust the average efficacy function to handle the 2x2 table of
 # fractions
-
-
-# check that that dates computed are actually the minimum dates (coverages seem
-# a bit high in the higher scenarios)
-
-# change how the relative infectiousness of age groups is computed
-
 
 
 # for now, compute fake vaccination coverages for Treasury
