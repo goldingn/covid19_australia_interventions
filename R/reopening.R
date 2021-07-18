@@ -317,39 +317,39 @@ quantium_age_lookup <- read_csv(
 )
 
 age_lookup <- tibble::tribble(
-  ~age_lower, ~age_upper, ~age_band, 
-  0,         4, "0-9",
-  5,         9, "0-9",
-  10,        10, "10-19",
-  11,        11, "10-19",
-  12,        12, "10-19",
-  13,        13, "10-19",
-  14,        14, "10-19",
-  15,        15, "10-19",
-  16,        16, "10-19",
-  17,        17, "10-19",
-  18,        19, "10-19",
-  20,        24, "20-29",
-  25,        29, "20-29",
-  30,        34, "30-39",
-  35,        39, "30-39",
-  40,        44, "40-49",
-  45,        49, "40-49",
-  50,        54, "50-59",
-  55,        59, "50-59",
-  60,        64, "60-69",
-  65,        69, "60-69",
-  70,        74, "70-79",
-  75,        79, "70-79",
-  80,        84, "80+",
-  85,        89, "80+",
-  90,        94, "80+",
-  95,        99, "80+",
-  100,       999, "80+"
+  ~age_lower, ~age_upper, ~age_band_quantium, ~age_band_5y,
+  0,         4, "0-9", "0-4",
+  5,         9, "0-9", "5-9",
+  10,        10, "10-19", "10-14",
+  11,        11, "10-19", "10-14",
+  12,        12, "10-19", "10-14",
+  13,        13, "10-19", "10-14",
+  14,        14, "10-19", "10-14",
+  15,        15, "10-19", "15-19",
+  16,        16, "10-19", "15-19",
+  17,        17, "10-19", "15-19",
+  18,        19, "10-19", "15-19",
+  20,        24, "20-29", "20-24",
+  25,        29, "20-29", "25-29",
+  30,        34, "30-39", "30-34",
+  35,        39, "30-39", "35-39",
+  40,        44, "40-49", "40-44",
+  45,        49, "40-49", "45-49",
+  50,        54, "50-59", "50-54",
+  55,        59, "50-59", "55-59",
+  60,        64, "60-69", "60-64",
+  65,        69, "60-69", "65-69",
+  70,        74, "70-79", "70-74",
+  75,        79, "70-79", "75-79",
+  80,        84, "80+", "80+",
+  85,        89, "80+", "80+",
+  90,        94, "80+", "80+",
+  95,        99, "80+", "80+",
+  100,       999, "80+",  "80+"
 ) %>%
   left_join(
     quantium_age_lookup,
-    by = "age_band"
+    by = c("age_band_quantium" = "age_band")
   )
 
 
@@ -379,7 +379,7 @@ age_pops_eligible <- pop_data %>%
     by = c("age_lower", "age_upper")
   ) %>%
   group_by(
-    age_band, age_band_id
+    age_band_quantium, age_band_id
   ) %>%
   summarise(
     population = sum(population),
@@ -525,6 +525,61 @@ vacc_coverage %>%
     across(starts_with("target_met"), all),
     across(starts_with("identical"), all)
   )
+
+# create a lookup from quantium 10y age bins to the 5 year age bins in the NGM
+# for computing the vaccination effect
+age_lookup_quantium_5y <- age_lookup %>%
+  mutate(
+    age_band_5y = factor(
+      age_band_5y,
+      levels = age_classes()$classes
+    )
+  ) %>%
+  group_by(
+    age_band_5y
+  ) %>%
+  summarise(
+    age_band_quantium = first(age_band_quantium),
+    .groups = "drop"
+  )
+
+age_combinations <- expand_grid(
+  scenario = unique(vacc_coverage$scenario),
+  coverage = unique(vacc_coverage$coverage),
+  age_band_5y = unique(age_lookup_quantium_5y$age_band_5y)
+) %>%
+  left_join(
+    age_lookup_quantium_5y,
+    by = "age_band_5y"
+  )
+
+# compute age-structured vaccination coverages, fractions of each type/dose,
+# and disaggregate to 5-year age bins for estimating the vaccination effect
+vacc_coverage_5y <- vacc_coverage %>%
+  right_join(
+    age_combinations,
+    by = c("scenario", "coverage", "age_band_quantium")
+  ) %>%
+  select(
+    scenario,
+    target_coverage = coverage,
+    age_band_5y,
+    proportion_vaccinated = coverage_any_dose_1,
+    starts_with("fraction_")
+  ) %>%
+  mutate(
+    proportion_vaccinated = replace_na(proportion_vaccinated, 0),
+    across(
+      starts_with("fraction_"),
+      ~ replace_na(., 0.25)
+    )
+  ) %>%
+  arrange(
+    scenario,
+    target_coverage,
+    age_band_5y
+  )
+
 
 # for now, compute fake vaccination coverages for Treasury
 fake_vaccine_effect <- function(two_dose_coverage, remainder_one_dose_coverage = 0.1) {
