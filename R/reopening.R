@@ -308,8 +308,115 @@ vacc_cohorts <- expand_grid(
     dose = gsub("week_dose_", "", dose)
   )
 
-# join to dates of targets being achieved, filter, and sum to get 1 dose and 2 dose counts
-vacc_cohorts %>%
+quantium_age_lookup <- read_csv(
+  "data/vaccinatinon/quantium_simulations/dim_age_band.csv",
+  col_types = cols(
+    age_band_id = col_double(),
+    age_band = col_character()
+  )
+)
+
+age_lookup <- tibble::tribble(
+  ~age_lower, ~age_upper, ~age_band, 
+  0,         4, "0-9",
+  5,         9, "0-9",
+  10,        10, "10-19",
+  11,        11, "10-19",
+  12,        12, "10-19",
+  13,        13, "10-19",
+  14,        14, "10-19",
+  15,        15, "10-19",
+  16,        16, "10-19",
+  17,        17, "10-19",
+  18,        19, "10-19",
+  20,        24, "20-29",
+  25,        29, "20-29",
+  30,        34, "30-39",
+  35,        39, "30-39",
+  40,        44, "40-49",
+  45,        49, "40-49",
+  50,        54, "50-59",
+  55,        59, "50-59",
+  60,        64, "60-69",
+  65,        69, "60-69",
+  70,        74, "70-79",
+  75,        79, "70-79",
+  80,        84, "80+",
+  85,        89, "80+",
+  90,        94, "80+",
+  95,        99, "80+",
+  100,       999, "80+"
+) %>%
+  left_join(
+    quantium_age_lookup,
+    by = "age_band"
+  )
+
+
+pop_data <- read_csv(
+  "data/vaccinatinon/2021-07-13-census-populations.csv",
+  col_types = cols(
+    ste_name16 = col_character(),
+    sa3_name16 = col_character(),
+    sa2_name16 = col_character(),
+    mmm2019 = col_double(),
+    age_lower = col_double(),
+    age_upper = col_double(),
+    is_indigenous = col_logical(),
+    is_comorbidity = col_logical(),
+    vaccine_segment = col_character(),
+    population = col_double()
+  )
+)
+
+# compute vaccine-eligible population in each age bin, for age-specific eligible coverage estimates
+age_pops_eligible <- pop_data %>%
+  filter(
+    age_lower >= 16
+  ) %>%
+  left_join(
+    age_lookup,
+    by = c("age_lower", "age_upper")
+  ) %>%
+  group_by(
+    age_band, age_band_id
+  ) %>%
+  summarise(
+    population = sum(population),
+    .groups = "drop"
+  )
+
+# compute total and eligible (16+) populations
+eligible_population <- pop_data %>%
+  filter(
+    age_lower >= 16
+  ) %>%
+  summarise(
+    population = sum(population)
+  ) %>%
+  pull(
+    population
+  )
+
+total_population <- pop_data %>%
+  summarise(
+    population = sum(population)
+  ) %>%
+  pull(
+    population
+  )
+
+# join to dates of targets being achieved, filter, and sum to get 1 dose and 2
+# dose counts and age-bin coverages
+vacc_coverage <- vacc_cohorts %>%
+  # combine moderna and Pfizer for computing vaccine effectiveness
+  mutate(
+    vaccine = case_when(
+      vaccine == 1 ~ "mRNA",
+      vaccine == 2 ~ "AZ",
+      vaccine == 3 ~ "mRNA"
+    )
+  ) %>%
   left_join(
     rename(
       completion,
@@ -348,16 +455,76 @@ vacc_cohorts %>%
     dose_1 = replace_na(dose_1, 0),
     dose_2 = replace_na(dose_2, 0),
     only_dose_1 = dose_1 - dose_2
+  ) %>%
+  # collapse down to 1 row per scenario/age group
+  pivot_wider(
+    names_from = "vaccine",
+    values_from = c("dose_1", "dose_2", "only_dose_1")
+  ) %>%
+  left_join(
+    age_pops_eligible,
+    by = "age_band_id"
+  ) %>%
+  mutate(
+    any_dose_2 = dose_2_AZ + dose_2_mRNA,
+    any_dose_1 = dose_1_AZ + dose_1_mRNA,
+    any_only_dose_1 = only_dose_1_AZ + only_dose_1_mRNA
+  ) %>%
+  mutate(
+    coverage_any_dose_2 = any_dose_2 / population,
+    coverage_any_dose_1 = any_dose_1 / population,
+    coverage_any_only_dose_1 = any_only_dose_1 / population,
+    across(
+      c(only_dose_1_AZ, dose_2_AZ, only_dose_1_mRNA, dose_2_mRNA),
+      .fns = list(fraction = ~ . / any_dose_1),
+      .names = "{.fn}_{.col}"
+    )
   )
 
-# need to join populations and compute coverages
-# collapse vaccine types to make moderna the same as pfizer
+# check the fractions for each age group sum to one
+vacc_coverage %>%
+  mutate(
+    fraction_sum = fraction_only_dose_1_AZ + fraction_dose_2_AZ + fraction_only_dose_1_mRNA + fraction_dose_2_mRNA,
+    fractions_sum_to_one = abs(1 - fraction_sum) < 1e-6
+  ) %>%
+  # check this is correct for all scenarios and coverages
+  summarise(
+    across("fractions_sum_to_one", all)
+  )
 
-
-
-
-
-
+# check the coverage dates match these numbers, when calculated 3 ways:
+# weighted mean on group level eligible population coverages;
+# summing group level counts and summing by group-level eligible populations;
+# summing group level counts and using external sum of eligible populations
+# also check that the coverage estimates are identical using these methods
+vacc_coverage %>%
+  group_by(
+    scenario,
+    coverage
+  ) %>%
+  summarise(
+    coverage_any_dose_2 = weighted_mean(x = coverage_any_dose_2, w = population),
+    across(c(contains("dose"), population), sum),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    observed_coverage_group_count = any_dose_2 / population,
+    observed_coverage_total = any_dose_2 / eligible_population
+  ) %>%
+  mutate(
+    target_met_groups = coverage_any_dose_2 >= coverage,
+    target_met_group_count = observed_coverage_group_count >= coverage,
+    target_met_total = observed_coverage_total >= coverage
+  ) %>%
+  mutate(
+    identical_total = observed_coverage_total == coverage_any_dose_2,
+    identical_group_count = observed_coverage_group_count == coverage_any_dose_2
+  ) %>%
+  # check this is correct for all scenarios and coverages
+  summarise(
+    across(starts_with("target_met"), all),
+    across(starts_with("identical"), all)
+  )
 
 # for now, compute fake vaccination coverages for Treasury
 fake_vaccine_effect <- function(two_dose_coverage, remainder_one_dose_coverage = 0.1) {
@@ -469,4 +636,11 @@ write.csv(
 )
 
 
+scenarios %>%
+  filter(
+    phase == "B",
+    baseline_type == "standard",
+    vacc_scenario == 1
+  ) %>%
+  as.data.frame()
 
