@@ -58,6 +58,69 @@ partial_effects <- effects %>%
     extra_ttiq = extra_ttiq_effect
   )
 
+# output the distributions for times to isolation at these points for Eamon's model
+tti_cdfs <- effects %>%
+  filter(
+    surveillance_effect == min(surveillance_effect),
+  ) %>%
+  filter(
+    date == first(date)
+  ) %>%
+  select(
+    date,
+    state
+  ) %>%
+  mutate(
+    ttiq = "optimal"
+  ) %>%
+  bind_rows(
+    tibble(
+      date = as_date("2020-08-04"),
+      state = "VIC",
+      ttiq = "partial"
+    )
+  ) %>%
+  left_join(
+    readRDS("outputs/isolation_cdfs.RDS"),
+    by = c("date", "state")
+  ) %>%
+  select(
+    -date, -state
+  ) %>%
+  pivot_wider(
+    names_from = ttiq,
+    values_from = ecdf
+  )
+
+tti_distributions <- tibble(
+  days = environment(tti_cdfs$partial[[1]])$x,
+  partial = environment(tti_cdfs$partial[[1]])$pdf
+) %>%
+  left_join(
+    tibble(
+      days = environment(tti_cdfs$optimal[[1]])$x,
+      optimal = environment(tti_cdfs$optimal[[1]])$pdf
+    ),
+    by = "days"
+  ) %>%
+  mutate(
+    optimal = replace_na(optimal, 0),
+    optimal = optimal / sum(optimal),
+    partial = partial / sum(partial)
+  )
+
+tti_distributions %>%
+  summarise(
+    across(
+      c(partial, optimal),
+      ~sum(.*days)
+    )
+  )
+
+barplot(tti_distributions$partial)
+barplot(tti_distributions$optimal)
+
+
 # compute the mean of 'observed' TP over time in each state, and add on the
 # surveillance and TTIQ effects, then compute TP with these at their optimal 
 # and partial values
