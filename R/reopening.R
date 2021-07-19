@@ -3,7 +3,6 @@ source("R/lib.R")
 source("R/functions.R")
 
 # load TP timeseries estimates for delta
-# tp_delta_sims <- read.csv("~/Dropbox/covid_output/ttiq/projection/delta/r_eff_1_local_samples.csv")
 tp_delta_sims <- read.csv("~/Desktop/delta_r_eff_1_local_samples.csv")
 
 # load Reff model object (to get TTIQ and surveillance effects)
@@ -41,15 +40,27 @@ effects <- surveillance_effect %>%
     by = c("date", "state")
   )
 
-# pull out the maximum effects
-maximum_effects <- effects %>%
+# pull out the optimal effects of contact tracing
+optimal_effects <- effects %>%
   summarise(
     surveillance = min(surveillance_effect),
     extra_ttiq = min(extra_ttiq_effect)
   )
 
+# and the effects on the case peak of the Victorian 2nd wave
+partial_effects <- effects %>%
+  filter(
+    state == "VIC",
+    date == as_date("2020-08-04")
+  ) %>%
+  select(
+    surveillance = surveillance_effect,
+    extra_ttiq = extra_ttiq_effect
+  )
+
 # compute the mean of 'observed' TP over time in each state, and add on the
-# surveillance and TTIQ effects, then compute TP with these at their maximum values
+# surveillance and TTIQ effects, then compute TP with these at their optimal 
+# and partial values
 tp_delta <- tp_delta_sims %>%
   mutate(
     date = as_date(date)
@@ -70,10 +81,12 @@ tp_delta <- tp_delta_sims %>%
   mutate(
     # divide out the surveillance and ttiq effects to get the Delta TP in the absence of these measures
     tp_no_surveillance_ttiq = observed_tp / (extra_ttiq_effect * surveillance_effect),
-    # add in the maximal surveillance effect
-    tp_no_ttiq = tp_no_surveillance_ttiq * maximum_effects$surveillance,
-    # add in the maximal extra TTIQ effect
-    tp_with_ttiq = tp_no_ttiq * maximum_effects$extra_ttiq,
+    # add in the optinal surveillance effect, but no extra TTIQ effect
+    tp_no_ttiq = tp_no_surveillance_ttiq * optimal_effects$surveillance,
+    # add in the optimal surveillance and extra TTIQ effect
+    tp_partial_ttiq = tp_no_surveillance_ttiq * partial_effects$surveillance * partial_effects$extra_ttiq,
+    # add in the optimal surveillance and extra TTIQ effect
+    tp_optimal_ttiq = tp_no_ttiq * optimal_effects$extra_ttiq,
   )
 
 # make a look up table of reference periods for PHSMs
@@ -121,7 +134,8 @@ phsm_scenarios <- tp_delta %>%
   ) %>%
   summarise(
     tp_no_ttiq = mean(tp_no_ttiq),
-    tp_with_ttiq = mean(tp_with_ttiq),
+    tp_partial_ttiq = mean(tp_partial_ttiq),
+    tp_optimal_ttiq = mean(tp_optimal_ttiq)
   ) %>%
   # reshape to have TTIQ/baseline scenarios as rows
   pivot_longer(
@@ -130,14 +144,11 @@ phsm_scenarios <- tp_delta %>%
     values_to = "tp"
   ) %>%
   mutate(
-    phase = ifelse(
-      ttiq == "tp_with_ttiq",
-      "A",
-      "B"
+    ttiq = case_when(
+      ttiq == "tp_optimal_ttiq" ~ "optimal",
+      ttiq == "tp_partial_ttiq" ~ "partial",
+      ttiq == "tp_no_ttiq" ~ "minimal"
     )
-  ) %>%
-  select(
-    -ttiq
   ) %>%
   # now reshape to have baseline as a column
   pivot_wider(
@@ -160,7 +171,7 @@ phsm_scenarios <- tp_delta %>%
     ~paste0("tp_", .)
   ) %>%
   relocate(
-    phase,
+    ttiq,
     baseline_type,
     tp_baseline,
     tp_low,
@@ -171,18 +182,33 @@ phsm_scenarios <- tp_delta %>%
 # tp_delta %>%
 #   ggplot(
 #     aes(
-#       y = tp_no_ttiq,
+#       y = tp_partial_ttiq,
 #       x = date
 #     )
 #   ) +
-#   geom_line() +
 #   geom_vline(
-#     xintercept = as_date("2020-08-23"),
-#     linetype = 2
+#     aes(
+#       xintercept = date
+#     ),
+#     data = phsm_periods,
+#     color = grey(0.7)
 #   ) +
 #   geom_hline(
 #     yintercept = 1,
-#     linetype = 3
+#     linetype = 2
+#   ) +
+#   geom_line() +
+#   geom_line(
+#     aes(
+#       y = tp_optimal_ttiq,
+#     ),
+#     color = grey(0.4)
+#   ) +
+#   geom_line(
+#     aes(
+#       y = tp_no_ttiq,
+#     ),
+#     color = grey(0.4)
 #   ) +
 #   facet_wrap(
 #     ~state,
@@ -190,9 +216,9 @@ phsm_scenarios <- tp_delta %>%
 #   ) +
 #   scale_y_continuous(
 #     breaks = 1:8,
-#     # trans = "log"
+#     trans = "log"
 #   ) +
-#   ylab("TP (no contact tracing)") +
+#   ylab("baseline TP (alternative TTIQ effectiveness)") +
 #   theme_minimal()
 
 # load vaccination scenarios and compute completion dates
@@ -641,17 +667,31 @@ fraction_lockdown <- function(
   fraction
 }
 
+vacc_scenario_lookup <- read_csv(
+  "data/vaccinatinon/quantium_simulations/dim_scenario.csv",
+  col_types = cols(
+    scenario = col_double(),
+    priority_order = col_character(),
+    az_dose_gap = col_character(),
+    az_age_cutoff = col_double()
+  )
+)
+
 # combine all scenarios
 scenarios <-
   expand_grid(
-    phase = unique(phsm_scenarios$phase),
+    ttiq = unique(phsm_scenarios$ttiq),
     baseline_type = unique(phsm_scenarios$baseline_type),
     vacc_scenario = unique(vaccination_scenarios$vacc_scenario),
     vacc_coverage = unique(vaccination_scenarios$vacc_coverage)
   ) %>%
   left_join(
+    vacc_scenario_lookup,
+    by = c("vacc_scenario" = "scenario")
+  ) %>%
+  left_join(
     phsm_scenarios,
-    by = c("phase", "baseline_type")
+    by = c("ttiq", "baseline_type")
   ) %>%
   left_join(
     vaccination_scenarios,
@@ -673,24 +713,31 @@ scenarios <-
     p_high_vacc_vs_low_vacc = fraction_lockdown(tp_low_vacc, tp_high_vacc)
   )
 
+# output all TP scenarios
+scenarios %>%
+  write.csv(
+    file = paste0(
+      "~/Desktop/tp_scenarios_draft_",
+      Sys.Date(),
+      ".csv"
+    ),
+    row.names = FALSE
+  )
+
+# output subset of scenarios for treasury
+scenarios %>%
+  filter(
+    ttiq %in% c("partial", "optimal"),
+    baseline_type == "standard",
+    vacc_scenario %in% 1:3
+  ) %>%
 write.csv(
-  scenarios,
   file = paste0(
-    "~/Desktop/tp_scenarios_draft_",
+    "~/Desktop/tp_scenarios_draft_for_treasury_",
     Sys.Date(),
     ".csv"
   ),
   row.names = FALSE
 )
-
-
-scenarios %>%
-  filter(
-    phase == "A",
-    vacc_coverage == 0.8,
-    baseline_type == "standard"
-  ) %>%
-  as.data.frame()
-
 
 
