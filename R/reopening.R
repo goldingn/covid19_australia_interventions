@@ -82,24 +82,9 @@ phsm_periods <- bind_rows(
     tibble::tribble(
       ~phsm_scenario, ~state, ~date,
       "high", "VIC", as_date("2020-08-23"),
+      "medium", "NSW", as_date("2021-07-01"),
       "low", "NSW", as_date("2020-08-23")
     ),
-    # Various snap lockdowns as medium
-    # excluding those since the start of June and NT (less data) and QLD in
-    # January (confounded with public holidays) &
-    # taking the behaviour 2 days after the lockdown is imposed
-    tibble::tribble(
-      ~phsm_scenario, ~state, ~date,
-      "medium", "SA", as_date("2020-11-19"),
-      "medium", "QLD", as_date("2021-03-29"),
-      "medium", "VIC", as_date("2021-02-13"),
-      "medium", "VIC", as_date("2021-05-28"),
-      "medium", "WA", as_date("2021-01-31"),
-      "medium", "WA", as_date("2021-04-24")
-    ) %>%
-      mutate(
-        date = date + 2
-      ),
     # NSW in March 2021 is baseline
     tibble::tibble(
       phsm_scenario = "baseline",
@@ -167,8 +152,7 @@ phsm_scenarios <- tp_delta %>%
   mutate(
     baseline_type = case_when(
       baseline_type == "baseline" ~ "standard",
-      baseline_type == "baseline_low" ~ "low (WA)",
-      baseline_type == "baseline_low2" ~ "low (SA)"
+      baseline_type == "baseline_low" ~ "low (WA)"
     )
   ) %>%
   rename_at(
