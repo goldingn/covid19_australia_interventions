@@ -592,15 +592,40 @@ vacc_coverage_5y <- vacc_coverage %>%
     age_band_5y
   )
 
+# lookup for vaccination scenarios
+vacc_scenario_lookup <- read_csv(
+  "data/vaccinatinon/quantium_simulations/dim_scenario.csv",
+  col_types = cols(
+    scenario = col_double(),
+    priority_order = col_character(),
+    az_dose_gap = col_character(),
+    az_age_cutoff = col_double()
+  )
+)
+
 # compute the reduction in transmission from different age-structured 
-# vaccine coverage scenarios
+# vaccine coverage scenarios - accounting for reduced efficacy in AZ
+# 2-doses with shorter intervals
 vacc_effect_by_age <- vacc_coverage_5y %>%
+  left_join(
+    vacc_scenario_lookup,
+    by = "scenario"
+  ) %>%
   mutate(
+    az_2_dose_multiplier = case_when(
+      az_dose_gap == "12 weeks" ~ 1,
+      az_dose_gap == "8 weeks" ~ 0.85,
+      az_dose_gap == "4 weeks" ~ 0.75
+    ),
+    efficacy_az_2_dose = combine_efficacy(0.60 * az_2_dose_multiplier, 0.65),
+    efficacy_pf_2_dose = combine_efficacy(0.79, 0.65),
+    efficacy_pf_1_dose = combine_efficacy(0.30, 0.46),
+    efficacy_az_1_dose = combine_efficacy(0.18, 0.48),    
     average_efficacy_transmission = average_efficacy(
-      efficacy_pf_2_dose = combine_efficacy(0.79, 0.65),
-      efficacy_az_2_dose = combine_efficacy(0.60, 0.65),
-      efficacy_pf_1_dose = combine_efficacy(0.30, 0.46),
-      efficacy_az_1_dose = combine_efficacy(0.18, 0.48),
+      efficacy_pf_2_dose = efficacy_pf_2_dose,
+      efficacy_az_2_dose = efficacy_az_2_dose,
+      efficacy_pf_1_dose = efficacy_pf_1_dose,
+      efficacy_az_1_dose = efficacy_az_1_dose,
       proportion_pf_2_dose = fraction_dose_2_mRNA,
       proportion_az_2_dose = fraction_dose_2_AZ,
       proportion_pf_1_dose = fraction_only_dose_1_mRNA,
@@ -644,8 +669,6 @@ vaccination_scenarios <- vacc_effect_by_age %>%
     .groups = "drop"
   )
 
-summary(vaccination_scenarios)
-
 # assuming restrictions pulse between two states: baseline and lockdown, with R
 # for baseline greater than 1 (cases grow) and R for lockdown less than 1 (cases
 # shrink), and the aim is to keep the long-term average of R at 1 (maintain case
@@ -666,16 +689,6 @@ fraction_lockdown <- function(
   
   fraction
 }
-
-vacc_scenario_lookup <- read_csv(
-  "data/vaccinatinon/quantium_simulations/dim_scenario.csv",
-  col_types = cols(
-    scenario = col_double(),
-    priority_order = col_character(),
-    az_dose_gap = col_character(),
-    az_age_cutoff = col_double()
-  )
-)
 
 # combine all scenarios
 scenarios <-
