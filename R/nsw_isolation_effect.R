@@ -188,7 +188,7 @@ isolation_cdfs <- surveillance_cdfs %>%
   ) %>%
   mutate(
     surveillance_effect = c(t(surveillance)),
-    ideal_isolation_ecdf = list(ideal_isolation_ecdf),
+    ideal_isolation_ecdf = list(optimal_isolation_ecdf),
     isolation_weight = 1 - surveillance_effect,
     isolation_weight = isolation_weight / max(isolation_weight),
     isolation_ecdf = mapply(
