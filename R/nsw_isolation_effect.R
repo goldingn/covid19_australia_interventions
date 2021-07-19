@@ -224,3 +224,27 @@ extra_isolation <- extra_isolation_effect(
 range(100 * (1 - surveillance))
 # additional effect of isolating case contacts before they test positive
 range(100 * (1 - extra_isolation))
+
+
+
+
+p_isolation_all <- isolation_cdfs %>%
+  mutate(
+    use_national = FALSE
+  ) %>%
+  plot_delays(
+    date = min(isolation_cdfs$date),
+    state = isolation_cdfs$state[1],
+    delay = 0,
+    base_colour = "purple",
+    ylim = c(-5, 18)
+  ) +
+  ggtitle(
+    label = "Notification delay",
+    subtitle = "Time from symptom onset to notification for locally-acquired cases"
+  ) +
+  xlab("Notification date") +
+  ylab("Days since symptom onset")
+p_isolation_all
+
+save_ggplot("time_to_isolation.png", multi = TRUE)
