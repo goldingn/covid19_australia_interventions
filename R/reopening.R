@@ -939,3 +939,72 @@ scenarios %>%
     tp_baseline = first(tp_baseline),
     all_identical = all(tp_baseline == first(tp_baseline))
   )
+
+table_2_x <- scenarios %>%
+  filter(
+    ttiq == "partial",
+    baseline_type == "standard",
+    vacc_relative_efficacy == 1
+  ) %>%
+  select(
+    priority_order,
+    az_age_cutoff,
+    az_dose_gap,
+    vacc_coverage,
+    tp_baseline_vacc
+  ) %>%
+  mutate(
+    priority_order = factor(
+      priority_order,
+      levels = c(
+        "Oldest to youngest",
+        "Youngest to oldest (40+ first then 16+)",
+        "Random"
+      )
+    ),
+    tp_baseline_vacc = round(tp_baseline_vacc, 1)
+  ) %>%
+  pivot_wider(
+    names_from = vacc_coverage,
+    values_from = tp_baseline_vacc
+  ) %>% 
+  arrange(
+    priority_order,
+    desc(az_age_cutoff),
+    az_dose_gap
+  )
+
+table_2_x
+
+table_3_1 <- scenarios %>%
+  filter(
+    ttiq == "partial",
+    baseline_type == "standard",
+    vacc_relative_efficacy == 0.5,
+    vacc_scenario %in% 1:3
+  ) %>%
+  select(
+    priority_order,
+    vacc_coverage,
+    tp_baseline_vacc
+  ) %>%
+  mutate(
+    priority_order = factor(
+      priority_order,
+      levels = c(
+        "Oldest to youngest",
+        "Youngest to oldest (40+ first then 16+)",
+        "Random"
+      )
+    ),
+    tp_baseline_vacc = round(tp_baseline_vacc, 1)
+  ) %>%
+  pivot_wider(
+    names_from = vacc_coverage,
+    values_from = tp_baseline_vacc
+  ) %>% 
+  arrange(
+    priority_order
+  )
+
+table_3_1
