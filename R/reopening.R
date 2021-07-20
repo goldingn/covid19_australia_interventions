@@ -439,9 +439,9 @@ pop_data <- read_csv(
 )
 
 # compute vaccine-eligible population in each age bin, for age-specific eligible coverage estimates
-age_pops_eligible <- pop_data %>%
-  filter(
-    age_lower >= 16
+age_pops_eligible_10y <- pop_data %>%
+  mutate(
+    eligible = as.integer(age_lower >= 16)
   ) %>%
   left_join(
     age_lookup,
@@ -451,28 +451,35 @@ age_pops_eligible <- pop_data %>%
     age_band_quantium, age_band_id
   ) %>%
   summarise(
-    population = sum(population),
+    eligible_population = sum(population * eligible),
+    total_population = sum(population),
     .groups = "drop"
   )
 
-# compute total and eligible (16+) populations
-eligible_population <- pop_data %>%
-  filter(
-    age_lower >= 16
+age_pops_eligible_5y <- pop_data %>%
+  mutate(
+    eligible = as.integer(age_lower >= 16)
+  ) %>%
+  left_join(
+    age_lookup,
+    by = c("age_lower", "age_upper")
+  ) %>%
+  group_by(
+    age_band_5y,
   ) %>%
   summarise(
-    population = sum(population)
-  ) %>%
-  pull(
-    population
+    eligible_population = sum(population * eligible),
+    total_population = sum(population),
+    .groups = "drop"
   )
 
-total_population <- pop_data %>%
+# compute total and eligible (16+) populations for sanity check
+total_pops <- age_pops_eligible_10y %>%
   summarise(
-    population = sum(population)
-  ) %>%
-  pull(
-    population
+    across(
+      ends_with("population"),
+      ~sum(.)
+    )
   )
 
 # join to dates of targets being achieved, filter, and sum to get 1 dose and 2
@@ -531,7 +538,7 @@ vacc_coverage <- vacc_cohorts %>%
     values_from = c("dose_1", "dose_2", "only_dose_1")
   ) %>%
   left_join(
-    age_pops_eligible,
+    age_pops_eligible_10y,
     by = "age_band_id"
   ) %>%
   mutate(
@@ -540,9 +547,9 @@ vacc_coverage <- vacc_cohorts %>%
     any_only_dose_1 = only_dose_1_AZ + only_dose_1_mRNA
   ) %>%
   mutate(
-    coverage_any_dose_2 = any_dose_2 / population,
-    coverage_any_dose_1 = any_dose_1 / population,
-    coverage_any_only_dose_1 = any_only_dose_1 / population,
+    coverage_any_dose_2 = any_dose_2 / total_population,
+    coverage_any_dose_1 = any_dose_1 / total_population,
+    coverage_any_only_dose_1 = any_only_dose_1 / total_population,
     across(
       c(only_dose_1_AZ, dose_2_AZ, only_dose_1_mRNA, dose_2_mRNA),
       .fns = list(fraction = ~ . / any_dose_1),
@@ -570,27 +577,30 @@ vacc_coverage %>%
 # summing group level counts and using external sum of eligible populations
 # also check that the coverage estimates are identical using these methods
 vacc_coverage %>%
+  mutate(
+    coverage_any_dose_2_eligible = any_dose_2 / eligible_population,
+  ) %>%
   group_by(
     scenario,
     coverage
   ) %>%
   summarise(
-    coverage_any_dose_2 = weighted_mean(x = coverage_any_dose_2, w = population),
-    across(c(contains("dose"), population), sum),
+    coverage_any_dose_2_eligible = weighted_mean(x = coverage_any_dose_2_eligible, w = eligible_population),
+    across(c(contains("dose"), eligible_population), sum),
     .groups = "drop"
   ) %>%
   mutate(
-    observed_coverage_group_count = any_dose_2 / population,
-    observed_coverage_total = any_dose_2 / eligible_population
+    observed_coverage_group_count = any_dose_2 / eligible_population,
+    observed_coverage_total = any_dose_2 / total_pops$eligible_population
   ) %>%
   mutate(
-    target_met_groups = coverage_any_dose_2 >= coverage,
+    target_met_groups = coverage_any_dose_2_eligible >= coverage,
     target_met_group_count = observed_coverage_group_count >= coverage,
     target_met_total = observed_coverage_total >= coverage
   ) %>%
   mutate(
-    identical_total = observed_coverage_total == coverage_any_dose_2,
-    identical_group_count = observed_coverage_group_count == coverage_any_dose_2
+    identical_total = observed_coverage_total == coverage_any_dose_2_eligible,
+    identical_group_count = observed_coverage_group_count == coverage_any_dose_2_eligible
   ) %>%
   # check this is correct for all scenarios and coverages
   summarise(
@@ -625,6 +635,32 @@ age_combinations <- expand_grid(
     by = "age_band_5y"
   )
 
+# compute the proportion of each 10y population falling into each corresponding
+# 5y group - use this to compute a coverage correction for the 15-19 age group
+proportion_of_10y <- age_lookup_quantium_5y %>%
+  left_join(
+    age_pops_eligible_5y,
+    by = "age_band_5y"
+  ) %>%
+  rename(
+    total_population_5y = total_population
+  ) %>%
+  left_join(
+    age_pops_eligible_10y,
+    by = "age_band_quantium"
+  ) %>%
+  rename(
+    total_population_10y = total_population
+  ) %>%
+  mutate(
+    proportion_of_10y = total_population_5y / total_population_10y
+  ) %>%
+  select(
+    age_band_5y,
+    age_band_quantium,
+    proportion_of_10y
+  )
+
 # compute age-structured vaccination coverages, fractions of each type/dose,
 # and disaggregate to 5-year age bins for estimating the vaccination effect
 vacc_coverage_5y <- vacc_coverage %>%
@@ -640,6 +676,32 @@ vacc_coverage_5y <- vacc_coverage %>%
     proportion_fully_vaccinated = coverage_any_dose_2,
     starts_with("fraction_")
   ) %>%
+  # the above assume coverage at 10y bins applies to all component 5y bins. This
+  # is fine, except for the 10-19 10y bracket, where the coverage should be
+  # higher in 15-19, and 0% in 10-14. so manual fix this, based on the population split for these
+  left_join(
+    proportion_of_10y,
+    by = "age_band_5y"
+  ) %>%
+  mutate(
+    coverage_correction = case_when(
+      age_band_5y == "10-14" ~ 0,
+      # redenominate the 15-19 group 
+      # multiply by 10-19 population to get number of vaccinees, and then divide by 15-19 population to get new coverage
+      # ie. multiply by 1 over the fraction of the 10y bin that is in the 5y bin
+      age_band_5y == "15-19" ~ 1 / proportion_of_10y,
+      TRUE ~ 1
+    )
+  ) %>%
+  mutate(
+    across(
+      c(
+        proportion_vaccinated,
+        proportion_fully_vaccinated
+      ),
+      ~ . * coverage_correction
+    )
+  ) %>%
   mutate(
     proportion_vaccinated = replace_na(proportion_vaccinated, 0),
     proportion_fully_vaccinated = replace_na(proportion_fully_vaccinated, 0),
@@ -647,6 +709,11 @@ vacc_coverage_5y <- vacc_coverage %>%
       starts_with("fraction_"),
       ~ replace_na(., 0.25)
     )
+  ) %>%
+  select(
+    -age_band_quantium,
+    -proportion_of_10y,
+    -coverage_correction,
   ) %>%
   arrange(
     scenario,
