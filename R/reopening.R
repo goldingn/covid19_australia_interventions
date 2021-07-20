@@ -663,11 +663,24 @@ vacc_scenario_lookup <- read_csv(
 
 # compute the reduction in transmission from different age-structured 
 # vaccine coverage scenarios - accounting for reduced efficacy in AZ
-# 2-doses with shorter intervals
+# 2-doses with shorter intervals, and adding in a relative vaccine efficacy
+# multiplier for immune escape variants
 vacc_effect_by_age <- vacc_coverage_5y %>%
   left_join(
     vacc_scenario_lookup,
     by = "scenario"
+  ) %>%
+  mutate(
+    relative_efficacy_baseline = 1,
+    relative_efficacy_escape = 0.5
+  ) %>%
+  pivot_longer(
+    cols = starts_with("relative_efficacy_"),
+    values_to = "relative_efficacy",
+    names_to = "relative_efficacy_names"
+  ) %>%
+  select(
+    -relative_efficacy_names
   ) %>%
   mutate(
     az_2_dose_multiplier = case_when(
@@ -688,18 +701,21 @@ vacc_effect_by_age <- vacc_coverage_5y %>%
       proportion_az_2_dose = fraction_dose_2_AZ,
       proportion_pf_1_dose = fraction_only_dose_1_mRNA,
       proportion_az_1_dose = fraction_only_dose_1_AZ
-    )
+    ),
+    average_efficacy_transmission = average_efficacy_transmission * relative_efficacy
   ) %>%
   select(
     scenario,
     target_coverage,
+    relative_efficacy,
     age_band_5y,
     proportion_vaccinated,
     average_efficacy_transmission
   ) %>%
   group_by(
     scenario,
-    target_coverage
+    target_coverage,
+    relative_efficacy
   ) %>%
   mutate(
     vacc_effect = vaccination_transmission_effect(
@@ -710,13 +726,15 @@ vacc_effect_by_age <- vacc_coverage_5y %>%
   ) %>%
   rename(
     vacc_scenario = scenario,
-    vacc_coverage = target_coverage
+    vacc_coverage = target_coverage,
+    vacc_relative_efficacy = relative_efficacy
   )
 
 vaccination_scenarios <- vacc_effect_by_age %>%
   group_by(
     vacc_scenario,
-    vacc_coverage
+    vacc_coverage,
+    vacc_relative_efficacy
   ) %>%
   summarise(
     vacc_effect = vaccination_transmission_effect(
@@ -754,7 +772,8 @@ scenarios <-
     ttiq = unique(phsm_scenarios$ttiq),
     baseline_type = unique(phsm_scenarios$baseline_type),
     vacc_scenario = unique(vaccination_scenarios$vacc_scenario),
-    vacc_coverage = unique(vaccination_scenarios$vacc_coverage)
+    vacc_coverage = unique(vaccination_scenarios$vacc_coverage),
+    vacc_relative_efficacy = unique(vaccination_scenarios$vacc_relative_efficacy)
   ) %>%
   left_join(
     vacc_scenario_lookup,
@@ -766,7 +785,7 @@ scenarios <-
   ) %>%
   left_join(
     vaccination_scenarios,
-    by = c("vacc_scenario", "vacc_coverage")
+    by = c("vacc_scenario", "vacc_coverage", "vacc_relative_efficacy")
   ) %>%
   # compute the post-vaccination TPs
   mutate(
@@ -810,5 +829,22 @@ write.csv(
   ),
   row.names = FALSE
 )
+
+# output subset of scenarios for Jodie
+scenarios %>%
+  filter(
+    ttiq == "partial",
+    baseline_type == "standard",
+    vacc_scenario %in% 1:3
+  ) %>%
+  write.csv(
+    file = paste0(
+      "~/Desktop/tp_scenarios_draft_for_jodie_",
+      Sys.Date(),
+      "_please_think_of_the_environment_before_you_print_this_spreadsheet",
+      ".csv"
+    ),
+    row.names = FALSE
+  )
 
 
