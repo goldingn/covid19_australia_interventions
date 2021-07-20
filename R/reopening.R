@@ -109,16 +109,11 @@ tti_distributions <- tibble(
     partial = partial / sum(partial)
   )
 
-tti_distributions %>%
-  summarise(
-    across(
-      c(partial, optimal),
-      ~sum(.*days)
-    )
-  )
+saveRDS(tti_distributions,
+        file = "~/Desktop/tti_distributions.rds")
 
-barplot(tti_distributions$partial)
-barplot(tti_distributions$optimal)
+# barplot(tti_distributions$partial, names.arg = tti_distributions$days)
+# barplot(tti_distributions$optimal, names.arg = tti_distributions$days)
 
 
 # compute the mean of 'observed' TP over time in each state, and add on the
