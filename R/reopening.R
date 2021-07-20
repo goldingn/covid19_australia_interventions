@@ -664,7 +664,8 @@ vacc_scenario_lookup <- read_csv(
 # compute the reduction in transmission from different age-structured 
 # vaccine coverage scenarios - accounting for reduced efficacy in AZ
 # 2-doses with shorter intervals, and adding in a relative vaccine efficacy
-# multiplier for immune escape variants
+# multiplier for each of protection from infection and protection from
+# breakthrough transmission in immune escape variants
 vacc_effect_by_age <- vacc_coverage_5y %>%
   left_join(
     vacc_scenario_lookup,
@@ -688,10 +689,22 @@ vacc_effect_by_age <- vacc_coverage_5y %>%
       az_dose_gap == "8 weeks" ~ 0.85,
       az_dose_gap == "4 weeks" ~ 0.75
     ),
-    efficacy_az_2_dose = combine_efficacy(0.60 * az_2_dose_multiplier, 0.65),
-    efficacy_pf_2_dose = combine_efficacy(0.79, 0.65),
-    efficacy_pf_1_dose = combine_efficacy(0.30, 0.46),
-    efficacy_az_1_dose = combine_efficacy(0.18, 0.48),    
+    efficacy_az_2_dose = combine_efficacy(
+      0.60 * az_2_dose_multiplier * relative_efficacy,
+      0.65 * relative_efficacy
+    ),
+    efficacy_pf_2_dose = combine_efficacy(
+      0.79 * relative_efficacy,
+      0.65 * relative_efficacy
+    ),
+    efficacy_pf_1_dose = combine_efficacy(
+      0.30 * relative_efficacy,
+      0.46 * relative_efficacy
+    ),
+    efficacy_az_1_dose = combine_efficacy(
+      0.18 * relative_efficacy,
+      0.48 * relative_efficacy
+    ),    
     average_efficacy_transmission = average_efficacy(
       efficacy_pf_2_dose = efficacy_pf_2_dose,
       efficacy_az_2_dose = efficacy_az_2_dose,
@@ -701,8 +714,7 @@ vacc_effect_by_age <- vacc_coverage_5y %>%
       proportion_az_2_dose = fraction_dose_2_AZ,
       proportion_pf_1_dose = fraction_only_dose_1_mRNA,
       proportion_az_1_dose = fraction_only_dose_1_AZ
-    ),
-    average_efficacy_transmission = average_efficacy_transmission * relative_efficacy
+    )
   ) %>%
   select(
     scenario,
@@ -841,10 +853,7 @@ scenarios %>%
     file = paste0(
       "~/Desktop/tp_scenarios_draft_for_jodie_",
       Sys.Date(),
-      "_please_think_of_the_environment_before_you_print_this_spreadsheet",
       ".csv"
     ),
     row.names = FALSE
   )
-
-
