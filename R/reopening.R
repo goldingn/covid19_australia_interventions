@@ -661,6 +661,41 @@ proportion_of_10y <- age_lookup_quantium_5y %>%
     proportion_of_10y
   )
 
+# compute the fraction of the (10-14 and 15-19) 5y populations that are in the
+# currently-ineligible school ages of 12-15.
+fraction_schoolkid <- pop_data %>%
+  group_by(
+    age_lower,
+    age_upper
+  ) %>%
+  summarise(
+    population = sum(population),
+    .groups = "drop"
+  ) %>%
+  left_join(
+    age_lookup,
+    by = c("age_lower", "age_upper")
+  ) %>%
+  mutate(
+    school_age = age_lower >= 12 &
+      age_upper <= 15
+  ) %>%
+  group_by(
+    age_band_5y
+  ) %>%
+  summarise(
+    age_band_pop = sum(population),
+    schoolkid_pop = sum(population * school_age),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    fraction_schoolkid = schoolkid_pop / age_band_pop
+  ) %>%
+  select(
+    age_band_5y,
+    fraction_schoolkid
+  )
+  
 # compute age-structured vaccination coverages, fractions of each type/dose,
 # and disaggregate to 5-year age bins for estimating the vaccination effect
 vacc_coverage_5y <- vacc_coverage %>%
@@ -668,9 +703,20 @@ vacc_coverage_5y <- vacc_coverage %>%
     age_combinations,
     by = c("scenario", "coverage", "age_band_quantium")
   ) %>%
+  # add on indicators to expand out to schoolkid vaccination
+  mutate(
+    vacc_schoolkids_true = TRUE,
+    vacc_schoolkids_false = FALSE
+  ) %>%
+  pivot_longer(
+    cols = starts_with("vacc_schoolkids_"),
+    names_to = "vacc_schoolkids_names",
+    values_to = "vacc_schoolkids"
+  ) %>%
   select(
     scenario,
     target_coverage = coverage,
+    vacc_schoolkids,
     age_band_5y,
     proportion_vaccinated = coverage_any_dose_1,
     proportion_fully_vaccinated = coverage_any_dose_2,
@@ -683,23 +729,48 @@ vacc_coverage_5y <- vacc_coverage %>%
     proportion_of_10y,
     by = "age_band_5y"
   ) %>%
+  # redenominate the 15-19 group multiply by 10-19 population to get number of
+  # vaccinees, and then divide by 15-19 population to get new coverage ie.
+  # equivalently multiply by 1 over the fraction of the 10y bin that is in the
+  # 5y bin
   mutate(
     coverage_correction = case_when(
       age_band_5y == "10-14" ~ 0,
-      # redenominate the 15-19 group 
-      # multiply by 10-19 population to get number of vaccinees, and then divide by 15-19 population to get new coverage
-      # ie. multiply by 1 over the fraction of the 10y bin that is in the 5y bin
       age_band_5y == "15-19" ~ 1 / proportion_of_10y,
       TRUE ~ 1
-    )
-  ) %>%
-  mutate(
+    ),
     across(
       c(
         proportion_vaccinated,
         proportion_fully_vaccinated
       ),
       ~ . * coverage_correction
+    )
+  ) %>%
+  # add additional vaccination coverage for schoolkids IFF we are doing
+  # schoolkids vaccinations
+  left_join(
+    fraction_schoolkid,
+    by = "age_band_5y"
+  ) %>%
+  mutate(
+    fraction_schoolkid = fraction_schoolkid * vacc_schoolkids
+  ) %>%
+  mutate(
+    # multiply the proportion vaccinated by the population to get the number vaccinated in non-schoolkid cohort
+    # multiply the fraction schoolkids by pop to get the population of schoolkids in this band
+    # multiply the population of schoolkids by the coverage fraction to get the number of vaccinated schoolkids
+    # add this to the existing number vaccinated, and divide by pop to get the new age group coverage.
+    # ((proportion_vaccinated * pop) + (target_coverage * fraction_schoolkid * pop)) / pop
+    # pop factorises and cancels:
+    # = pop * (proportion_vaccinated + target_coverage * fraction_schoolkid) / pop
+    # = proportion_vaccinated + target_coverage * fraction_schoolkid
+    across(
+      c(
+        proportion_vaccinated,
+        proportion_fully_vaccinated
+      ),
+      ~ . + target_coverage * fraction_schoolkid
     )
   ) %>%
   mutate(
@@ -790,6 +861,7 @@ vacc_effect_by_age <- vacc_coverage_5y %>%
   select(
     scenario,
     target_coverage,
+    vacc_schoolkids,
     relative_efficacy,
     age_band_5y,
     proportion_vaccinated,
@@ -798,6 +870,7 @@ vacc_effect_by_age <- vacc_coverage_5y %>%
   group_by(
     scenario,
     target_coverage,
+    vacc_schoolkids,
     relative_efficacy
   ) %>%
   mutate(
@@ -817,6 +890,7 @@ vaccination_scenarios <- vacc_effect_by_age %>%
   group_by(
     vacc_scenario,
     vacc_coverage,
+    vacc_schoolkids,
     vacc_relative_efficacy
   ) %>%
   summarise(
@@ -856,6 +930,7 @@ scenarios <-
     baseline_type = unique(phsm_scenarios$baseline_type),
     vacc_scenario = unique(vaccination_scenarios$vacc_scenario),
     vacc_coverage = unique(vaccination_scenarios$vacc_coverage),
+    vacc_schoolkids = unique(vaccination_scenarios$vacc_schoolkids),
     vacc_relative_efficacy = unique(vaccination_scenarios$vacc_relative_efficacy)
   ) %>%
   left_join(
@@ -868,7 +943,12 @@ scenarios <-
   ) %>%
   left_join(
     vaccination_scenarios,
-    by = c("vacc_scenario", "vacc_coverage", "vacc_relative_efficacy")
+    by = c(
+      "vacc_scenario",
+      "vacc_coverage",
+      "vacc_schoolkids",
+      "vacc_relative_efficacy"
+    )
   ) %>%
   # compute the post-vaccination TPs
   mutate(
@@ -902,16 +982,18 @@ scenarios %>%
   filter(
     ttiq %in% c("partial", "optimal"),
     baseline_type == "standard",
-    vacc_scenario %in% 1:3
+    vacc_scenario %in% 1:3,
+    vacc_schoolkids == FALSE,
+    vacc_relative_efficacy == 1
   ) %>%
-write.csv(
-  file = paste0(
-    "~/Desktop/tp_scenarios_draft_for_treasury_",
-    Sys.Date(),
-    ".csv"
-  ),
-  row.names = FALSE
-)
+  write.csv(
+    file = paste0(
+      "~/Desktop/tp_scenarios_draft_for_treasury_",
+      Sys.Date(),
+      ".csv"
+    ),
+    row.names = FALSE
+  )
 
 # output subset of scenarios for Jodie
 scenarios %>%
@@ -944,6 +1026,7 @@ table_2_x <- scenarios %>%
   filter(
     ttiq == "partial",
     baseline_type == "standard",
+    vacc_schoolkids == FALSE,
     vacc_relative_efficacy == 1
   ) %>%
   select(
@@ -975,11 +1058,13 @@ table_2_x <- scenarios %>%
   )
 
 table_2_x
+write_csv(table_2_x, "~/Desktop/table_2_x.csv")
 
 table_3_1 <- scenarios %>%
   filter(
     ttiq == "partial",
     baseline_type == "standard",
+    vacc_schoolkids == FALSE,
     vacc_relative_efficacy == 0.5,
     vacc_scenario %in% 1:3
   ) %>%
@@ -1008,3 +1093,40 @@ table_3_1 <- scenarios %>%
   )
 
 table_3_1
+write_csv(table_3_1, "~/Desktop/table_3_1.csv")
+
+
+table_schoolkids <- scenarios %>%
+  filter(
+    ttiq == "partial",
+    baseline_type == "standard",
+    vacc_schoolkids == TRUE,
+    vacc_relative_efficacy == 1,
+    vacc_scenario %in% 1:3
+  ) %>%
+  select(
+    priority_order,
+    vacc_coverage,
+    tp_baseline_vacc
+  ) %>%
+  mutate(
+    priority_order = factor(
+      priority_order,
+      levels = c(
+        "Oldest to youngest",
+        "Youngest to oldest (40+ first then 16+)",
+        "Random"
+      )
+    ),
+    tp_baseline_vacc = round(tp_baseline_vacc, 1)
+  ) %>%
+  pivot_wider(
+    names_from = vacc_coverage,
+    values_from = tp_baseline_vacc
+  ) %>% 
+  arrange(
+    priority_order
+  )
+
+table_schoolkids
+write_csv(table_schoolkids, "~/Desktop/table_schoolkids.csv")
