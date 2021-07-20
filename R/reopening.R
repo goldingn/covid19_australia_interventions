@@ -138,13 +138,13 @@ tp_delta <- tp_delta_sims %>%
   ) %>%
   mutate(
     # divide out the surveillance and ttiq effects to get the Delta TP in the absence of these measures
-    tp_no_surveillance_ttiq = observed_tp / (extra_ttiq_effect * surveillance_effect),
-    # add in the optinal surveillance effect, but no extra TTIQ effect
-    tp_no_ttiq = tp_no_surveillance_ttiq * optimal_effects$surveillance,
+    tp_no_ttiq = observed_tp / (extra_ttiq_effect * surveillance_effect),
+    # add in the optimal surveillance effect, but no extra TTIQ effect
+    tp_minimal_ttiq = tp_no_ttiq * optimal_effects$surveillance,
+    # add in the partial surveillance and extra TTIQ effect
+    tp_partial_ttiq = tp_no_ttiq * partial_effects$surveillance * partial_effects$extra_ttiq,
     # add in the optimal surveillance and extra TTIQ effect
-    tp_partial_ttiq = tp_no_surveillance_ttiq * partial_effects$surveillance * partial_effects$extra_ttiq,
-    # add in the optimal surveillance and extra TTIQ effect
-    tp_optimal_ttiq = tp_no_ttiq * optimal_effects$extra_ttiq,
+    tp_optimal_ttiq = tp_no_ttiq * optimal_effects$surveillance * optimal_effects$extra_ttiq,
   )
 
 # make a look up table of reference periods for PHSMs
@@ -176,7 +176,6 @@ phsm_periods <- bind_rows(
         by = 1
       )
     )
-    
 )
 
 # pull out the mean TPs for each PHSM scenario
@@ -192,6 +191,7 @@ phsm_scenarios <- tp_delta %>%
   ) %>%
   summarise(
     tp_no_ttiq = mean(tp_no_ttiq),
+    tp_minimal_ttiq = mean(tp_minimal_ttiq),
     tp_partial_ttiq = mean(tp_partial_ttiq),
     tp_optimal_ttiq = mean(tp_optimal_ttiq)
   ) %>%
@@ -203,9 +203,10 @@ phsm_scenarios <- tp_delta %>%
   ) %>%
   mutate(
     ttiq = case_when(
-      ttiq == "tp_optimal_ttiq" ~ "optimal",
+      ttiq == "tp_no_ttiq" ~ "none",
+      ttiq == "tp_minimal_ttiq" ~ "minimal",
       ttiq == "tp_partial_ttiq" ~ "partial",
-      ttiq == "tp_no_ttiq" ~ "minimal"
+      ttiq == "tp_optimal_ttiq" ~ "optimal"
     )
   ) %>%
   # now reshape to have baseline as a column
@@ -552,7 +553,10 @@ vacc_coverage <- vacc_cohorts %>%
 # check the fractions for each age group sum to one
 vacc_coverage %>%
   mutate(
-    fraction_sum = fraction_only_dose_1_AZ + fraction_dose_2_AZ + fraction_only_dose_1_mRNA + fraction_dose_2_mRNA,
+    fraction_sum = fraction_only_dose_1_AZ +
+      fraction_dose_2_AZ +
+      fraction_only_dose_1_mRNA +
+      fraction_dose_2_mRNA,
     fractions_sum_to_one = abs(1 - fraction_sum) < 1e-6
   ) %>%
   # check this is correct for all scenarios and coverages
@@ -856,4 +860,15 @@ scenarios %>%
       ".csv"
     ),
     row.names = FALSE
+  )
+
+# compute TP for Eamon
+scenarios %>%
+  filter(
+    ttiq == "none",
+    baseline_type == "standard"
+  ) %>%
+  summarise(
+    tp_baseline = first(tp_baseline),
+    all_identical = all(tp_baseline == first(tp_baseline))
   )
