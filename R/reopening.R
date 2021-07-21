@@ -1070,6 +1070,135 @@ ggsave(
   bg = "white"
 )
 
+# plot the TP contribution by age - applying susceptibility to columns and
+# computing columns sums (recompute the contact matrix to get column sums)
+contact_matrix_raw <- readxl::read_xlsx(
+  path = "data/vaccinatinon/MUestimates_all_locations_1.xlsx",
+  sheet = "Australia",
+  col_types = rep("numeric", 16)
+) %>%
+  as.matrix
+
+# expand out to add an 80+ category the same as the 75-80 category
+contact_matrix <- matrix(NA, 17, 17)
+contact_matrix[17, 17] <- contact_matrix_raw[16, 16]
+contact_matrix[17, 1:16] <- contact_matrix_raw[16, ]
+contact_matrix[1:16, 17] <- contact_matrix_raw[, 16]
+contact_matrix[1:16, 1:16] <- contact_matrix_raw
+
+age_disaggregation <- tibble::tribble(
+  ~age_group_10y, ~age_group_5y,
+  "0_9", "0-4",
+  "0_9", "5-9",
+  "10_19", "10-14",
+  "10_19", "15-19",
+  "20_29", "20-24",
+  "20_29", "25-29",
+  "30_39", "30-34", 
+  "30_39", "35-39",
+  "40_49", "40-44",
+  "40_49", "45-49",
+  "50_59", "50-54",
+  "50_59", "55-59",
+  "60_69", "60-64",
+  "60_69", "65-69",
+  "70+", "70-74",
+  "70+", "75-79",
+  "70+", "80+"
+)
+
+age_data_davies <- read_csv(
+  "data/vaccinatinon/susceptibility_clinical_fraction_age_Davies.csv",
+  col_types = cols(
+    age_group = col_character(),
+    rel_susceptibility_mean = col_double(),
+    rel_susceptibility_median = col_double(),
+    clinical_fraction_mean = col_double(),
+    clinical_fraction_median = col_double()
+  )
+)
+
+# calculate relative infectiousness (using relative differences in clinical
+# fraction by age and assumed relative infectiousness of asymptomatics) and
+# susceptibility by age
+asymp_rel_infectious <- 0.5
+age_contribution <- age_disaggregation %>%
+  left_join(
+    age_data_davies,
+    by = c("age_group_10y" = "age_group")
+  ) %>%
+  mutate(
+    rel_infectiousness = clinical_fraction_mean + asymp_rel_infectious * (1 - clinical_fraction_mean),
+    rel_infectiousness = rel_infectiousness / max(rel_infectiousness),
+    rel_susceptibility = rel_susceptibility_mean / max(rel_susceptibility_mean),
+  ) %>%
+  select(
+    age_group_5y,
+    rel_infectiousness,
+    rel_susceptibility
+  )
+
+contact_matrix_scaled <- contact_matrix
+contact_matrix_scaled <- sweep(contact_matrix_scaled, 2, age_contribution$rel_infectiousness, FUN = "*")
+contact_matrix_scaled <- sweep(contact_matrix_scaled, 2, age_contribution$rel_susceptibility, FUN = "*")
+
+m <- find_m(
+  3.6,
+  contact_matrix_scaled
+)
+
+tibble(
+  age_class = age_classes()$classes,
+  contacts = colSums(contact_matrix * m),
+  scaled_contacts = colSums(contact_matrix_scaled * m)
+) %>%
+  mutate(
+    age_class = factor(age_class, levels = age_classes()$classes),
+    rel_contacts = contacts / max(contacts),
+    rel_scaled_contacts = rel_contacts * scaled_contacts / contacts,
+  ) %>%
+  ggplot() +
+  geom_col(
+    aes(
+      x = age_class,
+      y = contacts
+    ),
+    fill = grey(0.7)
+  ) +
+  geom_col(
+    aes(
+      x = age_class,
+      y = scaled_contacts
+    )
+  ) +
+  geom_hline(
+    yintercept = 3.6,
+    linetype = 2
+  ) +
+  annotate(
+    "text",
+    label = "TP = 3.6",
+    x = 17,
+    y = 3.6 + 0.1,
+    hjust = 1,
+    vjust = 0
+  ) +
+  theme_cowplot() +
+  ylab("TP contribution") +
+  xlab("") +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    )
+  )
+
+ggsave(
+  "~/Desktop/tp_contribution.png",
+  width = 8,
+  height = 4,
+  bg = "white"
+)
 
 
 table_2_x <- scenarios %>%
