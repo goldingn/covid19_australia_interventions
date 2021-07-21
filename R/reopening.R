@@ -1022,6 +1022,56 @@ scenarios %>%
     all_identical = all(tp_baseline == first(tp_baseline))
   )
 
+# plot the next generation matrix at R = 3.6
+mat <- baseline_matrix(3.6) %>%
+  # cbind(
+  #   contactee = rownames(.)
+  # )
+  as_tibble() %>%
+  mutate(
+    infectees = age_classes()$classes
+  ) %>%
+  pivot_longer(
+    cols = -infectees, 
+    names_to = "infectors",
+    values_to = "R"
+  ) %>%
+  mutate(
+    across(
+      c(infectors, infectees),
+      ~factor(., levels = age_classes()$classes)
+    )
+  )
+
+mat %>%
+  ggplot(
+    aes(
+      x = infectors,
+      y = infectees,
+      fill = R
+    )
+  ) +
+  coord_fixed() +
+  geom_tile() +
+  scale_fill_distiller(
+    direction = 1
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text = element_text(
+      angle = 45,
+      hjust = 1
+    )
+  )
+ggsave(
+  "~/Desktop/transmission_matrix.png",
+  width = 6,
+  height = 6,
+  bg = "white"
+)
+
+
+
 table_2_x <- scenarios %>%
   filter(
     ttiq == "partial",
