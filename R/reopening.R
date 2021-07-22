@@ -1034,7 +1034,7 @@ mat <- baseline_matrix(3.6) %>%
   pivot_longer(
     cols = -infectees, 
     names_to = "infectors",
-    values_to = "R"
+    values_to = "TP\ncontribution"
   ) %>%
   mutate(
     across(
@@ -1048,7 +1048,7 @@ mat %>%
     aes(
       x = infectors,
       y = infectees,
-      fill = R
+      fill = `TP\ncontribution`
     )
   ) +
   coord_fixed() +
@@ -1083,27 +1083,29 @@ m <- find_m(
 contact_matrix <- contact_matrix_unscaled * m
 exposure_matrix <- exposure_matrix_unscaled * m
 
-tibble(
-  age_class = age_classes()$classes,
+tp_contribution <- tibble(
+  age_band_5y = age_classes()$classes,
   contacts = colSums(contact_matrix),
   scaled_contacts = colSums(exposure_matrix)
 ) %>%
   mutate(
-    age_class = factor(age_class, levels = age_classes()$classes),
+    age_band_5y = factor(age_band_5y, levels = age_classes()$classes),
     rel_contacts = contacts / max(contacts),
     rel_scaled_contacts = rel_contacts * scaled_contacts / contacts,
-  ) %>%
+  )
+
+tp_contribution %>%
   ggplot() +
   geom_col(
     aes(
-      x = age_class,
+      x = age_band_5y,
       y = contacts
     ),
     fill = grey(0.7)
   ) +
   geom_col(
     aes(
-      x = age_class,
+      x = age_band_5y,
       y = scaled_contacts
     )
   ) +
@@ -1135,6 +1137,191 @@ ggsave(
   height = 4,
   bg = "white"
 )
+
+for (tp_contrib_vacc_coverage in c(0.5, 0.6, 0.7, 0.8)) {
+  
+  tp_contribution_vacc <- tp_contribution %>%
+    left_join(
+      vacc_effect_by_age %>%
+        filter(
+          vacc_scenario == 1,
+          vacc_coverage == tp_contrib_vacc_coverage,
+          vacc_schoolkids == FALSE,
+          vacc_relative_efficacy == 1
+        ) %>%
+        ungroup() %>%
+        select(
+          age_band_5y,
+          vacc_effect_sc1 = vacc_effect
+        )
+    ) %>%
+    left_join(
+      vacc_effect_by_age %>%
+        filter(
+          vacc_scenario == 2,
+          vacc_coverage == tp_contrib_vacc_coverage,
+          vacc_schoolkids == FALSE,
+          vacc_relative_efficacy == 1
+        ) %>%
+        ungroup() %>%
+        select(
+          age_band_5y,
+          vacc_effect_sc2 = vacc_effect
+        )
+    ) %>%
+    left_join(
+      vacc_effect_by_age %>%
+        filter(
+          vacc_scenario == 3,
+          vacc_coverage == tp_contrib_vacc_coverage,
+          vacc_schoolkids == FALSE,
+          vacc_relative_efficacy == 1
+        ) %>%
+        ungroup() %>%
+        select(
+          age_band_5y,
+          vacc_effect_sc3 = vacc_effect
+        )
+    ) %>%
+    mutate(
+      age_band_5y = factor(age_band_5y, levels = age_classes()$classes),
+      across(
+        starts_with("vacc_effect"),
+        ~ scaled_contacts * .
+      )
+    ) %>%
+    pivot_longer(
+      cols = starts_with("vacc_effect"),
+      names_to = "scenario",
+      values_to = "vacc_contribution"
+    ) %>%
+    mutate(
+      scenario = str_remove(scenario, "vacc_effect_sc"),
+      scenario = as.integer(scenario)
+    ) %>%
+    left_join(
+      vacc_scenario_lookup %>%
+        select(
+          scenario, priority_order
+        )
+    ) %>%
+    mutate(
+      priority_order = case_when(
+        priority_order == "Oldest to youngest" ~ "Oldest first",
+        priority_order == "Random" ~ "All ages",
+        priority_order == "Youngest to oldest (40+ first then 16+)" ~ "Middle years first",
+      ),
+      priority_order = factor(
+        priority_order,
+        c(
+          "Oldest first",
+          "Middle years first",
+          "All ages"
+        ))
+    ) %>%
+    arrange(
+      priority_order
+    )
+  
+  tps <- scenarios %>%
+    filter(
+      vacc_scenario %in% 1:3,
+      ttiq == "partial",
+      baseline_type == "standard",
+      vacc_coverage == tp_contrib_vacc_coverage,
+      vacc_schoolkids == FALSE,
+      vacc_relative_efficacy == 1
+    ) %>%
+    mutate(
+      priority_order = case_when(
+        priority_order == "Oldest to youngest" ~ "Oldest first",
+        priority_order == "Random" ~ "All ages",
+        priority_order == "Youngest to oldest (40+ first then 16+)" ~ "Middle years first",
+      ),
+      priority_order = factor(
+        priority_order,
+        c(
+          "Oldest first",
+          "Middle years first",
+          "All ages"
+        ))
+    ) %>%
+    arrange(
+      priority_order
+    )
+  
+  tp_contribution_vacc %>%
+    ggplot() +
+    geom_hline(
+      yintercept = 3.6,
+      linetype = 2,
+      col = grey(0.7)
+    ) +
+    geom_hline(
+      aes(
+        yintercept = tp_baseline_vacc
+      ),
+      data = tps,
+      linetype = 2
+    ) +
+    geom_col(
+      aes(
+        x = age_band_5y,
+        y = scaled_contacts
+      ),
+      fill = grey(0.7)
+    ) +
+    geom_col(
+      aes(
+        x = age_band_5y,
+        y = vacc_contribution
+      )
+    ) +
+    facet_wrap(
+      ~priority_order,
+      ncol = 1
+    ) +
+    annotate(
+      "text",
+      label = "TP = 3.6",
+      col = grey(0.7),
+      x = 17,
+      y = 3.6 + 0.1,
+      hjust = 1,
+      vjust = 0
+    ) +
+    geom_text(
+      aes(
+        x = 17,
+        y = tp_baseline_vacc + 0.1,
+        label = sprintf("TP = %.1f", tp_baseline_vacc),
+      ),
+      data = tps,
+      hjust = 1,
+      vjust = 0
+    ) +
+    theme_cowplot() +
+    ylab("TP contribution") +
+    xlab("") +
+    theme(
+      axis.text.x = element_text(
+        angle = 45,
+        hjust = 1
+      ),
+      strip.background = element_blank(),
+      strip.text = element_text(hjust = 0)
+    )
+  
+  ggsave(
+    sprintf(
+      "~/Desktop/tp_contribution_scenarios_%s.png",
+      tp_contrib_vacc_coverage
+    ),
+    height = 8,
+    width = 8,
+    bg = "white"
+  )
+}
 
 table_2_x <- scenarios %>%
   filter(
