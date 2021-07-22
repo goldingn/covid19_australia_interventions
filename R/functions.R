@@ -226,14 +226,11 @@ citymapper_url <- function(min_delay = 0, max_delay = 14) {
     # try various dates to find the citymapper URL
     datestring <- format(date - delay, format = "%Y%m%d")
     
-    datestring <- "20210718"
     url <- paste0(
       "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_",
       datestring,
       ".csv"
     )
-    
-    return(url)
     
     # return if successful, or increment
     if (url_exists(url)) {
