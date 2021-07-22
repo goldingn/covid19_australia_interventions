@@ -225,11 +225,16 @@ citymapper_url <- function(min_delay = 0, max_delay = 14) {
   while(delay < max_delay) {
     # try various dates to find the citymapper URL
     datestring <- format(date - delay, format = "%Y%m%d")
+    
+    datestring <- "20210718"
     url <- paste0(
       "https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_",
       datestring,
       ".csv"
     )
+    
+    return(url)
+    
     # return if successful, or increment
     if (url_exists(url)) {
       return(url)
@@ -464,7 +469,8 @@ interventions <- function(
   
   nsw_interventions <- tibble::tribble(
     ~date, ~state,
-    "2021-06-25", "NSW" # stay-at-home order for 4 LGAs from 11.59 PM 24th, extended to all greater sydney +++ from 11.59 PM 25th. 
+    "2021-06-25", "NSW", # stay-at-home order for 4 LGAs from 11.59 PM 24th, extended to all greater sydney +++ from 11.59 PM 25th. 
+    "2021-07-18", "NSW" # increased restrictions from midnight 17th https://www.nsw.gov.au/media-releases/restrictions-to-further-limit-spread-of-covid-19-delta-strain
   )
   
   nt_interventions <- tibble::tribble(
@@ -481,7 +487,8 @@ interventions <- function(
   
   sa_interventions <- tibble::tribble(
     ~date, ~state,
-    "2020-11-19", "SA"
+    "2020-11-19", "SA",
+    "2021-07-20", "SA" # lockdown, starts 6pm on the 20th, https://www.sahealth.sa.gov.au/wps/wcm/connect/public+content/sa+health+internet/about+us/news+and+media/all+media+releases/covid-19+update+20+july+2021
   )
   
   tas_interventions <- tibble::tribble(
@@ -495,7 +502,8 @@ interventions <- function(
     "2020-07-08", "VIC",
     "2020-08-02", "VIC",
     "2021-02-13", "VIC",
-    "2021-05-28", "VIC"
+    "2021-05-28", "VIC",
+    "2021-07-16", "VIC" # lockdown, 5 days from 11:59 the 15th, then extended https://www.dhhs.vic.gov.au/coronavirus-update-victoria-15-july-2021
   )
   
   wa_interventions <- tibble::tribble(
@@ -2020,7 +2028,7 @@ baseline_total_contacts <- function() {
   # as a measure of prior uncertainty in the Australian estimate of total
   # contacts
   download.file("https://raw.githubusercontent.com/goldingn/comix_covid-19-first_wave/master/data/polymod_contacts_part.rds",
-                (f <- tempfile()))
+                (f <- tempfile()), method='wget')
   
   standard_error_uk <- readRDS(f) %>%
     filter(part_age_group != "[0,18)") %>%
@@ -4678,129 +4686,58 @@ col_nsw_date <- function(type = c("short", "long")) {
 # get latest NSW linelist
 get_nsw_linelist <- function () {
   
-  # files <- list.files(
-  #   "~/not_synced/nsw",
-  #   pattern = ".csv",
-  #   full.names = TRUE
-  # )
-  # 
-  # dates <- files %>%
-  #   basename() %>%
-  #   substr(1, 8) %>%
-  #   as.Date(format = "%Y%m%d")
-  # 
-  # latest <- which.max(dates)
-  # file <- files[latest]
-  # date <- dates[latest]
-  # 
-  # 
-  # file %>%
-  #   read_csv(
-  #     col_types = cols(
-  #       .default = col_character(),
-  #       CASE_ID = col_double(),
-  #       EARLIEST_CONFIRMED_OR_PROBABLE = col_nsw_date(),
-  #       SYMPTOM_ONSET_DATE = col_nsw_date(),
-  #       CALCULATED_ONSET_DATE = col_nsw_date(),
-  #       AGE_AT_EVENT_YEARS = col_double(),
-  #       DATE_ISOLATION_BEGAN = col_nsw_date(),
-  #       SETTING_OF_TRANSMISSION_DATE = col_nsw_date("long"),
-  #       INTERVIEWED_DATE = col_nsw_date()
-  #     )
-  #   ) %>%
-  #   # remove some bogus dates
-  #   mutate(across(
-  #     all_of(c(
-  #       "EARLIEST_CONFIRMED_OR_PROBABLE",
-  #       "SYMPTOM_ONSET_DATE",
-  #       "SETTING_OF_TRANSMISSION_DATE",
-  #       "CALCULATED_ONSET_DATE",
-  #       "DATE_ISOLATION_BEGAN",
-  #       "SETTING_OF_TRANSMISSION_DATE",
-  #       "INTERVIEWED_DATE"
-  #     )),
-  #     clean_date
-  #   )
-  #   ) %>%
-  #   # if any infection dates are after onset, or on/after confirmation, set the infection date to NA
-  #   mutate(
-  #     SETTING_OF_TRANSMISSION_DATE = case_when(
-  #       SETTING_OF_TRANSMISSION_DATE > SYMPTOM_ONSET_DATE ~ as.Date(NA),
-  #       SETTING_OF_TRANSMISSION_DATE >= EARLIEST_CONFIRMED_OR_PROBABLE ~ as.Date(NA),
-  #       TRUE ~ SETTING_OF_TRANSMISSION_DATE
-  #     )
-  #   ) %>%
-  #   mutate(
-  #     date_onset = case_when(
-  #       !is.na(SETTING_OF_TRANSMISSION_DATE) ~ SETTING_OF_TRANSMISSION_DATE + 5,
-  #       TRUE ~ SYMPTOM_ONSET_DATE
-  #     ),
-  #     date_detection = NA,
-  #     date_confirmation = EARLIEST_CONFIRMED_OR_PROBABLE,
-  #     state = "NSW",
-  #     import_status = ifelse(
-  #       PLACE_ACQUISITION == "Acquired in NSW",
-  #       "local",
-  #       "imported"
-  #     ),
-  #     postcode_of_acquisition = NA,
-  #     postcode_of_residence = NA,
-  #     state_of_acquisition = "NSW",
-  #     state_of_residence = NA,
-  #     report_delay = NA,
-  #     date_linelist = date,
-  #     interstate_import = FALSE
-  #   ) %>%
-  #   select(
-  #     date_onset,
-  #     date_detection,
-  #     date_confirmation = EARLIEST_CONFIRMED_OR_PROBABLE,
-  #     state,
-  #     import_status,
-  #     postcode_of_acquisition,
-  #     postcode_of_residence,
-  #     state_of_acquisition,
-  #     state_of_residence,
-  #     report_delay,
-  #     date_linelist,
-  #     interstate_import
-  #   ) %>%
-  #   arrange(
-  #     desc(date_onset)
-  #   )
-  
-  # edit for excel file  
-  file <- "~/not_synced/nsw/cases_freya.xlsx"
-  date <- as.Date("2021-06-28")
-  
+  files <- list.files(
+    "~/not_synced/nsw",
+    pattern = ".csv",
+    full.names = TRUE
+  )
+
+  dates <- files %>%
+    basename() %>%
+    substr(1, 8) %>%
+    as.Date(format = "%Y%m%d")
+
+  latest <- which.max(dates)
+  file <- files[latest]
+  date <- dates[latest]
+
+
   file %>%
-    readxl::read_xlsx(
-      col_types = c(
-        "text",
-        "date",
-        "date",
-        "text",
-        "text",
-        "text",
-        "text",
-        "text",
-        "date",
-        "text"
+    read_csv(
+      col_types = cols(
+        .default = col_character(),
+        CASE_ID = col_double(),
+        EARLIEST_CONFIRMED_OR_PROBABLE = col_nsw_date(),
+        SYMPTOM_ONSET_DATE = col_nsw_date(),
+        CALCULATED_ONSET_DATE = col_nsw_date(),
+        AGE_AT_EVENT_YEARS = col_double(),
+        DATE_ISOLATION_BEGAN = col_nsw_date(),
+        SETTING_OF_TRANSMISSION_DATE = col_nsw_date("long"),
+        INTERVIEWED_DATE = col_nsw_date()
       )
     ) %>%
-    distinct(.keep_all = TRUE) %>% # some duplicated rows can be id'd by project_recid
-    mutate(
-      EARLIEST_CONFIRMED_OR_PROBABLE = as.Date(EARLIEST_CONFIRMED_OR_PROBABLE),
-      CALCULATED_ONSET_DATE = as.Date(CALCULATED_ONSET_DATE),
-      SETTING_OF_TRANSMISSION_DATE = as.Date(SETTING_OF_TRANSMISSION_DATE)
-    ) %>%
-  # if any infection dates are after onset, or on/after confirmation, set the infection date to NA
-  mutate(
-    SETTING_OF_TRANSMISSION_DATE = case_when(
-      SETTING_OF_TRANSMISSION_DATE >= EARLIEST_CONFIRMED_OR_PROBABLE ~ as.Date(NA),
-      TRUE ~ SETTING_OF_TRANSMISSION_DATE
+    # remove some bogus dates
+    mutate(across(
+      all_of(c(
+        "EARLIEST_CONFIRMED_OR_PROBABLE",
+        "SYMPTOM_ONSET_DATE",
+        "SETTING_OF_TRANSMISSION_DATE",
+        "CALCULATED_ONSET_DATE",
+        "DATE_ISOLATION_BEGAN",
+        "SETTING_OF_TRANSMISSION_DATE",
+        "INTERVIEWED_DATE"
+      )),
+      clean_date
     )
-  ) %>%
+    ) %>%
+    # if any infection dates are after onset, or on/after confirmation, set the infection date to NA
+    mutate(
+      SETTING_OF_TRANSMISSION_DATE = case_when(
+        SETTING_OF_TRANSMISSION_DATE > SYMPTOM_ONSET_DATE ~ as.Date(NA),
+        SETTING_OF_TRANSMISSION_DATE >= EARLIEST_CONFIRMED_OR_PROBABLE ~ as.Date(NA),
+        TRUE ~ SETTING_OF_TRANSMISSION_DATE
+      )
+    ) %>%
     mutate(
       date_onset = case_when(
         !is.na(SETTING_OF_TRANSMISSION_DATE) ~ SETTING_OF_TRANSMISSION_DATE + 5,
@@ -4810,7 +4747,7 @@ get_nsw_linelist <- function () {
       date_confirmation = EARLIEST_CONFIRMED_OR_PROBABLE,
       state = "NSW",
       import_status = ifelse(
-        PLACE_ACQUISITION == "Acquired in NSW",# rethink this if goes to prime time
+        PLACE_ACQUISITION == "Acquired in NSW",
         "local",
         "imported"
       ),
@@ -4819,8 +4756,8 @@ get_nsw_linelist <- function () {
       state_of_acquisition = "NSW",
       state_of_residence = NA,
       report_delay = NA,
-      date_linelist = date#,
-      #interstate_import = FALSE # rethink this if goes to prime time
+      date_linelist = date,
+      interstate_import = FALSE
     ) %>%
     select(
       date_onset,
@@ -4833,12 +4770,83 @@ get_nsw_linelist <- function () {
       state_of_acquisition,
       state_of_residence,
       report_delay,
-      date_linelist#,
-      #interstate_import
+      date_linelist,
+      interstate_import
     ) %>%
     arrange(
       desc(date_onset)
     )
+  
+  # edit for excel file  
+  # file <- "~/not_synced/nsw/cases_freya.xlsx"
+  # date <- as.Date("2021-07-21")
+  # 
+  # file %>%
+  #   readxl::read_xlsx(
+  #     col_types = c(
+  #       "text",
+  #       "date",
+  #       "date",
+  #       "text",
+  #       "text",
+  #       "text",
+  #       "text",
+  #       "text",
+  #       "date",
+  #       "text"
+  #     )
+  #   ) %>%
+  #   distinct(.keep_all = TRUE) %>% # some duplicated rows can be id'd by project_recid
+  #   mutate(
+  #     EARLIEST_CONFIRMED_OR_PROBABLE = as.Date(EARLIEST_CONFIRMED_OR_PROBABLE),
+  #     CALCULATED_ONSET_DATE = as.Date(CALCULATED_ONSET_DATE),
+  #     SETTING_OF_TRANSMISSION_DATE = as.Date(SETTING_OF_TRANSMISSION_DATE)
+  #   ) %>%
+  # # if any infection dates are after onset, or on/after confirmation, set the infection date to NA
+  # mutate(
+  #   SETTING_OF_TRANSMISSION_DATE = case_when(
+  #     SETTING_OF_TRANSMISSION_DATE >= EARLIEST_CONFIRMED_OR_PROBABLE ~ as.Date(NA),
+  #     TRUE ~ SETTING_OF_TRANSMISSION_DATE
+  #   )
+  # ) %>%
+  #   mutate(
+  #     date_onset = case_when(
+  #       !is.na(SETTING_OF_TRANSMISSION_DATE) ~ SETTING_OF_TRANSMISSION_DATE + 5,
+  #       TRUE ~ CALCULATED_ONSET_DATE
+  #     ),
+  #     date_detection = NA,
+  #     date_confirmation = EARLIEST_CONFIRMED_OR_PROBABLE,
+  #     state = "NSW",
+  #     import_status = ifelse(
+  #       PLACE_ACQUISITION == "Acquired in NSW",# rethink this if goes to prime time
+  #       "local",
+  #       "imported"
+  #     ),
+  #     postcode_of_acquisition = NA,
+  #     postcode_of_residence = NA,
+  #     state_of_acquisition = "NSW",
+  #     state_of_residence = NA,
+  #     report_delay = NA,
+  #     date_linelist = date#,
+  #     #interstate_import = FALSE # rethink this if goes to prime time
+  #   ) %>%
+  #   select(
+  #     date_onset,
+  #     date_detection,
+  #     date_confirmation = EARLIEST_CONFIRMED_OR_PROBABLE,
+  #     state,
+  #     import_status,
+  #     postcode_of_acquisition,
+  #     postcode_of_residence,
+  #     state_of_acquisition,
+  #     state_of_residence,
+  #     report_delay,
+  #     date_linelist#,
+  #     #interstate_import
+  #   ) %>%
+  #   arrange(
+  #     desc(date_onset)
+  #   )
   
 }
 
@@ -6126,7 +6134,7 @@ load_vic <- function (file) {
 load_linelist <- function(date = NULL,
                           use_vic = FALSE,
                           use_sa = FALSE,
-                          use_nsw = TRUE) {
+                          use_nsw = T) {
   
   # load the latest NNDSS linelist (either the latest or specified file)
   linelist <- get_nndss_linelist(date = date)
@@ -6802,7 +6810,8 @@ save_ggplot <- function (filename,
          width = width,
          height = height,
          scale = scale,
-         dpi = dpi)
+         dpi = dpi,
+         bg = 'white')
   
 }
 
@@ -8266,7 +8275,7 @@ url_exists <- function(address) {
 
 download_tidycovid <- function() {
   f <- tempfile(fileext = ".RDS")
-  download.file(tidycovid_url, destfile = f)
+  download.file(tidycovid_url, destfile = f, method='wget')
   tmp <- readRDS(f)
   saveRDS(tmp, file = "data/google_cmr/tidycovid_cache.RDS")  
 }
