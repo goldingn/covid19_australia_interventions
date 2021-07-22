@@ -983,7 +983,6 @@ scenarios %>%
     ttiq %in% c("partial", "optimal"),
     baseline_type == "standard",
     vacc_scenario %in% 1:3,
-    vacc_schoolkids == FALSE,
     vacc_relative_efficacy == 1
   ) %>%
   write.csv(
@@ -1024,9 +1023,6 @@ scenarios %>%
 
 # plot the next generation matrix at R = 3.6
 mat <- baseline_matrix(3.6) %>%
-  # cbind(
-  #   contactee = rownames(.)
-  # )
   as_tibble() %>%
   mutate(
     infectees = age_classes()$classes
@@ -1063,6 +1059,7 @@ mat %>%
       hjust = 1
     )
   )
+
 ggsave(
   "~/Desktop/transmission_matrix.png",
   width = 6,
