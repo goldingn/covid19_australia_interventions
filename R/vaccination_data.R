@@ -29,10 +29,10 @@ vaccine_files_dates <- function(
 
 
 
-# file <- vaccine_files_dates() %>%
-#   pull(file)
-# 
-# file <- file[1]
+file <- vaccine_files_dates() %>%
+  pull(file)
+
+file <- file[2]
 
 read_vaccine_data <- function(
   file
@@ -198,21 +198,30 @@ pop_data <- read_csv(
   )
 )
 
-age_pops_eligible_5y <- pop_data %>%
+age_pops <- pop_data %>%
   mutate(
-    eligible = as.integer(age_lower >= 16)
+    state = abbreviate_states(ste_name16)
+  ) %>%
+  filter(
+    !is.na(state)
   ) %>%
   left_join(
     age_lookup,
     by = c("age_lower", "age_upper")
   ) %>%
   group_by(
-    age_band_5y,
+    state,
+    age_band_5y
   ) %>%
   summarise(
-    eligible_population = sum(population * eligible),
     total_population = sum(population),
     .groups = "drop"
+  ) %>%
+  mutate(
+    age_band_5y = factor(age_band_5y, levels = unique(age_lookup$age_band_5y))
+  ) %>%
+  arrange(
+    age_band_5y
   )
 
 
@@ -220,9 +229,10 @@ vaccine_data <- vaccine_files_dates() %>%
   pull(file) %>%
   magrittr::extract(1) %>%
   read_vaccine_data() %>%
+  ungroup() %>%
   pivot_wider(
     names_from = c(vaccine, dose_number),
-     values_from = doses
+     values_from = doses,
   ) %>%
   mutate(
     vaccinated = az_1 + az_2 + pf_1 + pf_2,
@@ -232,12 +242,11 @@ vaccine_data <- vaccine_files_dates() %>%
       .names = "{.fn}_{.col}"
     )
   ) %>%
-  left_join(
-    age_pops_eligible_5y,
-    by = c("age_class" = "age_band_5y")
+  right_join(
+    age_pops,
+    by = c("state", "age_class" = "age_band_5y")
   ) %>%
   mutate(
-    eligible_coverage = vaccinated / eligible_population,
     coverage = vaccinated / total_population,
     average_efficacy_transmission = average_efficacy(
       efficacy_pf_2_dose = combine_efficacy(0.79, 0.65),
@@ -249,6 +258,70 @@ vaccine_data <- vaccine_files_dates() %>%
       proportion_pf_1_dose = frac_pf_1,
       proportion_az_1_dose = frac_az_1
     )
+  ) %>%
+  select(
+    state,
+    age_class,
+    coverage,
+    total_population,
+    average_efficacy_transmission
+  ) %>%
+  right_join(
+    expand_grid(
+      state = unique(.$state),
+      age_class = unique(age_pops$age_band_5y)
+    ), 
+  ) %>%
+  mutate(
+    age_class = factor(age_class, levels = unique(age_pops$age_band_5y)),
+    across(
+      c(coverage, average_efficacy_transmission),
+      ~replace_na(., 0)
+    )
+  ) %>%
+  arrange(
+    state,
+    age_class
+  )
+
+vaccine_data %>%
+  group_by(
+    state
+  ) %>%
+  summarise(
+    vaccination_effect = vaccination_transmission_effect(
+      age_coverage = coverage,
+      efficacy_mean = average_efficacy_transmission, 
+      next_generation_matrix = baseline_matrix()
+    )$overall,
+    vaccination_effect_low = vaccination_transmission_effect(
+      age_coverage = coverage * 0.75,
+      efficacy_mean = average_efficacy_transmission, 
+      next_generation_matrix = baseline_matrix()
+    )$overall,
+    vaccination_effect_high = vaccination_transmission_effect(
+      age_coverage = coverage * 1.25,
+      efficacy_mean = average_efficacy_transmission, 
+      next_generation_matrix = baseline_matrix()
+    )$overall,
+    overall_coverage = 100 * sum(coverage * total_population) / sum(total_population)
+  ) %>%
+  mutate(
+    across(
+      starts_with("vaccination_"),
+      .fns = c("percent_reduction" = ~ 100 * (1 - .))
+    )
+  ) %>%
+  select(
+    state,
+    overall_coverage,
+    "vaccination_effect_percent_reduction",
+    "vaccination_effect_low_percent_reduction",
+    "vaccination_effect_high_percent_reduction",
+  )# %>%
+  filter(
+    state == "NSW"
   )
   
+    
 

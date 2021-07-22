@@ -8512,12 +8512,19 @@ disaggregation_vec <- function(mask, distribution) {
   masked_distribution / sum(masked_distribution)
 }
 
-baseline_matrix <- function(R0 = 2.5, final_age_bin = 80) {
-  # construct a next generation matrix for Australia from Prem matrix
+baseline_matrix <- function(
+  R0 = 2.5,
+  final_age_bin = 80,
+  type = c("next generation", "exposure outcome", "contact")
+) {
   
+  type <- match.arg(type)
+  
+  # construct a next generation/exposure outcome/contact matrix for Australia
+  # from Prem matrix
   
   # Prem 2017 contact matrix
-  contact_matrix_raw <- readxl::read_xlsx(
+  contact_matrix <- readxl::read_xlsx(
     path = "data/vaccinatinon/MUestimates_all_locations_1.xlsx",
     sheet = "Australia",
     col_types = rep("numeric", 16)
@@ -8525,70 +8532,108 @@ baseline_matrix <- function(R0 = 2.5, final_age_bin = 80) {
     as.matrix
   
   # expand out to add an 80+ category the same as the 75-80 category
-  contact_matrix <- matrix(NA, 17, 17)
-  contact_matrix[17, 17] <- contact_matrix_raw[16, 16]
-  contact_matrix[17, 1:16] <- contact_matrix_raw[16, ]
-  contact_matrix[1:16, 17] <- contact_matrix_raw[, 16]
-  contact_matrix[1:16, 1:16] <- contact_matrix_raw
+  matrix <- matrix(NA, 17, 17)
+  matrix[17, 17] <- contact_matrix[16, 16]
+  matrix[17, 1:16] <- contact_matrix[16, ]
+  matrix[1:16, 17] <- contact_matrix[, 16]
+  matrix[1:16, 1:16] <- contact_matrix
   
   # set names
   bin_names <- age_classes(80)$classes 
-  dimnames(contact_matrix) <- list(
+  dimnames(matrix) <- list(
     bin_names,
     bin_names
   )
   
-  # relative infectiousness data from Trauer et al 2021
-  age_susceptability <- readr::read_csv(
-    file = "data/vaccinatinon/trauer_2021_supp_table5.csv",
-    col_names = c(
-      "age_group",
-      "clinical_fraction",
-      "relative_susceptability",
-      "infection_fatality_rate",
-      "proportion_symtomatic_hospitalised"
-    ),
-    col_types = cols(
-      age_group = col_character(),
-      clinical_fraction = col_double(),
-      relative_susceptability = col_double(),
-      infection_fatality_rate = col_double(),
-      proportion_symtomatic_hospitalised = col_double()
-    ),
-    skip = 1
-  ) %>%
-    # duplicate the final row, and re-use for the 74-79 and 80+ classes
-    add_row(
-      .[16, ]
-    ) %>%
-    mutate(
-      age_class = bin_names
-    ) %>%
-    dplyr::select(
-      age_class,
-      everything(),
-      -age_group
+  if (type != "contact") {
+    
+    age_disaggregation <- tibble::tribble(
+      ~age_group_10y, ~age_group_5y,
+      "0_9", "0-4",
+      "0_9", "5-9",
+      "10_19", "10-14",
+      "10_19", "15-19",
+      "20_29", "20-24",
+      "20_29", "25-29",
+      "30_39", "30-34", 
+      "30_39", "35-39",
+      "40_49", "40-44",
+      "40_49", "45-49",
+      "50_59", "50-54",
+      "50_59", "55-59",
+      "60_69", "60-64",
+      "60_69", "65-69",
+      "70+", "70-74",
+      "70+", "75-79",
+      "70+", "80+"
     )
+    
+    age_data_davies <- read_csv(
+      "data/vaccinatinon/susceptibility_clinical_fraction_age_Davies.csv",
+      col_types = cols(
+        age_group = col_character(),
+        rel_susceptibility_mean = col_double(),
+        rel_susceptibility_median = col_double(),
+        clinical_fraction_mean = col_double(),
+        clinical_fraction_median = col_double()
+      )
+    )
+    
+    # calculate relative infectiousness (using relative differences in clinical
+    # fraction by age and assumed relative infectiousness of asymptomatics) and
+    # susceptibility by age
+    asymp_rel_infectious <- 0.5
+    age_contribution <- age_disaggregation %>%
+      left_join(
+        age_data_davies,
+        by = c("age_group_10y" = "age_group")
+      ) %>%
+      mutate(
+        rel_infectiousness = clinical_fraction_mean +
+          asymp_rel_infectious * (1 - clinical_fraction_mean),
+        rel_infectiousness = rel_infectiousness /
+          max(rel_infectiousness),
+        rel_susceptibility = rel_susceptibility_mean /
+          max(rel_susceptibility_mean),
+      ) %>%
+      select(
+        age_group_5y,
+        rel_infectiousness,
+        rel_susceptibility
+      )
+    
+    # adjust infectiousness on columns and susceptibility on rows
+    matrix <- sweep(matrix, 2, age_contribution$rel_infectiousness, FUN = "*")
+    
+    # for a next generation matrix (vector multiplier is distribution of
+    # infectious state), apply susceptibility to rows. For an exposure outcome
+    # matrix (vector multiplier is number of exposures age group is subjected
+    # to) apply susceptibility to columns
+    index <- switch(
+      type,
+      "next generation" = 1,
+      "exposure outcome" = 2,
+    )    
+    matrix <- sweep(matrix, index, age_contribution$rel_susceptibility, FUN = "*")
+    
+  }
   
-  # calculate relative infectiousness - assume asymptomatics are 50% less
-  # infectious, and use age-stratified symptomaticity
-  relative_infectiousness <- age_susceptability$clinical_fraction*1 + 0.5*(1 - age_susceptability$clinical_fraction)
-  q <- relative_infectiousness
-  q_scaled <- q/max(q)
+  # if a target R0 is provided, scale the matrix to match
+  if (!is.null(R0)) {
+    
+    # calculate m - number of onward infections per relative contact 
+    m <- find_m(
+      R_target = R0,
+      transition_matrix = matrix
+    )
+    
+    matrix <- matrix * m
+    
+  }
   
-  # apply the q scaling before computing m
-  contact_matrix_scaled <- sweep(contact_matrix, 2, q_scaled, FUN = "*")
-  
-  # calculate m - number of onward infections per relative contact 
-  m <- find_m(
-    R_target = R0,
-    transition_matrix = contact_matrix_scaled
-  )
-  
-  contact_matrix_scaled * m
+  matrix
   
 }
-
 
 
 age_classes <- function(final_age_bin = 80, by = 5) {
@@ -8807,16 +8852,23 @@ doses_by_age <- function(n_doses, age_populations) {
   
 }
 
+combine_efficacy <- function(a, b) {
+  1 - ((1 - a) * (1 - b))
+}
 
+# proportion_pf and proportion_2_dose are only used if the other proportion
+# arguments are not specified
 average_efficacy <- function(
   efficacy_pf_2_dose = 0.9685,
   efficacy_az_2_dose = 0.93,
-  #efficacy_pf_1_dose = efficacy_pf_2_dose/2,
-  #efficacy_az_1_dose = efficacy_az_2_dose/2,
   efficacy_pf_1_dose = 0.8317,
   efficacy_az_1_dose = 0.892,
   proportion_pf = 0.5,
-  proportion_2_dose = 0
+  proportion_2_dose = 0.2,
+  proportion_pf_2_dose = proportion_pf * proportion_2_dose,
+  proportion_az_2_dose = (1 - proportion_pf) * proportion_2_dose,
+  proportion_pf_1_dose = proportion_pf * (1 - proportion_2_dose),
+  proportion_az_1_dose = (1 - proportion_pf) * (1 - proportion_2_dose)
 ) {
   
   # based on Pritchard MedRXiv / Harris via ATAGI advice paper
@@ -8837,10 +8889,10 @@ average_efficacy <- function(
   # proportion fully dosed
   proportion_1_dose <- 1 - proportion_2_dose # may need edit when 
   
-  efficacy_mean <- proportion_2_dose * proportion_pf * efficacy_pf_2_dose +
-    proportion_1_dose * proportion_pf * efficacy_pf_1_dose +
-    proportion_2_dose * proportion_az * efficacy_az_2_dose +
-    proportion_1_dose * proportion_az * efficacy_az_1_dose 
+  efficacy_mean <- proportion_pf_2_dose * efficacy_pf_2_dose +
+    proportion_pf_1_dose * efficacy_pf_1_dose +
+    proportion_az_2_dose * efficacy_az_2_dose +
+    proportion_az_1_dose * efficacy_az_1_dose 
   
   efficacy_mean 
   
