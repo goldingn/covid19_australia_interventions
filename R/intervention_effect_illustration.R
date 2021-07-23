@@ -96,7 +96,7 @@ get_r0 <- function(sample_summary, use_extra_effect = TRUE) {
       tp_corrected = tp / correction
     ) %>%
     pull(
-      tp_correction
+      tp_corrected
     )
 }
 
@@ -179,7 +179,7 @@ control_base_plot <- function(
     xlab("") +
     scale_y_continuous(
       position = "right",
-      breaks = c(0.5, 1:6),
+      breaks = c(0.5, 1, 2, 4, 6, 8),
       trans = 'log'
     ) +
     coord_cartesian(clip = "off") +
@@ -187,11 +187,14 @@ control_base_plot <- function(
     control_plot_theme()
 }
 
-add_phsm_box <- function(
+add_single_box <- function(
   p,
   top,
   bottom,
-  text_size = 2.5,
+  text_main = "",
+  use_reduction_text = FALSE,
+  only_scenarios = c(),
+  text_size = 3,
   box_colour = grey(0.9),
   text_colour = grey(0.3),
   border_colour = grey(0.6)
@@ -199,7 +202,7 @@ add_phsm_box <- function(
 
   top <- enquo(top)
   bottom <- enquo(bottom)
-  p +
+  p <- p +
     geom_boxplot(
       aes(
         lower = !!bottom,
@@ -208,45 +211,65 @@ add_phsm_box <- function(
       stat = "identity",
       fill = box_colour,
       col = border_colour
-    ) +
+    )
+  
+  if (use_reduction_text) {
+  
     # restriction labels
-    geom_text(
+    p <- p + geom_text(
       aes(
         label = ifelse(
-          !!top == !!bottom,
-          "",
+          scenario %in% only_scenarios,
           sprintf(
-            "%s\nPHSM\n%i%s",
-            gsub("\nPHSM", "", scenario),
-            round(100 * (1 - !!bottom / !!top)),
-            "% lower TP"
-          )
+            "%s\n%s\n coverage",
+            text_main,
+            scenario
+          ),
+          NA
         ),
         y = !!bottom * (!!top / !!bottom) ^ 0.5  # (midpoint on log scale!)
       ),
       size = text_size,
       col = text_colour
     )
+  } else {
+    p <- p + geom_text(
+      aes(
+        label = ifelse(
+          scenario %in% only_scenarios,
+          text_main,
+          NA
+        ),
+        y = !!bottom * (!!top / !!bottom) ^ 0.5  # (midpoint on log scale!)
+      ),
+      size = text_size,
+      col = text_colour
+    )
+  }
+  
+  p
+  
 }
 
-add_vaccine_box <- function(
+add_stacked_box <- function(
   p,
   bottom,  # variable for bottom of the box
   top,  # variable for top of the box
   reference,  # variable against which to calculate % reduction of 'bottom'
   text_main = "",
-  text_size = 2.5,
+  text_size = 3,
   only_scenarios = c(),
   box_colour = grey(0.9),
   border_colour = grey(0.6),
-  text_colour = grey(0.3)
+  text_colour = grey(0.3),
+  use_reduction_text = FALSE
 ) {
 
   bottom <- enquo(bottom)
   top <- enquo(top)
   reference <- enquo(reference)
 
-  p +
+  p <- p +
     geom_boxplot(
       aes(
         lower = !!bottom,
@@ -255,24 +278,45 @@ add_vaccine_box <- function(
       stat = "identity",
       fill = box_colour,
       col = border_colour
-    ) +
-    geom_text(
-      aes(
-        label = ifelse(
-          scenario %in% only_scenarios,
-          sprintf(
-            "%s\n%i%s",
-            text_main,
-            round(100 * (1 - !!bottom/!!reference)),
-            "% lower TP"
-          ),
-          NA
-        ),
-        y = !!bottom * (!!top /!!bottom) ^ 0.5  # (midpoint on log scale!)
-      ),
-      size = text_size,
-      col = text_colour
     )
+  
+  if (use_reduction_text) {
+    p <- p + 
+      geom_text(
+        aes(
+          label = ifelse(
+            scenario %in% only_scenarios,
+            sprintf(
+              "%s\n%i%s",
+              text_main,
+              round(100 * (1 - !!bottom/!!reference)),
+              "% lower TP"
+            ),
+            NA
+          ),
+          y = !!bottom * (!!top /!!bottom) ^ 0.5  # (midpoint on log scale!)
+        ),
+        size = text_size,
+        col = text_colour
+      )
+  } else {
+    p <- p + 
+      geom_text(
+        aes(
+          label = ifelse(
+            scenario %in% only_scenarios,
+            text_main,
+            NA
+          ),
+          y = !!bottom * (!!top /!!bottom) ^ 0.5  # (midpoint on log scale!)
+        ),
+        size = text_size,
+        col = text_colour
+      )
+  }
+  
+  p
+
 }
 
 add_arrow <- function(
@@ -318,74 +362,95 @@ r0 <- list(
   non_voc = get_r0(non_voc_summary, use_extra_effect = FALSE)
 )
 
-# get date for baseline
-minimal_date <- delta_summary %>%
+tps <-read_csv("~/Desktop/tp_scenarios_draft_2021-07-22.csv") %>%
   filter(
-    state == "VIC",
-    tp == min(tp)
-  ) %>%
-  pull(
-    date
-  )
-
-pre_covid_label <- "no PHSM"
-
-# get delta TPs
-baseline_data <- delta_summary %>%
-  filter(
-    date == minimal_date,
-    state %in% c("VIC", "NSW", "WA")
+    ttiq == "partial",
+    baseline_type == "standard",
+    vacc_schoolkids == FALSE,
+    vacc_relative_efficacy == 1,
+    az_age_cutoff == 60,
+    az_dose_gap == "12 weeks",
+    priority_order == "Random"
   ) %>%
   mutate(
-    scenario = case_when(
-      state == "VIC" ~ "maximal\nPHSM",
-      state == "NSW" ~ "moderate\nPHSM",
-      state == "WA" ~ "minimal\nPHSM"
-    )
-  ) %>%
-  select(
-    scenario, tp
-  ) %>%
-  bind_rows(
-    tibble(
-      scenario = pre_covid_label,
-      tp = r0$delta
-    )
-  ) %>%
-  mutate(
-    scenario = factor(
-      scenario,
-      levels = c(
-        pre_covid_label,
-        "minimal\nPHSM",
-        "moderate\nPHSM",
-        "maximal\nPHSM"
-      )
-    ),
+    scenario = paste0(100 * vacc_coverage, "%"),
     r0 = r0$delta
   )
+  
 
-vaccination_effects <- list(
-  now = 0.14,
-  sc1 = 0.4,
-  sc2 = 0.6,
-  sc3 = 0.8
-)
 
-# apply vaccination multipliers to get TP under scenarios
-plot_data <- baseline_data %>%
-  mutate(
-    vacc_tp_now = tp * (1 - vaccination_effects$now),
-    vacc_tp_sc1 = tp * (1 - vaccination_effects$sc1),
-    vacc_tp_sc2 = tp * (1 - vaccination_effects$sc2),
-    vacc_tp_sc3 = tp * (1 - vaccination_effects$sc3)
-  )
+
+# # get date for baseline
+# minimal_date <- delta_summary %>%
+#   filter(
+#     state == "VIC",
+#     tp == min(tp)
+#   ) %>%
+#   pull(
+#     date
+#   )
+# 
+# pre_covid_label <- "no PHSM"
+# 
+# # get delta TPs
+# baseline_data <- delta_summary %>%
+#   filter(
+#     date == minimal_date,
+#     state %in% c("VIC", "NSW", "WA")
+#   ) %>%
+#   mutate(
+#     scenario = case_when(
+#       state == "VIC" ~ "maximal\nPHSM",
+#       state == "NSW" ~ "moderate\nPHSM",
+#       state == "WA" ~ "minimal\nPHSM"
+#     )
+#   ) %>%
+#   select(
+#     scenario, tp
+#   ) %>%
+#   bind_rows(
+#     tibble(
+#       scenario = pre_covid_label,
+#       tp = r0$delta
+#     )
+#   ) %>%
+#   mutate(
+#     scenario = factor(
+#       scenario,
+#       levels = c(
+#         pre_covid_label,
+#         "minimal\nPHSM",
+#         "moderate\nPHSM",
+#         "maximal\nPHSM"
+#       )
+#     ),
+#     r0 = r0$delta
+#   )
+# 
+# vaccination_effects <- list(
+#   now = 0.14,
+#   sc1 = 0.4,
+#   sc2 = 0.6,
+#   sc3 = 0.8
+# )
+# 
+# # apply vaccination multipliers to get TP under scenarios
+# plot_data <- baseline_data %>%
+#   mutate(
+#     vacc_tp_now = tp * (1 - vaccination_effects$now),
+#     vacc_tp_sc1 = tp * (1 - vaccination_effects$sc1),
+#     vacc_tp_sc2 = tp * (1 - vaccination_effects$sc2),
+#     vacc_tp_sc3 = tp * (1 - vaccination_effects$sc3)
+#   )
 
 colours <- RColorBrewer::brewer.pal(3, "Set2")
-intervention_colour <- washout(colours[3], 0.5)
-intervention_dark_colour <- washout(colours[3], 0.3)
-vaccine_colours <- washout(colours[1], c(0.5, 0.25, 0.1))
-vaccine_dark_colours <- washout(colours[1], c(0.4, 0.15, 0))
+
+baseline_colour <- washout(colours[2], 0.8)
+vaccine_colour <- washout(colours[3], 0.5)
+vaccine_dark_colour <- washout(colours[3], 0.3)
+phsm_colours <- washout(colours[1], c(0.5, 0.25, 0.1))
+phsm_dark_colours <- washout(colours[1], c(0.4, 0.15, 0))
+
 
 border_colour <- grey(0.6)
 r0_colour <- grey(0.5)
@@ -393,8 +458,11 @@ label_colour <- grey(0.3)
 
 text_size <- 2.5
 
+  
+plot_data
+
 # make plot
-plot_data %>%
+tps %>%
   control_base_plot() %>%
   add_context_hline(
     label = "non-VOC R0",
@@ -409,34 +477,45 @@ plot_data %>%
     linetype = 2,
     text_size = text_size * 1.3
   ) %>%
-  add_phsm_box(
+  # add the vaccination + ttiq effect as a box
+  add_single_box(
     top = r0,
-    bottom = tp,
-    box_colour = intervention_colour,
+    bottom = tp_baseline,
+    box_colour = baseline_colour,
+    only_scenarios = "50%",
+    text_main = "baseline\nPHSM\n&\npartial\nTTIQ"
   ) %>%
-  add_vaccine_box(
-    top = tp,
-    bottom = vacc_tp_sc1,
-    reference = tp,
-    text_main = "vaccination\nscenario1",
-    only_scenarios = "no PHSM",
-    box_colour = vaccine_colours[1]
+  add_single_box(
+    top = tp_baseline,
+    bottom = tp_baseline_vacc,
+    box_colour = vaccine_colour,
+    text_main = "vaccination",
+    only_scenarios = unique(tps$scenario),
+    use_reduction_text = TRUE
   ) %>%
-  add_vaccine_box(
-    top = vacc_tp_sc1,
-    bottom = vacc_tp_sc2,
-    reference = tp,
-    text_main = "scenario2",
-    only_scenarios = "no PHSM",
-    box_colour = vaccine_colours[2]
+  add_stacked_box(
+    top = tp_baseline_vacc,
+    bottom = tp_low_vacc,
+    reference = tp_baseline_vacc,
+    text_main = "low\nPHSM",
+    only_scenarios = "50%",
+    box_colour = phsm_colours[1]
   ) %>%
-  add_vaccine_box(
-    top = vacc_tp_sc2,
-    bottom = vacc_tp_sc3,
-    reference = tp,
-    text_main = "scenario3",
-    only_scenarios = "no PHSM",
-    box_colour = vaccine_colours[3]
+  add_stacked_box(
+    top = tp_low_vacc,
+    bottom = tp_medium_vacc,
+    reference = tp_baseline_vacc,
+    text_main = "medium\nPHSM",
+    only_scenarios = "50%",
+    box_colour = phsm_colours[2]
+  ) %>%
+  add_stacked_box(
+    top = tp_medium_vacc,
+    bottom = tp_high_vacc,
+    reference = tp_baseline_vacc,
+    text_main = "high\nPHSM",
+    only_scenarios = "50%",
+    box_colour = phsm_colours[3]
   ) %>%
   add_context_hline(
     label = "Delta R0",
@@ -444,14 +523,11 @@ plot_data %>%
     linetype = 2,
     text_size = text_size * 1.3
   ) %>%
-  add_arrow(r0) +
-  annotate(
-    "text",
-    label = "*PHSM = public health & social measures",
-    x = -0.25,
-    y = 0.28,
-    hjust = 0,
-    col = r0_colour,
-    size = 3
-  ) +
-  ggtitle("Combined effects of vaccination and PHSM scenarios\non COVID-19 control")
+  add_arrow(r0)
+
+ggsave(
+  "~/Desktop/phsm_plot.png",
+  width = 8,
+  height = 6,
+  bg = "white"
+)
