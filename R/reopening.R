@@ -1428,3 +1428,39 @@ table_schoolkids <- scenarios %>%
 
 table_schoolkids
 write_csv(table_schoolkids, "~/Desktop/table_schoolkids.csv")
+
+# format table of the fraction of time spent in each of 2 different states
+table_fraction_time <- scenarios %>%
+  filter(
+    ttiq == "partial",
+    baseline_type == "standard",
+    vacc_schoolkids == FALSE,
+    vacc_relative_efficacy == 1,
+    vacc_scenario %in% 1:3
+  ) %>%
+  select(
+    priority_order,
+    vacc_coverage,
+    fraction = p_high_vacc_vs_low_vacc
+  ) %>%
+  mutate(
+    priority_order = factor(
+      priority_order,
+      levels = c(
+        "Oldest to youngest",
+        "Youngest to oldest (40+ first then 16+)",
+        "Random"
+      )
+    ),
+    fraction = round(100 * fraction)
+  ) %>%
+  pivot_wider(
+    names_from = vacc_coverage,
+    values_from = fraction
+  ) %>% 
+  arrange(
+    priority_order
+  )
+
+table_fraction_time
+write_csv(table_schoolkids, "~/Desktop/table_fraction_time.csv")
