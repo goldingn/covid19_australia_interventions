@@ -163,7 +163,7 @@ control_plot_theme <- function() {
 
 control_base_plot <- function(
   data,
-  ylab = "Potential reproduction number"
+  ylab = "Transmission potential"
 ) {
   data %>%
     ggplot(
@@ -377,72 +377,6 @@ tps <-read_csv("~/Desktop/tp_scenarios_draft_2021-07-22.csv") %>%
     r0 = r0$delta
   )
   
-
-
-
-# # get date for baseline
-# minimal_date <- delta_summary %>%
-#   filter(
-#     state == "VIC",
-#     tp == min(tp)
-#   ) %>%
-#   pull(
-#     date
-#   )
-# 
-# pre_covid_label <- "no PHSM"
-# 
-# # get delta TPs
-# baseline_data <- delta_summary %>%
-#   filter(
-#     date == minimal_date,
-#     state %in% c("VIC", "NSW", "WA")
-#   ) %>%
-#   mutate(
-#     scenario = case_when(
-#       state == "VIC" ~ "maximal\nPHSM",
-#       state == "NSW" ~ "moderate\nPHSM",
-#       state == "WA" ~ "minimal\nPHSM"
-#     )
-#   ) %>%
-#   select(
-#     scenario, tp
-#   ) %>%
-#   bind_rows(
-#     tibble(
-#       scenario = pre_covid_label,
-#       tp = r0$delta
-#     )
-#   ) %>%
-#   mutate(
-#     scenario = factor(
-#       scenario,
-#       levels = c(
-#         pre_covid_label,
-#         "minimal\nPHSM",
-#         "moderate\nPHSM",
-#         "maximal\nPHSM"
-#       )
-#     ),
-#     r0 = r0$delta
-#   )
-# 
-# vaccination_effects <- list(
-#   now = 0.14,
-#   sc1 = 0.4,
-#   sc2 = 0.6,
-#   sc3 = 0.8
-# )
-# 
-# # apply vaccination multipliers to get TP under scenarios
-# plot_data <- baseline_data %>%
-#   mutate(
-#     vacc_tp_now = tp * (1 - vaccination_effects$now),
-#     vacc_tp_sc1 = tp * (1 - vaccination_effects$sc1),
-#     vacc_tp_sc2 = tp * (1 - vaccination_effects$sc2),
-#     vacc_tp_sc3 = tp * (1 - vaccination_effects$sc3)
-#   )
-
 colours <- RColorBrewer::brewer.pal(3, "Set2")
 
 baseline_colour <- washout(colours[2], 0.8)
