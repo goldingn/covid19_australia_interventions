@@ -4624,22 +4624,24 @@ get_vic_linelist_wollert <- function(file = "~/not_synced/vic/Whittlesea outbrea
 }
 
 
-get_sa_linelist <- function(file = "~/not_synced/sa/sa_linelist_25Nov2020.xlsx") {
+get_sa_linelist <- function(file = "~/not_synced/sa/SA_linelist_25July2021.csv") {
+  
+  # We need to time travel as SA health has given us an outdated linelist (by 1 day)
+  # We'll undo this on the EpiFX end.
+  t_offset <- lubridate::days(1)
   
   file %>%
-    read_excel(
-      col_types = c(
-        "text",
-        "date",
-        "date",
-        "date",
-        "text"
-      )
-    ) %>%
+    read_csv() %>%
     mutate(
-      date_onset = as.Date(symptom_onset),
-      date_detection = as.Date(specimen_collection),
-      date_confirmation = as.Date(isolation_date),
+      symptom_onset = lubridate::dmy(symptom_onset) + t_offset,
+      notification_date = lubridate::dmy(notification_date) + t_offset,
+      likely_infection_date = lubridate::dmy(likely_infection_date) + t_offset) %>%
+  
+  mutate(
+      date_onset = case_when(!is.na(likely_infection_date) ~ likely_infection_date + 5,
+                             T                             ~ symptom_onset),
+      date_detection = NA,
+      date_confirmation = notification_date,
       state = "SA",
       postcode_of_acquisition = "8888",
       postcode_of_residence = NA,
@@ -4649,8 +4651,9 @@ get_sa_linelist <- function(file = "~/not_synced/sa/sa_linelist_25Nov2020.xlsx")
         NA
       ),
       state_of_residence = NA,
-      report_delay = as.numeric(date_confirmation - date_onset),
-      date_linelist = as.Date("2020-11-25")
+      report_delay = NA,
+      date_linelist = as.Date("2021-07-25"),
+      interstate_import = FALSE
     ) %>%
     select(
       date_onset,
@@ -4663,7 +4666,8 @@ get_sa_linelist <- function(file = "~/not_synced/sa/sa_linelist_25Nov2020.xlsx")
       state_of_acquisition,
       state_of_residence,
       report_delay,
-      date_linelist
+      date_linelist,
+      interstate_import
     ) %>%
     filter(
       import_status == "local"
@@ -6130,8 +6134,8 @@ load_vic <- function (file) {
 
 load_linelist <- function(date = NULL,
                           use_vic = FALSE,
-                          use_sa = FALSE,
-                          use_nsw = T) {
+                          use_sa = TRUE,
+                          use_nsw = TRUE) {
   
   # load the latest NNDSS linelist (either the latest or specified file)
   linelist <- get_nndss_linelist(date = date)
@@ -6332,16 +6336,15 @@ load_linelist <- function(date = NULL,
   
   if (use_sa) {
     
-    # remove local cases from linelist on or after 14th and append SA data
     linelist <- linelist %>%
       filter(
         !(state == "SA" &
             import_status == "local" &
-            date_detection >= as.Date("2020-11-14") & 
-            date_detection < as.Date("2020-11-25")
+            date_detection >= as.Date("2021-07-19") & 
+            date_detection < as.Date("2021-07-26")
           )
       ) %>%
-      # replace with partial linelist for parafield cluster
+      
       bind_rows(
         get_sa_linelist()
       )
@@ -6354,7 +6357,7 @@ load_linelist <- function(date = NULL,
     nsw_ll_date <- nsw_ll$date_linelist[1]
     nsw_ll_start <- min(nsw_ll$date_confirmation)
     
-    # remove local cases from linelist from 14/12 to the linelist date
+    
     linelist <- linelist %>%
       filter(
         !(state == "NSW" &
@@ -6363,7 +6366,7 @@ load_linelist <- function(date = NULL,
             date_detection <= nsw_ll_date
         )
       ) %>%
-      # replace with partial linelist for parafield cluster
+      
       bind_rows(
         nsw_ll
       )
