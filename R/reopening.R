@@ -1018,7 +1018,10 @@ scenarios %>%
   ) %>%
   summarise(
     tp_baseline = first(tp_baseline),
-    all_identical = all(tp_baseline == first(tp_baseline))
+    tp_low = first(tp_low),
+    all_identical = all(
+      tp_baseline == first(tp_baseline) & tp_low == first(tp_low)
+    )
   )
 
 # plot the next generation matrix at R = 3.6
