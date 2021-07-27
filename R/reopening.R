@@ -112,10 +112,6 @@ tti_distributions <- tibble(
 saveRDS(tti_distributions,
         file = "~/Desktop/tti_distributions.rds")
 
-# barplot(tti_distributions$partial, names.arg = tti_distributions$days)
-# barplot(tti_distributions$optimal, names.arg = tti_distributions$days)
-
-
 # compute the mean of 'observed' TP over time in each state, and add on the
 # surveillance and TTIQ effects, then compute TP with these at their optimal 
 # and partial values
@@ -238,49 +234,7 @@ phsm_scenarios <- tp_delta %>%
     tp_high
   )
     
-# tp_delta %>%
-#   ggplot(
-#     aes(
-#       y = tp_partial_ttiq,
-#       x = date
-#     )
-#   ) +
-#   geom_vline(
-#     aes(
-#       xintercept = date
-#     ),
-#     data = phsm_periods,
-#     color = grey(0.7)
-#   ) +
-#   geom_hline(
-#     yintercept = 1,
-#     linetype = 2
-#   ) +
-#   geom_line() +
-#   geom_line(
-#     aes(
-#       y = tp_optimal_ttiq,
-#     ),
-#     color = grey(0.4)
-#   ) +
-#   geom_line(
-#     aes(
-#       y = tp_no_ttiq,
-#     ),
-#     color = grey(0.4)
-#   ) +
-#   facet_wrap(
-#     ~state,
-#     ncol = 2
-#   ) +
-#   scale_y_continuous(
-#     breaks = 1:8,
-#     trans = "log"
-#   ) +
-#   ylab("baseline TP (alternative TTIQ effectiveness)") +
-#   theme_minimal()
-
-# load vaccination scenarios and compute completion dates
+# load vaccination scenarios and compute completion dates - and add on scenario 19
 completion_file <- "data/vaccinatinon/quantium_simulations/20210716 Completion rates over time.xlsx"
 completion <- completion_file %>%
   readxl::read_xlsx(sheet = 4) %>%
@@ -317,10 +271,44 @@ completion <- completion_file %>%
   summarise(
     week = min(week),
     .groups = "drop"
+  ) %>%
+  bind_rows(
+    tibble::tribble(
+      ~vacc_scenario, ~target_coverage,                  ~week,
+                  19,              0.5,  as_date("2021-10-04"),
+                  19,              0.6,  as_date("2021-10-18"),
+                  19,              0.7,  as_date("2021-11-08"),
+                  19,              0.8,  as_date("2021-11-22")
+    )
   )
 
 # for each of these, pull out the relevant age/dose/type distributions from the simulations
-vaccinations <- read.csv("data/vaccinatinon/quantium_simulations/vaccinations.csv")
+vaccinations <- bind_rows(
+  read_csv(
+    "data/vaccinatinon/quantium_simulations/vaccinations.csv",
+    col_types = cols(
+      scenario = col_double(),
+      sa4_code16 = col_double(),
+      age_band_id = col_double(),
+      vaccine = col_double(),
+      time_dose_1 = col_double(),
+      time_dose_2 = col_double(),
+      num_people = col_double()
+    )    
+  ),
+  read_csv(
+    "data/vaccinatinon/quantium_simulations/vaccinations_scn19.csv",
+    col_types = cols(
+      scenario = col_double(),
+      sa4_code16 = col_double(),
+      age_band_id = col_double(),
+      vaccine = col_double(),
+      time_dose_1 = col_double(),
+      time_dose_2 = col_double(),
+      num_people = col_double()
+    )
+  )
+)
 
 # combine this with 'completion' to flag get the final dates of administration for aggregation.
 week_lookup <- read.csv("data/vaccinatinon/quantium_simulations/dim_time.csv") %>%
@@ -801,7 +789,13 @@ vacc_scenario_lookup <- read_csv(
     az_dose_gap = col_character(),
     az_age_cutoff = col_double()
   )
-)
+) %>%
+  bind_rows(
+    tibble::tribble(
+      ~scenario,         ~priority_order, ~az_dose_gap, ~az_age_cutoff,
+             19,  "Random, with phasing",   "12 weeks",             60,
+    )
+  )
 
 # compute the reduction in transmission from different age-structured 
 # vaccine coverage scenarios - accounting for reduced efficacy in AZ
@@ -982,7 +976,7 @@ scenarios %>%
   filter(
     ttiq %in% c("partial", "optimal"),
     baseline_type == "standard",
-    vacc_scenario %in% 1:3,
+    vacc_scenario %in% c(1:3, 19),
     vacc_relative_efficacy == 1
   ) %>%
   write.csv(
@@ -999,7 +993,7 @@ scenarios %>%
   filter(
     ttiq == "partial",
     baseline_type == "standard",
-    vacc_scenario %in% 1:3
+    vacc_scenario %in% c(1:3, 19)
   ) %>%
   write.csv(
     file = paste0(
@@ -1183,6 +1177,20 @@ for (tp_contrib_vacc_coverage in c(0.5, 0.6, 0.7, 0.8)) {
           vacc_effect_sc3 = vacc_effect
         )
     ) %>%
+    left_join(
+      vacc_effect_by_age %>%
+        filter(
+          vacc_scenario == 19,
+          vacc_coverage == tp_contrib_vacc_coverage,
+          vacc_schoolkids == FALSE,
+          vacc_relative_efficacy == 1
+        ) %>%
+        ungroup() %>%
+        select(
+          age_band_5y,
+          vacc_effect_sc19 = vacc_effect
+        )
+    ) %>%
     mutate(
       age_band_5y = factor(age_band_5y, levels = age_classes()$classes),
       across(
@@ -1210,13 +1218,15 @@ for (tp_contrib_vacc_coverage in c(0.5, 0.6, 0.7, 0.8)) {
         priority_order == "Oldest to youngest" ~ "Oldest first",
         priority_order == "Random" ~ "All ages",
         priority_order == "Youngest to oldest (40+ first then 16+)" ~ "Middle years first",
+        priority_order == "Random, with phasing" ~ "Highest transmission",
       ),
       priority_order = factor(
         priority_order,
         c(
           "Oldest first",
           "Middle years first",
-          "All ages"
+          "All ages",
+          "Highest transmission"
         ))
     ) %>%
     arrange(
@@ -1225,7 +1235,7 @@ for (tp_contrib_vacc_coverage in c(0.5, 0.6, 0.7, 0.8)) {
   
   tps <- scenarios %>%
     filter(
-      vacc_scenario %in% 1:3,
+      vacc_scenario %in% c(1:3, 19),
       ttiq == "partial",
       baseline_type == "standard",
       vacc_coverage == tp_contrib_vacc_coverage,
@@ -1237,13 +1247,15 @@ for (tp_contrib_vacc_coverage in c(0.5, 0.6, 0.7, 0.8)) {
         priority_order == "Oldest to youngest" ~ "Oldest first",
         priority_order == "Random" ~ "All ages",
         priority_order == "Youngest to oldest (40+ first then 16+)" ~ "Middle years first",
+        priority_order == "Random, with phasing" ~ "Highest transmission",
       ),
       priority_order = factor(
         priority_order,
         c(
           "Oldest first",
           "Middle years first",
-          "All ages"
+          "All ages",
+          "Highest transmission"
         ))
     ) %>%
     arrange(
@@ -1343,7 +1355,8 @@ table_2_x <- scenarios %>%
       levels = c(
         "Oldest to youngest",
         "Youngest to oldest (40+ first then 16+)",
-        "Random"
+        "Random",
+        "Random, with phasing"
       )
     ),
     tp_baseline_vacc = round(tp_baseline_vacc, 1)
@@ -1367,7 +1380,7 @@ table_3_1 <- scenarios %>%
     baseline_type == "standard",
     vacc_schoolkids == FALSE,
     vacc_relative_efficacy == 0.5,
-    vacc_scenario %in% 1:3
+    vacc_scenario %in% c(1:3, 19)
   ) %>%
   select(
     priority_order,
@@ -1380,7 +1393,8 @@ table_3_1 <- scenarios %>%
       levels = c(
         "Oldest to youngest",
         "Youngest to oldest (40+ first then 16+)",
-        "Random"
+        "Random",
+        "Random, with phasing"
       )
     ),
     tp_baseline_vacc = round(tp_baseline_vacc, 1)
@@ -1403,7 +1417,7 @@ table_schoolkids <- scenarios %>%
     baseline_type == "standard",
     vacc_schoolkids == TRUE,
     vacc_relative_efficacy == 1,
-    vacc_scenario %in% 1:3
+    vacc_scenario %in% c(1:3, 19)
   ) %>%
   select(
     priority_order,
@@ -1416,7 +1430,8 @@ table_schoolkids <- scenarios %>%
       levels = c(
         "Oldest to youngest",
         "Youngest to oldest (40+ first then 16+)",
-        "Random"
+        "Random",
+        "Random, with phasing"
       )
     ),
     tp_baseline_vacc = round(tp_baseline_vacc, 1)
@@ -1439,7 +1454,7 @@ table_fraction_time <- scenarios %>%
     baseline_type == "standard",
     vacc_schoolkids == FALSE,
     vacc_relative_efficacy == 1,
-    vacc_scenario %in% 1:3
+    vacc_scenario %in% c(1:3, 19)
   ) %>%
   select(
     ttiq,
@@ -1463,7 +1478,8 @@ table_fraction_time <- scenarios %>%
       levels = c(
         "Oldest to youngest",
         "Youngest to oldest (40+ first then 16+)",
-        "Random"
+        "Random",
+        "Random, with phasing"
       )
     ),
     fraction = round(100 * fraction)
@@ -1478,8 +1494,7 @@ table_fraction_time <- scenarios %>%
     priority_order
   ) %>%
   filter(
-    # reactive_phsm == "high"
-    reactive_phsm == "med"
+    reactive_phsm == "high"
   ) %>%
   mutate(
     background_phsm = "low"
@@ -1499,7 +1514,7 @@ supp_table_fraction_time <- scenarios %>%
     baseline_type == "standard",
     vacc_schoolkids == FALSE,
     vacc_relative_efficacy == 1,
-    vacc_scenario %in% 1:3
+    vacc_scenario %in% c(1:3, 19)
   ) %>%
   select(
     ttiq,
@@ -1524,7 +1539,8 @@ supp_table_fraction_time <- scenarios %>%
       levels = c(
         "Oldest to youngest",
         "Youngest to oldest (40+ first then 16+)",
-        "Random"
+        "Random",
+        "Random, with phasing"
       )
     ),
     fraction = round(100 * fraction)
@@ -1542,6 +1558,7 @@ supp_table_fraction_time <- scenarios %>%
     priority_order
   )
 
+supp_table_fraction_time
 write_csv(supp_table_fraction_time, "~/Desktop/supp_table_fraction_time.csv")
 
 
@@ -1552,7 +1569,7 @@ supp_table_fraction_time_vs_low <- scenarios %>%
     baseline_type == "standard",
     vacc_schoolkids == FALSE,
     vacc_relative_efficacy == 1,
-    vacc_scenario %in% 1:3
+    vacc_scenario %in% c(1:3, 19)
   ) %>%
   select(
     ttiq,
@@ -1576,7 +1593,8 @@ supp_table_fraction_time_vs_low <- scenarios %>%
       levels = c(
         "Oldest to youngest",
         "Youngest to oldest (40+ first then 16+)",
-        "Random"
+        "Random",
+        "Random, with phasing"
       )
     ),
     fraction = round(100 * fraction)
