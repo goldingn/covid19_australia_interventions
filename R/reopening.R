@@ -1478,7 +1478,8 @@ table_fraction_time <- scenarios %>%
     priority_order
   ) %>%
   filter(
-    reactive_phsm == "high"
+    # reactive_phsm == "high"
+    reactive_phsm == "med"
   ) %>%
   mutate(
     background_phsm = "low"
@@ -1489,3 +1490,111 @@ table_fraction_time <- scenarios %>%
 
 table_fraction_time
 write_csv(table_fraction_time, "~/Desktop/table_fraction_time.csv")
+
+
+# format fraction time tables for supplement
+supp_table_fraction_time <- scenarios %>%
+  filter(
+    ttiq %in% c("partial", "optimal"),
+    baseline_type == "standard",
+    vacc_schoolkids == FALSE,
+    vacc_relative_efficacy == 1,
+    vacc_scenario %in% 1:3
+  ) %>%
+  select(
+    ttiq,
+    priority_order,
+    vacc_coverage,
+    fraction_base_vs_low = p_low_vacc_vs_baseline_vacc,
+    fraction_base_vs_medium = p_medium_vacc_vs_baseline_vacc,
+    fraction_base_vs_high = p_high_vacc_vs_baseline_vacc
+  ) %>%
+  pivot_longer(
+    starts_with("fraction_base_vs_"),
+    names_to = "reactive_phsm",
+    values_to = "fraction"
+  ) %>%
+  mutate(
+    reactive_phsm = str_remove(
+      reactive_phsm,
+      "^fraction_base_vs_"
+    ),
+    priority_order = factor(
+      priority_order,
+      levels = c(
+        "Oldest to youngest",
+        "Youngest to oldest (40+ first then 16+)",
+        "Random"
+      )
+    ),
+    fraction = round(100 * fraction)
+  ) %>%
+  pivot_wider(
+    names_from = reactive_phsm,
+    values_from = fraction
+  ) %>%
+  relocate(
+    vacc_coverage, .after = ttiq
+  ) %>%
+  arrange(
+    desc(ttiq),
+    vacc_coverage,
+    priority_order
+  )
+
+write_csv(supp_table_fraction_time, "~/Desktop/supp_table_fraction_time.csv")
+
+
+# format fraction time tables for supplement
+supp_table_fraction_time_vs_low <- scenarios %>%
+  filter(
+    ttiq %in% c("partial", "optimal"),
+    baseline_type == "standard",
+    vacc_schoolkids == FALSE,
+    vacc_relative_efficacy == 1,
+    vacc_scenario %in% 1:3
+  ) %>%
+  select(
+    ttiq,
+    priority_order,
+    vacc_coverage,
+    fraction_low_vs_medium = p_medium_vacc_vs_low_vacc,
+    fraction_low_vs_high = p_high_vacc_vs_low_vacc
+  ) %>%
+  pivot_longer(
+    starts_with("fraction_low_vs_"),
+    names_to = "reactive_phsm",
+    values_to = "fraction"
+  ) %>%
+  mutate(
+    reactive_phsm = str_remove(
+      reactive_phsm,
+      "^fraction_low_vs_"
+    ),
+    priority_order = factor(
+      priority_order,
+      levels = c(
+        "Oldest to youngest",
+        "Youngest to oldest (40+ first then 16+)",
+        "Random"
+      )
+    ),
+    fraction = round(100 * fraction)
+  ) %>%
+  pivot_wider(
+    names_from = reactive_phsm,
+    values_from = fraction
+  ) %>%
+  relocate(
+    vacc_coverage, .after = ttiq
+  ) %>%
+  arrange(
+    desc(ttiq),
+    vacc_coverage,
+    priority_order
+  )
+
+supp_table_fraction_time_vs_low %>%
+  print(n = Inf)
+
+write_csv(supp_table_fraction_time_vs_low, "~/Desktop/supp_table_fraction_time_vs_low.csv")
