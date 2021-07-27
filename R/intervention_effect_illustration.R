@@ -1,48 +1,6 @@
 # plot the combined impacts of vaccination and public health and social measures
 # (PHSM) on control (reducing transmission potential to <1 of COVID-19)
 
-
-# # proportional intervention effects in each scenario
-# contributions <- tribble(
-#   ~scenario, ~surv, ~micro, ~ttiq, ~macro, ~vacc,
-#   "Vic 2nd wave", 0.1, 0.1, 0.4, 0.4, 0,
-#   "Vic 2nd wave with vaccination", 0.1, 0, 0, 0, 0.9,
-# )
-#
-# intervention_names <- names(contributions)[-1]
-# # colours <- c("yellow", "blue", "lavender", "purple", "green")
-# colours <- RColorBrewer::brewer.pal(length(intervention_names), "Set3")
-#
-# # R0 and Reff for each scenario
-# effects <- tribble(
-#   ~scenario, ~r0, ~reff,
-#   "Vic 2nd wave", 3, 0.8,
-#   "Vic 2nd wave with vaccination", 3, 0.9
-# )
-#
-# # convert these into cumulative values to plot for each scenario
-# # bang bang wasn't working properly here, so I fudged it.
-# cumulative_contributions <- contributions
-# for (i in seq_along(intervention_names[-1])) {
-#   to_update <- intervention_names[i + 1]
-#   to_add <- intervention_names[i]
-#   cumulative_contributions <- cumulative_contributions %>%
-#     mutate_at(
-#       to_update,
-#       `+`,
-#       e2 = .[[to_add]]
-#     )
-# }
-#
-# # combine with Reff to get values for plotting
-# plot_data <- cumulative_contributions %>%
-#   left_join(effects, by = "scenario") %>%
-#   mutate_at(
-#     intervention_names,
-#     ~. * (r0 - reff) + reff
-#   ) %>%
-#   select(scenario, reff, !!!intervention_names, -r0)
-
 summarise_samples <- function(samples_file) {
   delta_summary <-
     samples_file %>%
@@ -362,7 +320,16 @@ r0 <- list(
   non_voc = get_r0(non_voc_summary, use_extra_effect = FALSE)
 )
 
-tps <- read_csv("~/Desktop/tp_scenarios_draft_2021-07-27.csv") %>%
+tps <- read_csv(
+  "~/Desktop/tp_scenarios_draft_2021-07-27.csv",
+  col_types = cols(
+    .default = col_double(),
+    ttiq = col_character(),
+    baseline_type = col_character(),
+    vacc_schoolkids = col_logical(),
+    priority_order = col_character(),
+    az_dose_gap = col_character()
+  )) %>%
   filter(
     ttiq %in% c("partial", "optimal"),
     baseline_type == "standard",
@@ -370,7 +337,7 @@ tps <- read_csv("~/Desktop/tp_scenarios_draft_2021-07-27.csv") %>%
     vacc_relative_efficacy == 1,
     az_age_cutoff == 60,
     az_dose_gap == "12 weeks",
-    priority_order == "Random"
+    priority_order %in% c("Random", "Random, with phasing")
   ) %>%
   mutate(
     scenario = paste0(100 * vacc_coverage, "%"),
@@ -394,84 +361,89 @@ text_size <- 2.5
 
 # make plots with both optimal and partial TTIQ
 for (ttiq_plot in c("partial", "optimal")) {
-  tps %>%
-    filter(
-      ttiq == ttiq_plot
-    ) %>%
-    control_base_plot() %>%
-    add_context_hline(
-      label = "non-VOC R0",
-      at = r0$non_voc,
-      col = r0_colour,
-      linetype = 3,
-      text_size = text_size
-    ) %>%
-    add_context_hline(
-      label = "Control",
-      at = 1,
-      linetype = 2,
-      text_size = text_size * 1.3
-    ) %>%
-    # add the vaccination + ttiq effect as a box
-    add_single_box(
-      top = r0,
-      bottom = tp_baseline,
-      box_colour = baseline_colour,
-      only_scenarios = "50%",
-      text_main = paste0(
-        "baseline\nPHSM\n&\n",
+  for (priority_order_plot in c("Random", "Random, with phasing")) {
+    tps %>%
+      filter(
+        ttiq == ttiq_plot,
+        priority_order == priority_order_plot
+      ) %>%
+      control_base_plot() %>%
+      add_context_hline(
+        label = "non-VOC R0",
+        at = r0$non_voc,
+        col = r0_colour,
+        linetype = 3,
+        text_size = text_size
+      ) %>%
+      add_context_hline(
+        label = "Control",
+        at = 1,
+        linetype = 2,
+        text_size = text_size * 1.3
+      ) %>%
+      # add the vaccination + ttiq effect as a box
+      add_single_box(
+        top = r0,
+        bottom = tp_baseline,
+        box_colour = baseline_colour,
+        only_scenarios = "50%",
+        text_main = paste0(
+          "baseline\nPHSM\n&\n",
+          ttiq_plot,
+          "\nTTIQ"
+        )
+      ) %>%
+      add_single_box(
+        top = tp_baseline,
+        bottom = tp_baseline_vacc,
+        box_colour = vaccine_colour,
+        text_main = "vaccination",
+        only_scenarios = unique(tps$scenario),
+        use_reduction_text = TRUE
+      ) %>%
+      add_stacked_box(
+        top = tp_baseline_vacc,
+        bottom = tp_low_vacc,
+        reference = tp_baseline_vacc,
+        text_main = "low\nPHSM",
+        only_scenarios = "50%",
+        box_colour = phsm_colours[1]
+      ) %>%
+      add_stacked_box(
+        top = tp_low_vacc,
+        bottom = tp_medium_vacc,
+        reference = tp_baseline_vacc,
+        text_main = "medium\nPHSM",
+        only_scenarios = "50%",
+        box_colour = phsm_colours[2]
+      ) %>%
+      add_stacked_box(
+        top = tp_medium_vacc,
+        bottom = tp_high_vacc,
+        reference = tp_baseline_vacc,
+        text_main = "high\nPHSM",
+        only_scenarios = "50%",
+        box_colour = phsm_colours[3]
+      ) %>%
+      add_context_hline(
+        label = "Delta R0",
+        at = r0$delta,
+        linetype = 2,
+        text_size = text_size * 1.3
+      ) %>%
+      add_arrow(r0)
+    
+    ggsave(
+      paste0(
+        "~/Desktop/phsm_plot_",
         ttiq_plot,
-        "\nTTIQ"
-      )
-    ) %>%
-    add_single_box(
-      top = tp_baseline,
-      bottom = tp_baseline_vacc,
-      box_colour = vaccine_colour,
-      text_main = "vaccination",
-      only_scenarios = unique(tps$scenario),
-      use_reduction_text = TRUE
-    ) %>%
-    add_stacked_box(
-      top = tp_baseline_vacc,
-      bottom = tp_low_vacc,
-      reference = tp_baseline_vacc,
-      text_main = "low\nPHSM",
-      only_scenarios = "50%",
-      box_colour = phsm_colours[1]
-    ) %>%
-    add_stacked_box(
-      top = tp_low_vacc,
-      bottom = tp_medium_vacc,
-      reference = tp_baseline_vacc,
-      text_main = "medium\nPHSM",
-      only_scenarios = "50%",
-      box_colour = phsm_colours[2]
-    ) %>%
-    add_stacked_box(
-      top = tp_medium_vacc,
-      bottom = tp_high_vacc,
-      reference = tp_baseline_vacc,
-      text_main = "high\nPHSM",
-      only_scenarios = "50%",
-      box_colour = phsm_colours[3]
-    ) %>%
-    add_context_hline(
-      label = "Delta R0",
-      at = r0$delta,
-      linetype = 2,
-      text_size = text_size * 1.3
-    ) %>%
-    add_arrow(r0)
-  
-  ggsave(
-    paste0(
-      "~/Desktop/phsm_plot_",
-      ttiq_plot,
-      ".png"
-    ),
-    width = 8,
-    height = 6,
-    bg = "white"
-  )
+        "_",
+        priority_order_plot,
+        ".png"
+      ),
+      width = 8,
+      height = 6,
+      bg = "white"
+    )
+  }
 }
