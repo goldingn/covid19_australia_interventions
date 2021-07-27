@@ -362,9 +362,9 @@ r0 <- list(
   non_voc = get_r0(non_voc_summary, use_extra_effect = FALSE)
 )
 
-tps <-read_csv("~/Desktop/tp_scenarios_draft_2021-07-22.csv") %>%
+tps <- read_csv("~/Desktop/tp_scenarios_draft_2021-07-27.csv") %>%
   filter(
-    ttiq == "partial",
+    ttiq %in% c("partial", "optimal"),
     baseline_type == "standard",
     vacc_schoolkids == FALSE,
     vacc_relative_efficacy == 1,
@@ -392,76 +392,86 @@ label_colour <- grey(0.3)
 
 text_size <- 2.5
 
+# make plots with both optimal and partial TTIQ
+for (ttiq_plot in c("partial", "optimal")) {
+  tps %>%
+    filter(
+      ttiq == ttiq_plot
+    ) %>%
+    control_base_plot() %>%
+    add_context_hline(
+      label = "non-VOC R0",
+      at = r0$non_voc,
+      col = r0_colour,
+      linetype = 3,
+      text_size = text_size
+    ) %>%
+    add_context_hline(
+      label = "Control",
+      at = 1,
+      linetype = 2,
+      text_size = text_size * 1.3
+    ) %>%
+    # add the vaccination + ttiq effect as a box
+    add_single_box(
+      top = r0,
+      bottom = tp_baseline,
+      box_colour = baseline_colour,
+      only_scenarios = "50%",
+      text_main = paste0(
+        "baseline\nPHSM\n&\n",
+        ttiq_plot,
+        "\nTTIQ"
+      )
+    ) %>%
+    add_single_box(
+      top = tp_baseline,
+      bottom = tp_baseline_vacc,
+      box_colour = vaccine_colour,
+      text_main = "vaccination",
+      only_scenarios = unique(tps$scenario),
+      use_reduction_text = TRUE
+    ) %>%
+    add_stacked_box(
+      top = tp_baseline_vacc,
+      bottom = tp_low_vacc,
+      reference = tp_baseline_vacc,
+      text_main = "low\nPHSM",
+      only_scenarios = "50%",
+      box_colour = phsm_colours[1]
+    ) %>%
+    add_stacked_box(
+      top = tp_low_vacc,
+      bottom = tp_medium_vacc,
+      reference = tp_baseline_vacc,
+      text_main = "medium\nPHSM",
+      only_scenarios = "50%",
+      box_colour = phsm_colours[2]
+    ) %>%
+    add_stacked_box(
+      top = tp_medium_vacc,
+      bottom = tp_high_vacc,
+      reference = tp_baseline_vacc,
+      text_main = "high\nPHSM",
+      only_scenarios = "50%",
+      box_colour = phsm_colours[3]
+    ) %>%
+    add_context_hline(
+      label = "Delta R0",
+      at = r0$delta,
+      linetype = 2,
+      text_size = text_size * 1.3
+    ) %>%
+    add_arrow(r0)
   
-plot_data
-
-# make plot
-tps %>%
-  control_base_plot() %>%
-  add_context_hline(
-    label = "non-VOC R0",
-    at = r0$non_voc,
-    col = r0_colour,
-    linetype = 3,
-    text_size = text_size
-  ) %>%
-  add_context_hline(
-    label = "Control",
-    at = 1,
-    linetype = 2,
-    text_size = text_size * 1.3
-  ) %>%
-  # add the vaccination + ttiq effect as a box
-  add_single_box(
-    top = r0,
-    bottom = tp_baseline,
-    box_colour = baseline_colour,
-    only_scenarios = "50%",
-    text_main = "baseline\nPHSM\n&\npartial\nTTIQ"
-  ) %>%
-  add_single_box(
-    top = tp_baseline,
-    bottom = tp_baseline_vacc,
-    box_colour = vaccine_colour,
-    text_main = "vaccination",
-    only_scenarios = unique(tps$scenario),
-    use_reduction_text = TRUE
-  ) %>%
-  add_stacked_box(
-    top = tp_baseline_vacc,
-    bottom = tp_low_vacc,
-    reference = tp_baseline_vacc,
-    text_main = "low\nPHSM",
-    only_scenarios = "50%",
-    box_colour = phsm_colours[1]
-  ) %>%
-  add_stacked_box(
-    top = tp_low_vacc,
-    bottom = tp_medium_vacc,
-    reference = tp_baseline_vacc,
-    text_main = "medium\nPHSM",
-    only_scenarios = "50%",
-    box_colour = phsm_colours[2]
-  ) %>%
-  add_stacked_box(
-    top = tp_medium_vacc,
-    bottom = tp_high_vacc,
-    reference = tp_baseline_vacc,
-    text_main = "high\nPHSM",
-    only_scenarios = "50%",
-    box_colour = phsm_colours[3]
-  ) %>%
-  add_context_hline(
-    label = "Delta R0",
-    at = r0$delta,
-    linetype = 2,
-    text_size = text_size * 1.3
-  ) %>%
-  add_arrow(r0)
-
-ggsave(
-  "~/Desktop/phsm_plot.png",
-  width = 8,
-  height = 6,
-  bg = "white"
-)
+  ggsave(
+    paste0(
+      "~/Desktop/phsm_plot_",
+      ttiq_plot,
+      ".png"
+    ),
+    width = 8,
+    height = 6,
+    bg = "white"
+  )
+}
