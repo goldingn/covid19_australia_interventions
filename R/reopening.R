@@ -1432,18 +1432,29 @@ write_csv(table_schoolkids, "~/Desktop/table_schoolkids.csv")
 # format table of the fraction of time spent in each of 2 different states
 table_fraction_time <- scenarios %>%
   filter(
-    ttiq == "partial",
+    ttiq %in% c("partial", "optimal"),
     baseline_type == "standard",
     vacc_schoolkids == FALSE,
     vacc_relative_efficacy == 1,
     vacc_scenario %in% 1:3
   ) %>%
   select(
+    ttiq,
     priority_order,
     vacc_coverage,
-    fraction = p_high_vacc_vs_low_vacc
+    fraction_low_vs_high = p_high_vacc_vs_low_vacc,
+    fraction_low_vs_med = p_medium_vacc_vs_low_vacc
+  ) %>%
+  pivot_longer(
+    c(fraction_low_vs_high, fraction_low_vs_med),
+    names_to = "reactive_phsm",
+    values_to = "fraction"
   ) %>%
   mutate(
+    reactive_phsm = str_remove(
+      reactive_phsm,
+      "^fraction_low_vs_"
+    ),
     priority_order = factor(
       priority_order,
       levels = c(
@@ -1459,8 +1470,19 @@ table_fraction_time <- scenarios %>%
     values_from = fraction
   ) %>% 
   arrange(
+    reactive_phsm,
+    ttiq,
     priority_order
+  ) %>%
+  filter(
+    reactive_phsm == "high"
+  ) %>%
+  mutate(
+    background_phsm = "low"
+  ) %>%
+  relocate(
+    c(reactive_phsm, background_phsm), .before = "ttiq" 
   )
 
 table_fraction_time
-write_csv(table_schoolkids, "~/Desktop/table_fraction_time.csv")
+write_csv(table_fraction_time, "~/Desktop/table_fraction_time.csv")
