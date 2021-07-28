@@ -245,6 +245,46 @@ nsw_vaccinations <- function(
     
 }
 
+# Account for lag in vaccination effect.
+
+# For those with only 1 dose, no increase for 1 week, then linear increase from
+# 0% to 100% over the next two weeks. For those with 2 doses, linear increase
+# from 0% to 100% over the next two weeks.
+
+# Compute a correction factor to downgrade the coverage (by number of doses)
+# based on the fraction of all people with that number of doses that received it
+# at each point in time the last 2-3 weeks.
+immunity_lag_correction <- function(date, coverage,
+                                    weeks_increase = 2,
+                                    weeks_wait = 1) {
+  
+  # compute the current coverage (by dose/vaccine)
+  max_date <- which.max(date)
+  latest_coverage <- coverage[max_date]
+  
+  # compute the diff of coverages for all dates to get the proportion of the
+  # population added on/by that date
+  new_coverages <- diff(c(0, coverage))
+  
+  # compute the ratio of the proportion added on each previous date to the
+  # current coverage (should sum to 1)
+  date_weights <- new_coverages / latest_coverage
+  
+  # multiply each of those ratios by the relative effect based on the date difference¿
+  week_diff <- as.numeric(date[max_date] - date) / 7
+  relative_effect <- pmax(0, pmin(1, (week_diff - weeks_wait) / weeks_increase))
+  
+  # sum the ratios to get the correction multiplier
+  correction <- sum(relative_effect * date_weights)
+  
+  if (is.na(correction)) {
+    correction <- 0
+  }
+  
+  correction
+  
+}
+
 doses <- nsw_vaccinations()
 
 # manual check against published total doses
@@ -305,7 +345,7 @@ age_lookup %>% group_by(age) %>%
 
 # compute fractional coverage by type and number of doses, then compute average efficacy against delta
 coverage <- doses %>%
-  # remove places for which we don't have populations (reast of greater sydney,
+  # remove places for which we don't have populations (rest of greater sydney,
   # rest of greater NSW)
   filter(
     !is.na(population)
@@ -315,9 +355,54 @@ coverage <- doses %>%
     names_from = vaccine,
     values_from = c(dose_1, dose_2, only_dose_1)
   ) %>%
+  # compute corrections to get the effective number/fraction vaccinated, accounting
+  # for a delay to acquire immunity after vaccination
+  arrange(
+    lga, age, date
+  ) %>%
+  group_by(
+    lga, age
+  ) %>%
   mutate(
-    any_vaccine = dose_1_Pfizer + dose_2_AstraZeneca,
+    across(
+      c(only_dose_1_AstraZeneca, only_dose_1_Pfizer),
+      .fns = list(
+        correction = ~slider::slide2_dbl(
+          date, .,
+          .f = immunity_lag_correction,
+          weeks_increase = 2,
+          weeks_wait = 1,
+          .before = Inf
+        )
+      )
+    ),
+    across(
+      c(dose_2_AstraZeneca, dose_2_Pfizer),
+      .fns = list(
+        correction = ~slider::slide2_dbl(
+          date, .,
+          .f = immunity_lag_correction,
+          weeks_increase = 2,
+          weeks_wait = 0,
+          .before = Inf
+        )
+      )
+    )
+  ) %>%
+  # compute (fractional) coverage, and effective (fractional) coverage
+  mutate(
+    effective_only_dose_1_Pfizer = only_dose_1_Pfizer * only_dose_1_Pfizer_correction,
+    effective_only_dose_1_Pfizer = only_dose_1_Pfizer * only_dose_1_Pfizer_correction,
+    effective_only_dose_1_AstraZeneca = only_dose_1_AstraZeneca * only_dose_1_AstraZeneca_correction,
+    effective_dose_2_Pfizer = dose_2_Pfizer * dose_2_Pfizer_correction,
+    effective_dose_2_AstraZeneca = dose_2_AstraZeneca * dose_2_AstraZeneca_correction,
+    any_vaccine = dose_1_Pfizer + dose_1_AstraZeneca,
+    effective_any_vaccine = effective_only_dose_1_Pfizer +
+      effective_only_dose_1_AstraZeneca +
+      effective_dose_2_Pfizer +
+      effective_dose_2_AstraZeneca,
     coverage_any_vaccine = any_vaccine / population,
+    effective_coverage_any_vaccine = effective_any_vaccine / population,
     .after = population
   ) %>%
   mutate(
@@ -332,8 +417,21 @@ coverage <- doses %>%
         fraction = ~ . / any_vaccine
       ),
       .names = "{.fn}_{.col}"
+    ),
+    across(
+      c(
+        effective_only_dose_1_AstraZeneca,
+        effective_dose_2_AstraZeneca,
+        effective_only_dose_1_Pfizer,
+        effective_dose_2_Pfizer
+      ),
+      .fns = c(
+        fraction = ~ . / effective_any_vaccine
+      ),
+      .names = "{.fn}_{.col}"
     )
   ) %>%
+  # combine this into a reduction in any-dose coverage 
   mutate(
     average_efficacy_transmission = average_efficacy(
       efficacy_az_2_dose = combine_efficacy(0.60, 0.65),
@@ -345,9 +443,21 @@ coverage <- doses %>%
       proportion_pf_1_dose = fraction_only_dose_1_Pfizer,
       proportion_az_1_dose = fraction_only_dose_1_AstraZeneca
     ),
+    effective_average_efficacy_transmission = average_efficacy(
+      efficacy_az_2_dose = combine_efficacy(0.60, 0.65),
+      efficacy_pf_2_dose = combine_efficacy(0.79, 0.65),
+      efficacy_pf_1_dose = combine_efficacy(0.30, 0.46),
+      efficacy_az_1_dose = combine_efficacy(0.18, 0.48),    
+      proportion_pf_2_dose = fraction_effective_dose_2_Pfizer,
+      proportion_az_2_dose = fraction_effective_dose_2_AstraZeneca,
+      proportion_pf_1_dose = fraction_effective_only_dose_1_Pfizer,
+      proportion_az_1_dose = fraction_effective_only_dose_1_AstraZeneca
+    ),
     average_efficacy_transmission = replace_na(average_efficacy_transmission, 0),
+    effective_average_efficacy_transmission = replace_na(effective_average_efficacy_transmission, 0),
     .after = coverage_any_vaccine
   ) %>%
+  ungroup() %>%
   right_join(
     age_lookup,
     by = "age"
@@ -374,16 +484,43 @@ vaccination_effect <- coverage %>%
       efficacy_mean = average_efficacy_transmission,
       next_generation_matrix = baseline_matrix()
     )$overall,
+    effective_vaccination_transmission_multiplier = vaccination_transmission_effect(
+      age_coverage = effective_coverage_any_vaccine,
+      efficacy_mean = effective_average_efficacy_transmission,
+      next_generation_matrix = baseline_matrix()
+    )$overall,
     .groups = "drop"
   ) %>%
   mutate(
     vaccination_transmission_reduction_percent =
-      100 * (1 - vaccination_transmission_multiplier)
+      100 * (1 - vaccination_transmission_multiplier),
+    effective_vaccination_transmission_reduction_percent =
+      100 * (1 - effective_vaccination_transmission_multiplier)
   )
 
 vaccination_effect %>%
   filter(date == max(date)) %>%
-  select(-vaccination_transmission_multiplier)
+  select(
+    -vaccination_transmission_multiplier,
+    -date,
+    -effective_vaccination_transmission_multiplier
+  )
+
+vaccination_effect %>%
+  filter(date == Sys.Date() - 14) %>%
+  select(
+    -vaccination_transmission_multiplier,
+    -date,
+    -effective_vaccination_transmission_multiplier,
+    -effective_vaccination_transmission_reduction_percent
+  )
+
+vaccination_effect %>%
+  filter(date == max(date)) %>%
+  select(
+    lga,
+    effective_vaccination_transmission_reduction_percent
+  )
 
 
 write_csv(vaccination_effect, "~/Desktop/nsw_lgas_vaccination_effect.csv")  
