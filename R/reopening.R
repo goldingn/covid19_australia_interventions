@@ -1216,17 +1216,17 @@ for (tp_contrib_vacc_coverage in c(0.5, 0.6, 0.7, 0.8)) {
     mutate(
       priority_order = case_when(
         priority_order == "Oldest to youngest" ~ "Oldest first",
-        priority_order == "Random" ~ "All ages",
+        priority_order == "Random" ~ "All adults",
         priority_order == "Youngest to oldest (40+ first then 16+)" ~ "Middle years first",
-        priority_order == "Random, with phasing" ~ "Highest transmission",
+        priority_order == "Random, with phasing" ~ "Transmission reducing",
       ),
       priority_order = factor(
         priority_order,
         c(
           "Oldest first",
           "Middle years first",
-          "All ages",
-          "Highest transmission"
+          "All adults",
+          "Transmission reducing"
         ))
     ) %>%
     arrange(
@@ -1245,17 +1245,17 @@ for (tp_contrib_vacc_coverage in c(0.5, 0.6, 0.7, 0.8)) {
     mutate(
       priority_order = case_when(
         priority_order == "Oldest to youngest" ~ "Oldest first",
-        priority_order == "Random" ~ "All ages",
+        priority_order == "Random" ~ "All adults",
         priority_order == "Youngest to oldest (40+ first then 16+)" ~ "Middle years first",
-        priority_order == "Random, with phasing" ~ "Highest transmission",
+        priority_order == "Random, with phasing" ~ "Transmission reducing",
       ),
       priority_order = factor(
         priority_order,
         c(
           "Oldest first",
           "Middle years first",
-          "All ages",
-          "Highest transmission"
+          "All adults",
+          "Transmission reducing"
         ))
     ) %>%
     arrange(
