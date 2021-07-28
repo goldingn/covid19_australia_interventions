@@ -496,6 +496,16 @@ vaccination_effect <- coverage %>%
       100 * (1 - vaccination_transmission_multiplier),
     effective_vaccination_transmission_reduction_percent =
       100 * (1 - effective_vaccination_transmission_multiplier)
+  ) %>%
+  mutate(
+    dubious = (date - min(date)) < 21,
+    across(
+      starts_with("effective_"),
+      ~ ifelse(dubious, NA, .)
+    )
+  ) %>%
+  select(
+    -dubious
   )
 
 vaccination_effect %>%
