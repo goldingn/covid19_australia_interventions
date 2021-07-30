@@ -3,7 +3,7 @@ source("R/lib.R")
 source("R/functions.R")
 
 # load TP timeseries estimates for delta
-tp_delta_sims <- read.csv("~/Desktop/delta_r_eff_1_local_samples.csv")
+tp_delta_sims <- read.csv("outputs/reopening/delta_r_eff_1_local_samples.csv")
 
 # load Reff model object (to get TTIQ and surveillance effects)
 obj <- readRDS("~/Dropbox/covid_output/ttiq/fitted_reff_model.RDS")
@@ -110,7 +110,7 @@ tti_distributions <- tibble(
   )
 
 saveRDS(tti_distributions,
-        file = "~/Desktop/tti_distributions.rds")
+        file = "outputs/reopening/tti_distributions.rds")
 
 # compute the mean of 'observed' TP over time in each state, and add on the
 # surveillance and TTIQ effects, then compute TP with these at their optimal 
@@ -964,7 +964,7 @@ scenarios <-
 scenarios %>%
   write.csv(
     file = paste0(
-      "~/Desktop/tp_scenarios_draft_",
+      "outputs/reopening/tp_scenarios_draft_",
       Sys.Date(),
       ".csv"
     ),
@@ -981,7 +981,7 @@ scenarios %>%
   ) %>%
   write.csv(
     file = paste0(
-      "~/Desktop/tp_scenarios_draft_for_treasury_",
+      "outputs/reopening/tp_scenarios_draft_for_treasury_",
       Sys.Date(),
       ".csv"
     ),
@@ -997,7 +997,7 @@ scenarios %>%
   ) %>%
   write.csv(
     file = paste0(
-      "~/Desktop/tp_scenarios_draft_for_jodie_",
+      "outputs/reopening/tp_scenarios_draft_for_jodie_",
       Sys.Date(),
       ".csv"
     ),
@@ -1058,7 +1058,7 @@ mat %>%
   )
 
 ggsave(
-  "~/Desktop/transmission_matrix.png",
+  "outputs/reopening/transmission_matrix.png",
   width = 6,
   height = 6,
   bg = "white"
@@ -1126,7 +1126,7 @@ tp_contribution %>%
   )
 
 ggsave(
-  "~/Desktop/tp_contribution.png",
+  "outputs/reopening/tp_contribution.png",
   width = 8,
   height = 4,
   bg = "white"
@@ -1326,7 +1326,7 @@ for (tp_contrib_vacc_coverage in c(0.5, 0.6, 0.7, 0.8)) {
   
   ggsave(
     sprintf(
-      "~/Desktop/tp_contribution_scenarios_%s.png",
+      "outputs/reopening/tp_contribution_scenarios_%s.png",
       tp_contrib_vacc_coverage
     ),
     height = 8,
@@ -1372,7 +1372,7 @@ table_2_x <- scenarios %>%
   )
 
 table_2_x
-write_csv(table_2_x, "~/Desktop/table_2_x.csv")
+write_csv(table_2_x, "outputs/reopening/table_2_x.csv")
 
 table_3_1 <- scenarios %>%
   filter(
@@ -1408,7 +1408,7 @@ table_3_1 <- scenarios %>%
   )
 
 table_3_1
-write_csv(table_3_1, "~/Desktop/table_3_1.csv")
+write_csv(table_3_1, "outputs/reopening/table_3_1.csv")
 
 
 table_schoolkids <- scenarios %>%
@@ -1445,7 +1445,7 @@ table_schoolkids <- scenarios %>%
   )
 
 table_schoolkids
-write_csv(table_schoolkids, "~/Desktop/table_schoolkids.csv")
+write_csv(table_schoolkids, "outputs/reopening/table_schoolkids.csv")
 
 # format table of the fraction of time spent in each of 2 different states
 table_fraction_time <- scenarios %>%
@@ -1504,7 +1504,7 @@ table_fraction_time <- scenarios %>%
   )
 
 table_fraction_time
-write_csv(table_fraction_time, "~/Desktop/table_fraction_time.csv")
+write_csv(table_fraction_time, "outputs/reopening/table_fraction_time.csv")
 
 
 # format fraction time tables for supplement
@@ -1559,7 +1559,7 @@ supp_table_fraction_time <- scenarios %>%
   )
 
 supp_table_fraction_time
-write_csv(supp_table_fraction_time, "~/Desktop/supp_table_fraction_time.csv")
+write_csv(supp_table_fraction_time, "outputs/reopening/supp_table_fraction_time.csv")
 
 
 # format fraction time tables for supplement
@@ -1615,4 +1615,4 @@ supp_table_fraction_time_vs_low <- scenarios %>%
 supp_table_fraction_time_vs_low %>%
   print(n = Inf)
 
-write_csv(supp_table_fraction_time_vs_low, "~/Desktop/supp_table_fraction_time_vs_low.csv")
+write_csv(supp_table_fraction_time_vs_low, "outputs/reopening/supp_table_fraction_time_vs_low.csv")
