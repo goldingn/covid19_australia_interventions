@@ -232,6 +232,8 @@ citymapper_url <- function(min_delay = 0, max_delay = 14) {
       ".csv"
     )
     
+    return("https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20210728.csv")
+    
     # return if successful, or increment
     if (url_exists(url)) {
       return(url)
@@ -5823,7 +5825,7 @@ write_reff_sims <- function(fitted_model,
   
 }
 
-fit_reff_model <- function(data, max_tries = 1, iterations_per_step = 2000) {
+fit_reff_model <- function(data, max_tries = 3, iterations_per_step = 2000) {
   
   # build the greta model
   model_output <- reff_model(data)
