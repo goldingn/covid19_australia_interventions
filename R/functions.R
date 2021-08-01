@@ -232,8 +232,6 @@ citymapper_url <- function(min_delay = 0, max_delay = 14) {
       ".csv"
     )
     
-    return("https://cdn.citymapper.com/data/cmi/Citymapper_Mobility_Index_20210728.csv")
-    
     # return if successful, or increment
     if (url_exists(url)) {
       return(url)
