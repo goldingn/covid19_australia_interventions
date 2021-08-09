@@ -8065,11 +8065,60 @@ predict_mobility_trend <- function(
   print(mobility$state[[1]])
   print(mobility$lga[[1]])
   print(mobility$datastream[[1]])
+  # if (mobility$lga[[1]] == "Bega Valley" & mobility$datastream[[1]] == "Google: time at grocery and pharmacy") {
+  #   browser()
+  # }
   
   all_dates <- seq(min_date, max_date, by = 1)
   
   min_data_date = min(mobility$date)
   max_data_date = max(mobility$date)
+  
+  # empty row to return on error (NULL apparently won't work)
+  empty_df <- tibble::tibble(
+      state_long = mobility$state_long[1],
+      state = mobility$state[1],
+      lga = mobility$lga[1],
+      date = all_dates,
+      predicted_trend = NA,
+      datastream = mobility$datastream[1],
+      fitted_trend = NA,
+      fitted_trend_lower = NA,
+      fitted_trend_upper = NA
+    ) %>%
+      left_join(
+        mobility,
+        by = c("lga", "date", "datastream", "state_long", "state")
+      ) %>%
+    relocate(
+      trend,
+      .after = "datastream"
+    )
+  
+  # empty_df <- mobility %>%
+  #   mutate(
+  #     predicted_trend = NA,
+  #     fitted_trend = NA,
+  #     fitted_trend_lower = NA,
+  #     fitted_trend_upper = NA
+  #   )
+  
+  # empty_row <- structure(
+  #   list(
+  #     lga = character(0),
+  #     datastream = character(0),
+  #     state_long = character(0),
+  #     state = character(0),
+  #     date = structure(numeric(0), class = "Date"),
+  #     predicted_trend = numeric(0),
+  #     trend = numeric(0),
+  #     fitted_trend = numeric(0),
+  #     fitted_trend_lower = numeric(0),
+  #     fitted_trend_upper = numeric(0)
+  #   ),
+  #   row.names = integer(0),
+  #   class = c("tbl_df","tbl", "data.frame")
+  # )
   
   public_holidays <- holiday_dates() %>%
     mutate(
@@ -8083,30 +8132,26 @@ predict_mobility_trend <- function(
     mutate(
       state = abbreviate_states(state)
     )
+
+  # need to deal with factor levels not in the original fit. I.e. when no date
+  # is observed with that intervention. Remove any interventions not matching
+  # the date and states in the data
+  
+  # # drop any stages for which there is no data (cannot be estimated)
+
   
   # create intervention step-change covariates
-  intervention_steps <- interventions(end_dates = TRUE) %>%
-    # add events for SA and QLD ending short lockdowns, to enable effects to be
-    # reversed
-    # bind_rows(
-    #   tibble(
-    #     date = as.Date("2020-11-22"),
-    #     state = "SA"
-    #   ),
-    #   tibble(
-    #     date = as.Date("2021-01-12"),
-    #     state = "QLD"
-    #   ),
-    #   tibble(
-    #     date = as.Date("2021-02-05"),
-    #     state = "WA"
-    #   ),
-    #   tibble(
-    #     date = as.Date("2021-02-18"),
-    #     state = "VIC"
-    #   )
-    # ) %>% # this code now superceded by end_dates = TRUE
-    filter(date <= max_data_date) %>%
+  interventions <- interventions(end_dates = TRUE) %>%
+    filter(
+      date <= max_data_date,
+      date %in% mobility$date
+    )
+  
+  if (nrow(interventions) == 0) {
+    return(empty_df)
+  }
+  
+  intervention_steps <- interventions %>%
     mutate(
       intervention_id = paste0(
         "intervention_",
@@ -8124,10 +8169,6 @@ predict_mobility_trend <- function(
     summarise(
       intervention_stage = sum(intervention_effect),
       .groups = "drop"
-    ) %>%
-    # drop any stages for which there is no data (cannot be estimated)
-    filter(
-      date %in% mobility$date
     ) %>%
     mutate(
       intervention_stage = factor(intervention_stage)
@@ -8195,24 +8236,7 @@ predict_mobility_trend <- function(
   
   # return an empty row if there was an error
   if (is.null(m)) {
-    return(
-      structure(
-        list(
-          lga = character(0),
-          datastream = character(0),
-          state_long = character(0),
-          state = character(0),
-          date = structure(numeric(0), class = "Date"),
-          predicted_trend = numeric(0),
-          trend = numeric(0),
-          fitted_trend = numeric(0),
-          fitted_trend_lower = numeric(0),
-          fitted_trend_upper = numeric(0)
-        ),
-        row.names = integer(0),
-        class = c("tbl_df","tbl", "data.frame")
-      )
-    )
+    return(empty_df)
   }
   
   # compute mean and standard deviation of Gaussian observation model for fitted data
