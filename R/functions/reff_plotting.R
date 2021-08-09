@@ -1,0 +1,300 @@
+# function to calculate, plot, and save all the outputs (with flags for plot
+# types) - pass in an optional maximum date argument
+reff_plotting <- function(
+  fitted_model,
+  dir = "outputs",
+  subdir = "figures",
+  min_date = as.Date("2020-03-01"),
+  #min_date = NA,
+  max_date = fitted_model$data$dates$latest_mobility,
+  mobility_extrapolation_rectangle = TRUE,
+  projection_date = NA,
+  washout_cutoff = 0,
+  vaccine_timeseries = timeseries
+) {
+  
+  if(is.na(min_date)){
+    min_date <- max_date - months(6)
+  }
+  
+  # reformat case data for plotting (C1 and C12)
+  local_cases_long <- fitted_model$data$local$cases %>%
+    as_tibble() %>%
+    mutate(
+      date = fitted_model$data$dates$infection,
+    ) %>%
+    pivot_longer(
+      cols = -date,
+      names_to = "state",
+      values_to = "cases"
+    )
+  
+  # rugplot of case counts
+  case_data <- local_cases_long %>%
+    filter(date >= min_date) %>%
+    mutate(
+      type = "Nowcast",
+      height = 1
+    ) %>%
+    uncount(cases)
+  
+  case_rug <- geom_rug(
+    aes(date, height),
+    data = case_data,
+    sides = "b",
+    alpha = 0.5,
+    size = 0.5,
+    colour = grey(0.7)
+  )
+  
+  # a washout for whether there are few cases (<20 in past 5 days) with a run of
+  # at least 7 days (to prevent rapidly flip-flopping)
+  few_case_data <- local_cases_long %>%
+    full_join(
+      expand_grid(
+        state = fitted_model$data$states,
+        date = seq(min_date, max_date, by = 1),
+      )
+    ) %>%
+    mutate(
+      cases = replace_na(cases, 0)
+    ) %>%
+    group_by(state)  %>%
+    mutate(
+      recent_count = slider::slide_int(cases, sum, .before = 13),
+    ) %>%
+    ungroup() %>%
+    filter(date >= min_date) %>%
+    mutate(
+      few_cases = recent_count < washout_cutoff,
+      type = "Nowcast",
+      state = factor(state),
+      mean = 1
+    ) %>%
+    # don't let the washout state change until there have been at least the
+    # specified number of days in the same state
+    arrange(state, date) %>%
+    group_by(state) %>%
+    mutate(
+      washout = constrain_run_length(few_cases, 7)
+    ) %>%
+    ungroup()
+  
+  few_case_washout <- geom_ribbon(
+    aes(ymin = -10, ymax = washout * 100 - 10),
+    data = few_case_data,
+    fill = grey(1),
+    alpha = 0.5,
+    colour = grey(0.9),
+    linetype = 3
+  )
+  
+  
+  
+  # add counterfactuals to the model object:
+  # add fitted_model_extended obect because fitted_model is modified
+  fitted_model_extended <- fitted_model
+  # Reff for locals component 1 under
+  # only micro/macro/surveillance improvements
+  fitted_model_extended$greta_arrays <- c(
+    fitted_model$greta_arrays,
+    list(
+      R_eff_loc_1_macro = reff_1_only_macro(fitted_model_extended),
+      R_eff_loc_1_micro = reff_1_only_micro(fitted_model_extended),
+      R_eff_loc_1_surv = reff_1_only_surveillance(fitted_model_extended),
+      R_eff_loc_1_vaccine_effect = reff_1_vaccine_effect(fitted_model_extended, vaccine_timeseries),
+      R_eff_loc_1_iso = reff_1_only_extra_isolation(fitted_model_extended)
+    ) 
+  )
+  
+  # flatten all relevant greta array matrices to vectors before calculating
+  trajectory_types <- c(
+    "R_eff_loc_1",
+    "R_eff_imp_1",
+    "R_eff_loc_12",
+    "R_eff_imp_12",
+    "epsilon_L",
+    "R_eff_loc_1_micro",
+    "R_eff_loc_1_macro",
+    "R_eff_loc_1_surv",
+    "R_eff_loc_1_vaccine_effect",
+    "R_eff_loc_1_iso"
+  )
+  vector_list <- lapply(fitted_model_extended$greta_arrays[trajectory_types], c)
+  
+  # simulate from posterior for these quantities of interest
+  args <- c(vector_list, list(values = fitted_model_extended$draws, nsim = 10000))
+  sims <- do.call(calculate, args)
+  
+  # vaccine effect only
+  plot_trend(sims$R_eff_loc_1_vaccine_effect[,1:fitted_model_extended$data$n_date_nums,], # clunky fix
+             data = fitted_model_extended$data,
+             min_date = min_date,
+             max_date = max_date,
+             multistate = FALSE,
+             base_colour = fifo,
+             projection_at = projection_date,
+             ylim = c(0, 6),
+             intervention_at = vaccination_dates(),
+             plot_voc = TRUE
+  ) + 
+    ggtitle(label = "Impact of vaccination",
+            subtitle = expression(R["eff"]~"if"~only~vaccination~had~occurred)) +
+    ylab(expression(R["eff"]~component))
+  
+  save_ggplot("R_eff_1_local_vaccine_effect.png", dir, subdir, multi = FALSE)
+  
+  
+  # microdistancing only
+  plot_trend(sims$R_eff_loc_1_micro,
+             data = fitted_model_extended$data,
+             min_date = min_date,
+             max_date = max_date,
+             multistate = TRUE,
+             base_colour = purple,
+             projection_at = projection_date,
+             plot_voc = TRUE) + 
+    ggtitle(label = "Impact of micro-distancing",
+            subtitle = expression(R["eff"]~"if"~only~"micro-distancing"~behaviour~had~changed)) +
+    ylab(expression(R["eff"]~component))
+  
+  save_ggplot("R_eff_1_local_micro.png", dir, subdir)
+  
+  # macrodistancing only
+  plot_trend(sims$R_eff_loc_1_macro,
+             data = fitted_model_extended$data,
+             min_date = min_date,
+             max_date = max_date,
+             multistate = TRUE,
+             base_colour = blue,
+             projection_at = projection_date,
+             plot_voc = TRUE) + 
+    ggtitle(label = "Impact of macro-distancing",
+            subtitle = expression(R["eff"]~"if"~only~"macro-distancing"~behaviour~had~changed)) +
+    ylab(expression(R["eff"]~component))
+  
+  save_ggplot("R_eff_1_local_macro.png", dir, subdir)
+  
+  # improved surveilance only
+  plot_trend(sims$R_eff_loc_1_surv,
+             data = fitted_model_extended$data,
+             max_date = max_date,
+             multistate = TRUE,
+             base_colour = yellow,
+             projection_at = projection_date,
+             plot_voc = TRUE) + 
+    ggtitle(label = "Impact of improved surveillance",
+            subtitle = expression(R["eff"]~"if"~only~surveillance~effectiveness~had~changed)) +
+    ylab(expression(R["eff"]~component))
+  
+  save_ggplot("R_eff_1_local_surv.png", dir, subdir)
+  
+  # extra isolation effect only
+  plot_trend(sims$R_eff_loc_1_iso,
+             data = fitted_model_extended$data,
+             min_date = min_date,
+             max_date = max_date,
+             multistate = TRUE,
+             base_colour = ,
+             projection_at = projection_date,
+             plot_voc = TRUE) + 
+    ggtitle(label = "Impact contract tracing isolation",
+            subtitle = expression(R["eff"]~"if"~due~to~social~distancing)) +
+    ylab(expression(R["eff"]~component))
+  
+  save_ggplot("R_eff_1_ttiq.png", dir, subdir)
+  
+  # Component 1 for national / state populations
+  plot_trend(sims$R_eff_loc_1,
+             data = fitted_model_extended$data,
+             min_date = min_date,
+             max_date = max_date,
+             multistate = TRUE,
+             base_colour = green,
+             projection_at = projection_date,
+             plot_voc = TRUE) + 
+    ggtitle(label = "Impact of social distancing",
+            subtitle = expression(Component~of~R["eff"]~due~to~social~distancing)) +
+    ylab(expression(R["eff"]~component))
+  
+  save_ggplot("R_eff_1_local.png", dir, subdir)
+  
+  plot_trend(sims$R_eff_imp_1,
+             data = fitted_model_extended$data,
+             min_date = min_date,
+             max_date = max_date,
+             multistate = FALSE,
+             base_colour = orange,
+             ylim = c(0, 0.4),
+             intervention_at = quarantine_dates(),
+             projection_at = projection_date,
+             plot_voc = TRUE) + 
+    ggtitle(label = "Impact of quarantine of overseas arrivals",
+            subtitle = expression(Component~of~R["eff"]~due~to~quarantine~of~overseas~arrivals)) +
+    ylab(expression(R["eff"]~component))
+  
+  save_ggplot("R_eff_1_import.png", dir, subdir, multi = FALSE)
+  
+  # Reff for active cases
+  p <- plot_trend(sims$R_eff_loc_12,
+                  data = fitted_model_extended$data,
+                  min_date = min_date,
+                  max_date = max_date,
+                  multistate = TRUE,
+                  base_colour = green,
+                  ylim = c(0, 6),
+                  projection_at = projection_date,
+                  plot_voc = TRUE) +
+    ggtitle(label = "Local to local transmission potential",
+            subtitle = "Average across active cases") +
+    ylab(expression(R["eff"]~from~"locally-acquired"~cases))
+  
+  if (mobility_extrapolation_rectangle) {
+    p <- p + annotate("rect",
+                      xmin = fitted_model_extended$data$dates$latest_infection,
+                      xmax = fitted_model_extended$data$dates$latest_mobility,
+                      ymin = -Inf,
+                      ymax = Inf,
+                      fill = grey(0.5), alpha = 0.1)
+    
+  }
+  
+  # add case rug plot and washout
+  p <- p + few_case_washout + case_rug
+  p
+  
+  save_ggplot("R_eff_12_local.png", dir, subdir)
+  
+  # component 2 (noisy error trends)
+  p <- plot_trend(sims$epsilon_L,
+                  data = fitted_model_extended$data,
+                  min_date = min_date,
+                  max_date = max_date,
+                  multistate = TRUE,
+                  base_colour = pink,
+                  hline_at = 0,
+                  projection_at = projection_date,
+                  ylim = NULL,
+                  plot_voc = TRUE) + 
+    ggtitle(label = "Short-term variation in local to local transmission rates",
+            subtitle = expression(Deviation~from~log(R["eff"])~of~"local-local"~transmission)) +
+    ylab("Deviation")
+  
+  if (mobility_extrapolation_rectangle) {
+    p <- p + annotate("rect",
+                      xmin = fitted_model_extended$data$dates$latest_infection,
+                      xmax = fitted_model_extended$data$dates$latest_mobility,
+                      ymin = -Inf,
+                      ymax = Inf,
+                      fill = grey(0.5), alpha = 0.1)
+    
+  }
+  
+  # add case rug plot and washout
+  p <- p + case_rug + few_case_washout
+  
+  p
+  
+  save_ggplot("R_eff_2_local.png", dir, subdir)
+  
+}
