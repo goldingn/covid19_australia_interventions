@@ -8063,6 +8063,7 @@ predict_mobility_trend <- function(
 ) {
   
   print(mobility$state[[1]])
+  print(mobility$lga[[1]])
   print(mobility$datastream[[1]])
   
   all_dates <- seq(min_date, max_date, by = 1)
@@ -8124,9 +8125,13 @@ predict_mobility_trend <- function(
       intervention_stage = sum(intervention_effect),
       .groups = "drop"
     ) %>%
+    # drop any stages for which there is no data (cannot be estimated)
+    filter(
+      date %in% mobility$date
+    ) %>%
     mutate(
       intervention_stage = factor(intervention_stage)
-    )
+    ) 
   
   df <- mobility %>%
     left_join(
@@ -8148,34 +8153,67 @@ predict_mobility_trend <- function(
       holiday = factor(holiday),
       date_num = as.numeric(date - min_date),
       dow = lubridate::wday(date, label = TRUE),
-      dow = as.character(dow)
+      dow = as.character(dow),
+      intervention_stage = factor(
+        intervention_stage,
+        levels = unique(intervention_stage)
+      )
     ) %>%
     filter(!is.na(trend))
 
   library(mgcv)
   
-  m <- gam(trend ~
-             
-             # smooth variations in mobility
-             s(date_num, k = 50) +
-             
-             # step changes around intervention impositions
-             intervention_stage +
-             
-             # random effect on holidays (different for each holiday, but shrunk
-             # to an average holiday effect which used to predict into future)
-             is_a_holiday +
-             s(holiday, bs = "re") +
-             
-             # constant effect for school holidays
-             is_a_school_holiday +
-             
-             # day of the week effect
-             dow,
-           
-           select = TRUE,
-           gamma = 2,
-           data = df)
+  m <- tryCatch(
+    gam(trend ~
+          
+          # smooth variations in mobility
+          s(date_num, k = 50) +
+          
+          # step changes around intervention impositions
+          intervention_stage +
+          
+          # random effect on holidays (different for each holiday, but shrunk
+          # to an average holiday effect which used to predict into future)
+          is_a_holiday +
+          s(holiday, bs = "re") +
+          
+          # constant effect for school holidays
+          is_a_school_holiday +
+          
+          # day of the week effect
+          dow,
+        
+        select = TRUE,
+        gamma = 2,
+        data = df),
+    
+    error = function(e) {
+      NULL
+    }
+    
+  )
+  
+  # return an empty row if there was an error
+  if (is.null(m)) {
+    return(
+      structure(
+        list(
+          lga = character(0),
+          datastream = character(0),
+          state_long = character(0),
+          state = character(0),
+          date = structure(numeric(0), class = "Date"),
+          predicted_trend = numeric(0),
+          trend = numeric(0),
+          fitted_trend = numeric(0),
+          fitted_trend_lower = numeric(0),
+          fitted_trend_upper = numeric(0)
+        ),
+        row.names = integer(0),
+        class = c("tbl_df","tbl", "data.frame")
+      )
+    )
+  }
   
   # compute mean and standard deviation of Gaussian observation model for fitted data
   fit <- predict(m, se.fit = TRUE)
@@ -8196,6 +8234,7 @@ predict_mobility_trend <- function(
     date = all_dates,
   ) %>%
     mutate(
+      lga = df$lga[1],
       state = abbreviate_states(state_long)
     ) %>% 
     left_join(
@@ -8232,14 +8271,14 @@ predict_mobility_trend <- function(
       predicted_trend = predict(m, newdata = pred_df)
     ) %>%
     group_by(
-      state_long, state, date
+      state_long, state, lga, date
     ) %>%
     summarise(
       predicted_trend = mean(predicted_trend),
       .groups = "drop"
     ) %>%
     group_by(
-      state
+      state, lga
     ) %>%
     # smooth fitted curve over days of the week and holidays
     mutate(
@@ -8256,13 +8295,14 @@ predict_mobility_trend <- function(
     left_join(
       df_fitted %>%
         select(
-          state, state_long, date,
+          state, state_long, lga, date,
+          datastream,
           trend,
           fitted_trend,
           fitted_trend_lower,
           fitted_trend_upper
         ),
-      by = c("state", "state_long", "date")
+      by = c("state", "state_long", "lga", "date")
     )
 
   pred_df
