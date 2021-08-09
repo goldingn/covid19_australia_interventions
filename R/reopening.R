@@ -409,7 +409,6 @@ age_lookup <- tibble::tribble(
     by = c("age_band_quantium" = "age_band")
   )
 
-
 pop_data <- read_csv(
   "data/vaccinatinon/2021-07-13-census-populations.csv",
   col_types = cols(
@@ -895,27 +894,6 @@ vaccination_scenarios <- vacc_effect_by_age %>%
     )$overall,
     .groups = "drop"
   )
-
-# assuming restrictions pulse between two states: baseline and lockdown, with R
-# for baseline greater than 1 (cases grow) and R for lockdown less than 1 (cases
-# shrink), and the aim is to keep the long-term average of R at 1 (maintain case
-# counts below a critical threshold), compute the fraction of the time that
-# would need to be in the lockdown state.
-fraction_lockdown <- function(
-  R_baseline,
-  R_lockdown
-) {
-  
-  # compute the fraction of the time we would need to be in lockdown to maintain
-  # an average R of 1
-  fraction <- -log(R_baseline) / (log(R_lockdown) - log(R_baseline))
-  # if the baseline TP is not above 1, the fraction is 0 as no lockdowns are needed
-  fraction[R_baseline <= 1] <- 0
-  # if the lockdown TP is not below 1, there is no fraction that can keep R at average 1
-  fraction[R_lockdown >= 1] <- NA
-  
-  fraction
-}
 
 # combine all scenarios
 scenarios <-
@@ -1410,7 +1388,6 @@ table_3_1 <- scenarios %>%
 table_3_1
 write_csv(table_3_1, "outputs/reopening/table_3_1.csv")
 
-
 table_schoolkids <- scenarios %>%
   filter(
     ttiq == "partial",
@@ -1506,7 +1483,6 @@ table_fraction_time <- scenarios %>%
 table_fraction_time
 write_csv(table_fraction_time, "outputs/reopening/table_fraction_time.csv")
 
-
 # format fraction time tables for supplement
 supp_table_fraction_time <- scenarios %>%
   filter(
@@ -1560,7 +1536,6 @@ supp_table_fraction_time <- scenarios %>%
 
 supp_table_fraction_time
 write_csv(supp_table_fraction_time, "outputs/reopening/supp_table_fraction_time.csv")
-
 
 # format fraction time tables for supplement
 supp_table_fraction_time_vs_low <- scenarios %>%
