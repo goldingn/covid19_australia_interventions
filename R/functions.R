@@ -8062,12 +8062,9 @@ predict_mobility_trend <- function(
   max_date = max(mobility$date)
 ) {
   
-  print(mobility$state[[1]])
-  print(mobility$lga[[1]])
-  print(mobility$datastream[[1]])
-  # if (mobility$lga[[1]] == "Bega Valley" & mobility$datastream[[1]] == "Google: time at grocery and pharmacy") {
-  #   browser()
-  # }
+  # print(mobility$state[[1]])
+  # print(mobility$lga[[1]])
+  # print(mobility$datastream[[1]])
   
   all_dates <- seq(min_date, max_date, by = 1)
   
@@ -8259,6 +8256,7 @@ predict_mobility_trend <- function(
   ) %>%
     mutate(
       lga = df$lga[1],
+      datastream = mobility$datastream[1],
       state = abbreviate_states(state_long)
     ) %>% 
     left_join(
@@ -8295,14 +8293,14 @@ predict_mobility_trend <- function(
       predicted_trend = predict(m, newdata = pred_df)
     ) %>%
     group_by(
-      state_long, state, lga, date
+      state_long, state, lga, datastream, date
     ) %>%
     summarise(
       predicted_trend = mean(predicted_trend),
       .groups = "drop"
     ) %>%
     group_by(
-      state, lga
+      state, lga, datastream
     ) %>%
     # smooth fitted curve over days of the week and holidays
     mutate(
@@ -8326,7 +8324,7 @@ predict_mobility_trend <- function(
           fitted_trend_lower,
           fitted_trend_upper
         ),
-      by = c("state", "state_long", "lga", "date")
+      by = c("state", "state_long", "lga", "datastream", "date")
     )
 
   pred_df
