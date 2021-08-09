@@ -54,57 +54,6 @@ for(index in seq_len(nrow(scenarios))) {
   
 }
 
-# sc <- readRDS("outputs/counterfactuals/scenario34.RDS")
-
-
-summarise_scenario <- function(scenario) {
-  file <- paste0("outputs/counterfactuals/scenario", scenario, ".RDS")
-  file %>%
-    readRDS() %>%
-    `[[`("local_cases") %>%
-    group_by(date) %>%
-    summarise(
-      bottom = quantile(cases, 0.05),
-      lower = quantile(cases, 0.25),
-      median = median(cases),
-      upper = quantile(cases, 0.75),
-      top = quantile(cases, 0.95)
-    )
-}
-
-add_scenario_ribbon <- function(base_plot, data, colour = "black") {
-  base_plot +
-  geom_ribbon(
-    aes(
-      ymin = bottom,
-      ymax = top
-    ),
-    data = data,
-    fill = colour,
-    alpha = 0.1
-  ) +
-    geom_ribbon(
-      aes(
-        ymin = lower,
-        ymax = upper
-      ),
-      data = data,
-      fill = colour,
-      alpha = 0.2
-    ) +
-    geom_line(
-      aes(
-        date,
-        median
-      ),
-      data = data,
-      color = colour
-    ) +
-    coord_cartesian(
-      xlim = range(data$date)
-    )
-}
-
 # set up plotting of different scenarios
 # optimal scenario
 sc_optimal <- list(
@@ -166,19 +115,6 @@ base <- observed %>%
   ylab("new locally-acquired infections") +
   xlab("date of infection")
 
-make_plot <- function(..., base_plot, colours) {
-  scenarios <- list(...)
-  plot <- base_plot
-  for(i in seq_along(scenarios)) {
-    plot <- plot %>%
-      add_scenario_ribbon(
-        scenarios[[i]],
-        colour = colours[[i]]
-      )
-  }
-  plot
-}
-
 quarantine <- mapply(make_plot,
                      sc_optimal,
                      sc_no_quarantine,
@@ -223,11 +159,6 @@ scenarios[34, ]
 
 # read in all the scenarios, summarise the Reffs, and visualise
 files <- paste0("outputs/counterfactuals/scenario", 1:72, ".RDS")
-
-extract_reff <- function(scenario, file) {
-  object <- readRDS(file)
-  cbind(object$reffs, scenario = scenario)
-}
 
 reff <- mapply(
   extract_reff,
