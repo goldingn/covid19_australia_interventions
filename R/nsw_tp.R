@@ -293,7 +293,7 @@ saveRDS(pred_trend,
 fitted_model <- readRDS("outputs/fitted_reff_model.RDS")
 
 
-n_lga <- ncol(OC_t_lga) 
+n_lga <- length(all_lgas) 
 ga <- fitted_model$greta_arrays
 nsw_idx <- which(fitted_model$data$states == "NSW")
 all_dates <- unique(location_change_trends$date)
@@ -326,15 +326,19 @@ infectious_days <- infectious_period(gi_cdf)
 HD_t <- de$HD_0 * h_t
 
 # get the probability of not transmitting per unit time, for Delta
-p_star <- de$p_star[nrow(de$p_star), nsw_idx]
+# p_star <- de$p_star[nrow(de$p_star), nsw_idx]
+
+p_star_nsw <- extend(de$p_star[, nsw_idx], n_rows = nrow(de$p_star) + extra_dates)
+p_star_nsw <- p_star_nsw[(start_idx + 1):length(p_star_nsw)]
+p_star_lga <- sweep(zeros(nrow(OC_t_lga), ncol(OC_t_lga)), 1, p_star_nsw, FUN = "+")
 
 # get the microdistancing effect, lining up dates
 gamma_t_nsw <- extend(de$gamma_t_state[, nsw_idx], n_rows = nrow(de$gamma_t_state) + extra_dates)
 gamma_t_nsw <- gamma_t_nsw[(start_idx + 1):length(gamma_t_nsw)]
 gamma_t_lga <- sweep(zeros(nrow(OC_t_lga), ncol(OC_t_lga)), 1, gamma_t_nsw, FUN = "+")
 
-household_infections <- de$HC_0 * (1 - p_star ^ HD_t)
-non_household_infections <- OC_t_lga * gamma_t_lga * infectious_days * (1 - p_star ^ de$OD_0)
+household_infections <- de$HC_0 * (1 - p_star_lga ^ HD_t)
+non_household_infections <- OC_t_lga * gamma_t_lga * infectious_days * (1 - p_star_lga ^ de$OD_0)
 infections_distancing <- household_infections + non_household_infections
 infections <- sweep(infections_distancing, 1, surveillance_effect * extra_isolation_effect, FUN = "*")
 
