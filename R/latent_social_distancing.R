@@ -9,7 +9,7 @@ lapply(list.files("./R/functions", full.names = TRUE), source)
 
 # load mobility datastreams, keeping only state-level data
 mobility <- all_mobility() %>%
-  append_google_data(tidycovid_url) %>%
+  append_google_data() %>%
   filter(!is.na(state)) %>%
   filter(!is.na(trend)) %>%
   arrange(state, datastream, date) %>%

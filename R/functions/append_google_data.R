@@ -1,6 +1,7 @@
 # append any missing google mobility data to mobility data (because Google
 # dropped a bunch of data out this one time)
-append_google_data <- function(mobility_data, url = tidycovid_url) {
+append_google_data <- function(mobility_data, 
+                               url =  "https://github.com/goldingn/tidycovid19/raw/e4db3ab3007576f34dcb1e8c3299b235cff6198e/cached_data/google_cmr.RDS") {
   
   mobility_data <- mobility_data %>%
     filter(!is.na(trend)) %>%
