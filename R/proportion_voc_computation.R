@@ -1,3 +1,7 @@
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
 
 # this from reff_model_Data()
 linelist_raw <- load_linelist(use_vic = FALSE)

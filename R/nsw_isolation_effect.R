@@ -1,5 +1,9 @@
 # estimate NSW isolation effect
-source("R/functions.R")
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
+
 
 nsw_ll <- readxl::read_xlsx(
   "~/not_synced/nsw/data.xlsx",

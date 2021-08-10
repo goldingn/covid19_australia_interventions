@@ -1,3 +1,7 @@
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
 
 # target SI parameters
 # source("R/functions.R")

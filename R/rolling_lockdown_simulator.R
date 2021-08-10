@@ -1,10 +1,9 @@
 # simulate the impact of strategies for local lockdowns in response to different
 # case count triggers
-
-source("R/functions.R")
-
-library(sf)
-
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
   
 
 set.seed(2020-07-04)

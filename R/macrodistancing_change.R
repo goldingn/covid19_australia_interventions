@@ -3,8 +3,11 @@
 # BETA barometer
 
 source("R/lib.R")
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
 
-source("R/functions.R")
 
 # informative priors for baseline contact parameters
 baseline_contact_params <- baseline_contact_parameters(gi_cdf)

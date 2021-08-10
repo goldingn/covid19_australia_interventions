@@ -1,3 +1,7 @@
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
 
 write_reff_sims <- function(fitted_model,
                             dir = "outputs/projection",

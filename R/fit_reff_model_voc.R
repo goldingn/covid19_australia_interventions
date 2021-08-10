@@ -1,3 +1,7 @@
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
 
 # define the model (and greta arrays) for Reff, and sample until convergence
 fitted_model_voc <- fit_reff_model(data)

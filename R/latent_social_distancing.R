@@ -1,13 +1,11 @@
 # model overall movement changes in Australia, with parameteric latent factor
 # model on Google mobility data
 
-source("R/functions.R")
-library(dplyr)
-library(lubridate)
-library(greta)
-library(RColorBrewer)
-library(ggforce)
-library(RCurl)
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
+
 
 # load mobility datastreams, keeping only state-level data
 mobility <- all_mobility() %>%

@@ -1,11 +1,13 @@
 
 # boxplot-y figure on intervention efects on R effective
-library(tidyverse)
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
+
 
 delta_summary <- summarise_samples("~/Desktop/delta_r_eff_1_local_samples.csv")
 non_voc_summary <- summarise_samples("~/Desktop/non_voc_tp_samples.csv")
-
-source("R/functions.R")
 
 # compute R0 for each variant (WT was computed w/out extra isolation effect)
 r0 <- list(

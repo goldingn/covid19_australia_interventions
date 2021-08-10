@@ -1,8 +1,10 @@
 # Run the full Reff pipeline
 
 source("R/lib.R")
-
-source("R/functions.R")
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
 
 # Section A) Independent of NNDSS and survey data update:
 

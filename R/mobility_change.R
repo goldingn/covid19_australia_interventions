@@ -1,6 +1,8 @@
 source("R/lib.R")
-
-source("R/functions.R")
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
 
 # load, cache, and format the mobility data
 mobility <- all_mobility() %>%

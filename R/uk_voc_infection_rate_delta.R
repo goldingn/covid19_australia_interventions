@@ -227,8 +227,10 @@
 # uncertainty in $\beta$ was not considered in this analysis.
 
 source("R/lib.R")
-
-source("R/functions.R")
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
 
 set.seed(2021-01-17)
 

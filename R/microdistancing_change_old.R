@@ -1,10 +1,10 @@
   # analyse change in microdistancing behaviour by state, using survey questions
 # from the BETA barometer
 source("R/lib.R")
-
-source("R/functions.R")
-
-library(bayesplot)
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
 
 # sync aggregated data for Dennis
 format_raw_survey_data()

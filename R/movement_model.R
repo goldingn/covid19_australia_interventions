@@ -1,7 +1,8 @@
 # build an LGA-level gravity model based on FB data
-source("R/functions.R")
-
-library(sf)
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
 
 # load Cam's LGA ordering
 file <- "data/facebook/VIC_LGA18_OD_matrices_for_Nick_Golding_07072020/LGA_CODE18_sorted.csv"

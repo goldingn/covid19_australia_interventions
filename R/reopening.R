@@ -1,6 +1,10 @@
 # compute TP for difference PHSM scenarios from an Reff run with TTIQ in component1
 source("R/lib.R")
-source("R/functions.R")
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
+
 
 # load TP timeseries estimates for delta
 tp_delta_sims <- read.csv("outputs/reopening/delta_r_eff_1_local_samples.csv")

@@ -1,3 +1,7 @@
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
 
 
 model_samples <- read_reff_samples("outputs/projection/r_eff_1_local_samples.csv")

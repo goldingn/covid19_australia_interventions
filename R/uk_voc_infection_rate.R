@@ -223,8 +223,11 @@
 # uncertainty in $\beta$ was not considered in this analysis.
 
 source("spartan/lib.R")
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
 
-source("R/functions.R")
 
 set.seed(2021-01-17)
 

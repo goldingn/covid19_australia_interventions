@@ -1,5 +1,8 @@
 # run reff for past linelists
-source("R/functions.R")
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
 
 # list of linelist dates to run for
 sync_nndss()
