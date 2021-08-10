@@ -1,5 +1,3 @@
-source("R/lib.R")
-
 Sys.setenv(RETICULATE_AUTOCONFIGURE = FALSE)
 
 tfp <- reticulate::import("tensorflow_probability")
