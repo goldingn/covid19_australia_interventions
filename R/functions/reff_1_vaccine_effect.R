@@ -9,7 +9,7 @@ reff_1_vaccine_effect <- function(fitted_model, timeseries){
     tibble(date = dates),
     timeseries
   ) %>%
-    tidyr::fill(
+    fill(
       overall_transmission_effect,
       .direction = "updown"
     )

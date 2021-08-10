@@ -8,13 +8,13 @@
 # that scenario.
 ganyani_gi <- function(which = c("Tianjin", "Singapore")) {
   
-  tianjin <- tibble::tribble(
+  tianjin <- tribble(
     ~which, ~est, ~lower, ~upper,
     "mean", 3.95, 3.01, 4.91,
     "sd", 1.51, 0.74, 2.97
   )
   
-  singapore <- tibble::tribble(
+  singapore <- tribble(
     ~which, ~est, ~lower, ~upper,
     "mean", 5.20, 3.78, 6.78,
     "sd", 1.72, 0.91, 3.93

@@ -92,7 +92,7 @@ predict_mobility_trend <- function(
       is_a_school_holiday = !is.na(school_holiday),
       holiday = factor(holiday),
       date_num = as.numeric(date - min_date),
-      dow = lubridate::wday(date, label = TRUE),
+      dow = wday(date, label = TRUE),
       dow = as.character(dow)
     ) %>%
     filter(!is.na(trend))
@@ -188,7 +188,7 @@ predict_mobility_trend <- function(
     ) %>%
     # smooth fitted curve over days of the week and holidays
     mutate(
-      predicted_trend = slider::slide_dbl(
+      predicted_trend = slide_dbl(
         predicted_trend,
         gaussian_smooth,
         na.rm = TRUE,

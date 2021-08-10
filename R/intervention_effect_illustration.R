@@ -40,7 +40,7 @@ tps <- read_csv(
     r0 = r0$delta
   )
   
-colours <- RColorBrewer::brewer.pal(3, "Set2")
+colours <- brewer.pal(3, "Set2")
 
 baseline_colour <- washout(colours[2], 0.8)
 vaccine_colour <- washout(colours[3], 0.5)

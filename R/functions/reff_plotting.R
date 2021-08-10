@@ -61,7 +61,7 @@ reff_plotting <- function(
     ) %>%
     group_by(state)  %>%
     mutate(
-      recent_count = slider::slide_int(cases, sum, .before = 13),
+      recent_count = slide_int(cases, sum, .before = 13),
     ) %>%
     ungroup() %>%
     filter(date >= min_date) %>%

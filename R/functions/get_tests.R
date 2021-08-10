@@ -10,7 +10,7 @@ get_tests <- function() {
   text <- substr(text, start, 1000000L)
   end <- str_locate(text, ";</script>")[1]
   text <- substr(text, start = 1, stop = end)
-  json <- rjson::fromJSON(text)
+  json <- fromJSON(text)
   
   data_lines <- json$elements[[2]]$data[[1]]
   states <- data_lines[[1]][-1]

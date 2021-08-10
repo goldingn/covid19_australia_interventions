@@ -51,7 +51,7 @@ baseline_contact_parameters <- function(gi_cdf) {
   # replace the prior over mean non-household contacts with a more comparable
   # estimate from Prem/Polymod
   TC_0_prior <- baseline_total_contacts()
-  OC_0_prior <- tibble::tibble(
+  OC_0_prior <- tibble(
     mean = TC_0_prior$mean - baseline_contact_params$mean_contacts[1],
     se = sqrt(TC_0_prior$se ^ 2 + baseline_contact_params$se_contacts[1] ^ 2)
   )

@@ -11,7 +11,7 @@ get_ifr <- function(voc = TRUE) {
   # category (50% ofover 80s are in 80-84, 30% are in 85-89, and 20% are 90 or
   # older)
   
-  ifr <- tibble::tribble(
+  ifr <- tribble(
     ~age,      ~odriscoll,     ~brazeau,
     "0-4",          0.003,         0.00,
     "5-9",          0.001,         0.01,

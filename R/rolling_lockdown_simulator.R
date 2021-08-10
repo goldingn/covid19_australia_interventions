@@ -447,8 +447,8 @@ p <- df %>%
   
   facet_wrap(~scenario, ncol = 2) +
   
-  cowplot::theme_cowplot() +
-  cowplot::panel_border(remove = TRUE) +
+  theme_cowplot() +
+  panel_border(remove = TRUE) +
   theme(legend.position = "none",
         strip.background = element_blank(),
         strip.text = element_text(hjust = 0, face = "bold"),

@@ -5,7 +5,7 @@ source("./conflicts.R")
 lapply(list.files("./R/functions", full.names = TRUE), source)
 source("./objects_and_settings.R")
 
-nsw_ll <- readxl::read_xlsx(
+nsw_ll <- read_xlsx(
   "~/not_synced/nsw/data.xlsx",
   col_types = c(
     project_recid = "text",

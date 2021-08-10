@@ -2,23 +2,23 @@
 facebook_mobility <- function() {
   
   file <- "data/fb_data/au_gadm_mobility_statistics.20200427.csv"
-  data <- readr::read_csv(file) %>%
-    dplyr::select(
+  data <- read_csv(file) %>%
+    select(
       state = polygon_name,
       date = ds,
       "staying still" = all_day_ratio_single_tile_users
     ) %>%
-    tidyr::pivot_longer(
+    pivot_longer(
       cols = c("staying still"),
       names_to = "metric",
       values_to = "trend"
     ) %>%
-    mutate(date = lubridate::date(date)) %>%
-    mutate(weekday = lubridate::wday(date))  
+    mutate(date = date(date)) %>%
+    mutate(weekday = wday(date))  
   
   # set the staying home variable against a baseline of the first two weeks
   baseline <- data %>%
-    filter(date < lubridate::date("2020-03-15")) %>%
+    filter(date < date("2020-03-15")) %>%
     group_by(state, metric, weekday) %>%
     summarise(baseline = median(trend))
   
@@ -43,7 +43,7 @@ facebook_mobility <- function() {
   relative_population <- state_populations() %>%
     arrange(state) %>%
     mutate(fraction = population / sum(population)) %>%
-    dplyr::select(-population)
+    select(-population)
   
   national_data <- data %>%
     left_join(relative_population) %>%

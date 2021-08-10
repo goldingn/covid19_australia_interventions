@@ -10,7 +10,7 @@ fit_survey_gam <- function(
   
   date_num <- as.numeric(date - min(date))
   
-  m <- mgcv::gam(
+  m <- gam(
     cbind(count, I(respondents - count)) ~ s(date_num) + intervention_stage,
     select = TRUE,
     family = stats::binomial,

@@ -8,37 +8,37 @@ prop_variant <- function(dates){
       )
     ) %>%
     arrange(state, date) %>%
-    tidyr::fill(everything()) %>%
+    fill(everything()) %>%
     filter(date %in% dates) # account for "2020-01-01" start date may not be in dates
     
   prop_wt <- df %>%
-    dplyr::select(state, date, prop_wt) %>%
+    select(state, date, prop_wt) %>%
     pivot_wider(
       names_from = state,
       values_from = prop_wt
     ) %>%
     arrange(date) %>%
-    dplyr::select(-date)%>%
+    select(-date)%>%
     as.matrix
   
   prop_alpha <- df %>%
-    dplyr::select(state, date, prop_alpha) %>%
+    select(state, date, prop_alpha) %>%
     pivot_wider(
       names_from = state,
       values_from = prop_alpha
     ) %>%
     arrange(date) %>%
-    dplyr::select(-date)%>%
+    select(-date)%>%
     as.matrix
   
   prop_delta <- df %>%
-    dplyr::select(state, date, prop_delta) %>%
+    select(state, date, prop_delta) %>%
     pivot_wider(
       names_from = state,
       values_from = prop_delta
     ) %>%
     arrange(date) %>%
-    dplyr::select(-date)%>%
+    select(-date)%>%
     as.matrix
   
   prop_variant <- list(

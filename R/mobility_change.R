@@ -110,8 +110,8 @@ for (this_state in all_states) {
         format(last_date, format = "%Y")
       )
     ) +
-    cowplot::theme_cowplot() +
-    cowplot::panel_border(remove = TRUE) +
+    theme_cowplot() +
+    panel_border(remove = TRUE) +
     theme(legend.position = "none",
           strip.background = element_blank(),
           strip.text = element_text(hjust = 0, face = "bold"),
@@ -226,8 +226,8 @@ mobility_fitted %>%
       format(last_date, format = "%Y")
     )
   ) +
-  cowplot::theme_cowplot() +
-  cowplot::panel_border(remove = TRUE) +
+  theme_cowplot() +
+  panel_border(remove = TRUE) +
   theme(legend.position = "none",
         strip.background = element_blank(),
         axis.text.y = element_text(size = 8),

@@ -3,14 +3,14 @@
 citymapper_mobility <- function() {
   
   data <- citymapper_url() %>%
-    readr::read_csv(
+    read_csv(
       skip = 3,
       col_types = cols(
         .default = col_double(),
         Date = col_date(format = "")
       )
     ) %>%
-    tidyr::pivot_longer(
+    pivot_longer(
       cols = -Date,
       names_to = "region",
       values_to = "trend"

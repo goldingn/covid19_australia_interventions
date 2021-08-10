@@ -1,5 +1,5 @@
 control_plot_theme <- function() {
-  cowplot::theme_cowplot() +
+  theme_cowplot() +
     # turn off the x axis and add some space for annotation on RHS
     theme(
       plot.margin = unit(

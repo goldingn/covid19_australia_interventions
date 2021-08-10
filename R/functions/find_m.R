@@ -10,7 +10,7 @@ find_m <- function(R_target, transition_matrix, stable_age = NULL) {
     (R_current - R_target) ^ 2
   } 
   
-  out <- stats::optimise(f = obj,
+  out <- optimise(f = obj,
                          interval = c(0, 1),
                          R_target,
                          transition_matrix,

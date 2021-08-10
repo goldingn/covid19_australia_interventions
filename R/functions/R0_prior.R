@@ -11,7 +11,7 @@ R0_prior <- function() {
   # et al. of a median serial interval of 4 days, or 4.6 days taking only the
   # pairs of cases with greatest confidence. This is also the most conseervative
   # eestimate of R0 and therefore of the impact of social distancing interventions
-  prior_estimate <- tibble::tribble(
+  prior_estimate <- tribble(
     ~country, ~lower, ~mean, ~upper,
     "Denmark", 2, 2.6, 3.3,
     "Italy", 2.4, 2.6, 2.8,

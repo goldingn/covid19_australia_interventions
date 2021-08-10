@@ -11,7 +11,7 @@ plot_reff_checks <- function(fitted_model, nsim = 10000) {
   observed <- fitted_model$data$local$cases[valid]
   
   # overall PPC check
-  bayesplot::ppc_ecdf_overlay(
+  ppc_ecdf_overlay(
     observed,
     cases_sim[1:1000, ],
     discrete = TRUE

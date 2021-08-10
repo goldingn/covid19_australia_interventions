@@ -97,7 +97,7 @@ get_nsw_linelist <- function () {
   # date <- as.Date("2021-07-21")
   # 
   # file %>%
-  #   readxl::read_xlsx(
+  #   read_xlsx(
   #     col_types = c(
   #       "text",
   #       "date",

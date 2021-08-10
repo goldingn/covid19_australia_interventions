@@ -4,7 +4,7 @@ baseline_total_contacts <- function() {
   
   # load Prem contact matrix for Australia
   f <- "data/contacts/contact_matrices_152_countries/MUestimates_all_locations_1.xlsx"
-  all_aus <- readxl::read_xlsx(
+  all_aus <- read_xlsx(
     path = f,
     sheet = "Australia"
   ) %>%
@@ -81,7 +81,7 @@ baseline_total_contacts <- function() {
     ) %>%
     pull(se)
   
-  tibble::tibble(
+  tibble(
     mean = mean_wt_aus,
     se = standard_error_uk
   )

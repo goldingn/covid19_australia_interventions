@@ -1,5 +1,5 @@
 app_downloads <- function () {
-  tibble::tribble(
+  tribble(
     ~date, ~number,
     "04-25", 0,
     "04-26", 1113000,

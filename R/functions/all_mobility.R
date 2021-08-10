@@ -6,13 +6,13 @@ all_mobility <- function() {
     mutate(
       datastream = str_c("Google: time at ", category)
     ) %>%
-    dplyr::select(-category)
+    select(-category)
   
   apple <- apple_mobility() %>%
     mutate(
       datastream = str_c("Apple: directions for ", transportation_type)
     ) %>%
-    dplyr::select(
+    select(
       -geo_type,
       -transportation_type
     )
@@ -21,7 +21,7 @@ all_mobility <- function() {
   #   mutate(
   #     datastream = str_c("Facebook: ", metric)
   #   ) %>%
-  #   dplyr::select(
+  #   select(
   #     -metric
   #   )
   

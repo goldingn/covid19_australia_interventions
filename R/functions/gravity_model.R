@@ -5,7 +5,7 @@ gravity_model <- function(geometry, population, coef = c(-10, -3, 1, 1)) {
   n_suburbs <- nrow(geometry)
   centroids <- st_centroid(geometry)
   distance <- st_distance(centroids, centroids)
-  distance_km <- units::drop_units(distance) / 1e3
+  distance_km <- drop_units(distance) / 1e3
   
   # population of suburbs in matrix form
   log_pop <- log(population)

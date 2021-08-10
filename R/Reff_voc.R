@@ -207,11 +207,8 @@ wt1 <- read_csv(file = "outputs/projection/r_eff_1_local_samples.csv")
 wt12 <- read_csv(file = "outputs/projection/r_eff_12_local_samples.csv")
 wt2 <- read_csv(file = "outputs/projection/r_eff_2_local_samples.csv")
 
-
-
-
 v1 <- voc1 %>%
-  tidyr::pivot_longer(
+  pivot_longer(
     cols = starts_with("sim")
   ) %>%
   group_by(date, state) %>%
@@ -219,7 +216,7 @@ v1 <- voc1 %>%
   mutate(strain = "VOC", component = "1")
 
 v12 <- voc12 %>%
-  tidyr::pivot_longer(
+  pivot_longer(
     cols = starts_with("sim")
   ) %>%
   group_by(date, state) %>%
@@ -227,7 +224,7 @@ v12 <- voc12 %>%
   mutate(strain = "VOC", component = "12")
 
 v2 <- voc2 %>%
-  tidyr::pivot_longer(
+  pivot_longer(
     cols = starts_with("sim")
   ) %>%
   group_by(date, state) %>%
@@ -235,7 +232,7 @@ v2 <- voc2 %>%
   mutate(strain = "VOC", component = "2")
 
 w1 <- wt1 %>%
-  tidyr::pivot_longer(
+  pivot_longer(
     cols = starts_with("sim")
   ) %>%
   group_by(date, state) %>%
@@ -243,7 +240,7 @@ w1 <- wt1 %>%
   mutate(strain = "WT", component = "1")
 
 w12 <- wt12 %>%
-  tidyr::pivot_longer(
+  pivot_longer(
     cols = starts_with("sim")
   ) %>%
   group_by(date, state) %>%
@@ -251,7 +248,7 @@ w12 <- wt12 %>%
   mutate(strain = "WT", component = "12")
 
 w2 <- wt2 %>%
-  tidyr::pivot_longer(
+  pivot_longer(
     cols = starts_with("sim")
   ) %>%
   group_by(date, state) %>%

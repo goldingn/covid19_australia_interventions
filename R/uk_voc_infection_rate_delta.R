@@ -242,7 +242,7 @@ set.seed(2021-01-17)
 # update 9/02/2021 table 4 technical briefing 5
 # https://www.gov.uk/government/publications/investigation-of-novel-sars-cov-2-variant-variant-of-concern-20201201
 
-uk_attack_1 <- tibble::tribble(
+uk_attack_1 <- tribble(
   ~region,                ~contacts_alpha, ~cases_alpha, ~contacts_wt, ~cases_wt, ~period,
   "East Midlands",                    868,          100,         1734,       185,       1,
   "East of England",                 6801,          876,         2358,       243,       1,
@@ -262,7 +262,7 @@ uk_data_end_date_1 <- as.Date("2021-01-10")
 
 # total for delta and alpha variant from technical briefing #14
 # table 6 SAR among contacts not travelled
-uk_attack_2 <- tibble::tribble(
+uk_attack_2 <- tribble(
   ~region,  ~contacts_delta, ~cases_delta, ~contacts_alpha, ~cases_alpha, ~period,
   "all",               7987,          987,           76948,         6295,       2
   )
@@ -275,25 +275,25 @@ uk_data_end_date_2 <- as.Date("2021-05-19")
 
 ## subsets for variants:
 uk_attack_wt <- uk_attack_1 %>%
-    dplyr::select(region, period, ends_with("wt")) %>%
+    select(region, period, ends_with("wt")) %>%
   mutate(
     contacts = contacts_wt,
     cases = cases_wt
   ) %>%
-  dplyr::select(-ends_with("wt"))
+  select(-ends_with("wt"))
 
 
 uk_attack_alpha <- bind_rows(
   uk_attack_1 %>%
-    dplyr::select(region, period, ends_with("alpha")),
+    select(region, period, ends_with("alpha")),
   uk_attack_2 %>%
-    dplyr::select(region, period, ends_with("alpha"))
+    select(region, period, ends_with("alpha"))
 ) %>%
   mutate(
     contacts = contacts_alpha,
     cases = cases_alpha
   ) %>%
-  dplyr::select(-ends_with("alpha"))
+  select(-ends_with("alpha"))
 
 
 uk_attack_alpha_1 <- uk_attack_alpha %>%
@@ -304,12 +304,12 @@ uk_attack_alpha_2 <- uk_attack_alpha %>%
 
 
 uk_attack_delta <- uk_attack_2 %>%
-  dplyr::select(region, period, ends_with("delta")) %>%
+  select(region, period, ends_with("delta")) %>%
   mutate(
     contacts = contacts_delta,
     cases = cases_delta
   ) %>%
-  dplyr::select(-ends_with("delta"))
+  select(-ends_with("delta"))
 
 # household secondary-attack rate data from tech briefing no. 15, table 10
 hh_alpha_cases <- 7012
@@ -356,7 +356,7 @@ county_region_lookup <- read_csv(
 
 # get link from: https://www.google.com/covid19/mobility/index.html
 url <- "https://www.gstatic.com/covid19/mobility/Global_Mobility_Report.csv"
-uk_google_mobility <- readr::read_csv(
+uk_google_mobility <- read_csv(
   url, 
   col_types = cols(
     country_region_code = col_character(),
@@ -383,12 +383,12 @@ uk_google_mobility <- readr::read_csv(
   # filter(
   #   !is.na(region)
   # ) %>%
-  # tidyr::pivot_longer(
+  # pivot_longer(
   #   ends_with("_percent_change_from_baseline"),
   #   names_to = "category",
   #   values_to = "trend"
   # ) %>%
-  # dplyr::select(
+  # select(
   #   county = sub_region_1,
   #   region = region,
   #   category = category,
@@ -422,12 +422,12 @@ uk_google_mobility <- uk_google_mobility_all %>%
   mutate(
     region = ifelse(is.na(region), "all", region)
   ) %>%
-  tidyr::pivot_longer(
+  pivot_longer(
     ends_with("_percent_change_from_baseline"),
     names_to = "category",
     values_to = "trend"
   ) %>%
-  dplyr::select(
+  select(
     county = sub_region_1,
     region = region,
     category = category,
@@ -456,7 +456,7 @@ uk_google_mobility_smoothed <- uk_google_mobility %>%
   ) %>%
   # smooth out day-of-the-week effects
   mutate(
-    trend = slider::slide_dbl(
+    trend = slide_dbl(
       trend,
       mean,
       na.rm = TRUE,
@@ -466,7 +466,7 @@ uk_google_mobility_smoothed <- uk_google_mobility %>%
   ) %>%
   # smooth across symptom onset delay distribution
   mutate(
-    trend = slider::slide_dbl(
+    trend = slide_dbl(
       trend,
       gaussian_smooth,
       na.rm = TRUE,
@@ -668,7 +668,7 @@ micro_data <- yougov %>%
 
 micro_responses <- cbind(micro_data$adhering, micro_data$not_adhering)
 
-micro_gam <- mgcv::gam(
+micro_gam <- gam(
   micro_responses ~ s(date_num) + s(date_num, by = region),
   family = stats::binomial,
   data = micro_data,
@@ -896,7 +896,7 @@ m <- model(phi_alpha_wt, phi_delta_alpha, phi_period2, HC_0, HD_0, OD_0, p, q, p
 draws <- mcmc(m, chains = 10)
 draws <- extra_samples(draws, 2000)
 convergence(draws)
-bayesplot::mcmc_trace(draws)
+mcmc_trace(draws)
 
 # # calculate Reff for household, non-household, and overall for the two strains
 # reff_household_wt <- HC_0 * hsar_wt_i
@@ -1004,12 +1004,12 @@ cases_alpha_ga <- binomial(uk_attack_alpha_1$contacts, sar_alpha_observed_i)
 cases_wt_ga <- binomial(uk_attack_wt$contacts, sar_observed_i)
 cases_alpha_sim <- calculate(cases_alpha_ga, values = draws, nsim = 1000)[[1]][, , 1]
 cases_wt_sim <- calculate(cases_wt_ga, values = draws, nsim = 1000)[[1]][, , 1]
-bayesplot::ppc_ecdf_overlay(
+ppc_ecdf_overlay(
   uk_attack_alpha_1$cases,
   cases_alpha_sim,
   discrete = TRUE
 )
-bayesplot::ppc_ecdf_overlay(
+ppc_ecdf_overlay(
   uk_attack_wt$cases,
   cases_wt_sim,
   discrete = TRUE
@@ -1023,12 +1023,12 @@ hh_alpha_cases_sim <- calculate(hh_alpha_cases_ga, values = draws, nsim = 1000)[
 hh_delta_cases_sim <- calculate(hh_delta_cases_ga, values = draws, nsim = 1000)[[1]][, , 1] %>%
   matrix(ncol = 1)
 
-bayesplot::ppc_ecdf_overlay(
+ppc_ecdf_overlay(
   hh_alpha_cases,
   hh_alpha_cases_sim,
   discrete = TRUE
 )
-bayesplot::ppc_ecdf_overlay(
+ppc_ecdf_overlay(
   hh_delta_cases,
   hh_delta_cases_sim,
   discrete = TRUE
@@ -1048,7 +1048,7 @@ empirical_sar_wt_ga <- cases_wt_ga / uk_attack_1$contacts_wt
 empirical_r_alpha_wt_ga <- empirical_sar_alpha_ga / empirical_sar_wt_ga
 empirical_r_alpha_wt_sim <- calculate(empirical_r_alpha_wt_ga, values = draws, nsim = 1000)[[1]][, , 1]
 
-bayesplot::ppc_ecdf_overlay(
+ppc_ecdf_overlay(
   empirical_r_alpha_wt_observed,
   empirical_r_alpha_wt_sim,
   discrete = FALSE
@@ -1069,7 +1069,7 @@ bayesplot::ppc_ecdf_overlay(
 # empirical_r_delta_alpha_sim <- calculate(empirical_r_delta_alpha_ga, values = draws, nsim = 1000)[[1]][, , 1] %>%
 #   matrix(ncol = 1)
 # 
-# bayesplot::ppc_ecdf_overlay(
+# ppc_ecdf_overlay(
 #   empirical_r_delta_alpha_observed,
 #   empirical_r_delta_alpha_sim,
 #   discrete = FALSE
@@ -1084,7 +1084,7 @@ empirical_hr_delta_alpha_ga <- empirical_hsar_delta2_ga / empirical_hsar_alpha2_
 empirical_hr_delta_alpha_sim <- calculate(empirical_hr_delta_alpha_ga, values = draws, nsim = 1000)[[1]][, , 1] %>%
   matrix(ncol = 1)
 
-bayesplot::ppc_ecdf_overlay(
+ppc_ecdf_overlay(
   empirical_hr_delta_alpha,
   empirical_hr_delta_alpha_sim,
   discrete = FALSE

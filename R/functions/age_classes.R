@@ -18,7 +18,7 @@ age_classes <- function(final_age_bin = 80, by = 5) {
     )
   )
   
-  tibble::tibble(
+  tibble(
     classes = age_classes,
     lower = ages_lower,
     upper = ages_upper

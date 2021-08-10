@@ -56,7 +56,7 @@ rolls_contact_data <- function() {
     ) %>%
     group_by(weight) %>%
     # expand out to include 0s for different categories, to averages are unbiased
-    tidyr::complete(participant_id, hh_member, location, fill = list(contacts = 0)) %>%
+    complete(participant_id, hh_member, location, fill = list(contacts = 0)) %>%
     arrange(participant_id, hh_member, location)
   
   contact_data

@@ -150,14 +150,14 @@ tp_delta <- tp_delta_sims %>%
 # make a look up table of reference periods for PHSMs
 phsm_periods <- bind_rows(
     # VIC vs NSW at the peak of the Vic stage 4 lockdown are high and low
-    tibble::tribble(
+    tribble(
       ~phsm_scenario, ~state, ~date,
       "high", "VIC", as_date("2020-08-23"),
       "medium", "NSW", as_date("2021-07-01"),
       "low", "NSW", as_date("2020-08-23")
     ),
     # NSW in March 2021 is baseline
-    tibble::tibble(
+    tibble(
       phsm_scenario = "baseline",
       state = "NSW",
       date = seq(
@@ -167,7 +167,7 @@ phsm_periods <- bind_rows(
       )
     ),
     # WA in March 2021 is an alternative baseline
-    tibble::tibble(
+    tibble(
       phsm_scenario = "baseline_low",
       state = "WA",
       date = seq(
@@ -241,7 +241,7 @@ phsm_scenarios <- tp_delta %>%
 # load vaccination scenarios and compute completion dates - and add on scenario 19
 completion_file <- "data/vaccinatinon/quantium_simulations/20210716 Completion rates over time.xlsx"
 completion <- completion_file %>%
-  readxl::read_xlsx(sheet = 4) %>%
+  read_xlsx(sheet = 4) %>%
   rename(
     `Scenario 1` = `Senario 1`,
     week = `Week starting`
@@ -277,7 +277,7 @@ completion <- completion_file %>%
     .groups = "drop"
   ) %>%
   bind_rows(
-    tibble::tribble(
+    tribble(
       ~vacc_scenario, ~target_coverage,                  ~week,
                   19,              0.5,  as_date("2021-10-04"),
                   19,              0.6,  as_date("2021-10-18"),
@@ -377,7 +377,7 @@ quantium_age_lookup <- read_csv(
   )
 )
 
-age_lookup <- tibble::tribble(
+age_lookup <- tribble(
   ~age_lower, ~age_upper, ~age_band_quantium, ~age_band_5y,
   0,         4, "0-9", "0-4",
   5,         9, "0-9", "5-9",
@@ -794,7 +794,7 @@ vacc_scenario_lookup <- read_csv(
   )
 ) %>%
   bind_rows(
-    tibble::tribble(
+    tribble(
       ~scenario,         ~priority_order, ~az_dose_gap, ~az_age_cutoff,
              19,  "Random, with phasing",   "12 weeks",             60,
     )

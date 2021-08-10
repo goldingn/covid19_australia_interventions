@@ -10,8 +10,8 @@
 # https://www.education.vic.gov.au/about/department/Pages/datesterm.aspx
 # https://www.education.wa.edu.au/future-term-dates/
 school_holiday_dates <- function() {
-  dplyr::bind_rows(
-    tibble::tribble(~school_holiday, ~start, ~end,
+  bind_rows(
+    tribble(~school_holiday, ~start, ~end,
                     1, "2020-04-10", "2020-04-26",
                     2, "2020-07-04", "2020-07-19",
                     3, "2020-09-26", "2020-10-11",
@@ -24,7 +24,7 @@ school_holiday_dates <- function() {
       mutate(
         state = "Australian Capital Territory"
       ),
-    tibble::tribble(~school_holiday, ~start, ~end,
+    tribble(~school_holiday, ~start, ~end,
                     1, "2020-04-10", "2020-04-26",
                     2, "2020-07-04", "2020-07-19",
                     3, "2020-09-26", "2020-10-11",
@@ -37,7 +37,7 @@ school_holiday_dates <- function() {
       mutate(
         state = "New South Wales"
       ),
-    tibble::tribble(~school_holiday, ~start, ~end,
+    tribble(~school_holiday, ~start, ~end,
                     1, "2020-04-10", "2020-04-19",
                     2, "2020-06-27", "2020-07-20",
                     3, "2020-09-26", "2020-10-11",
@@ -50,7 +50,7 @@ school_holiday_dates <- function() {
       mutate(
         state = "Northern Territory"
       ),
-    tibble::tribble(~school_holiday, ~start, ~end,
+    tribble(~school_holiday, ~start, ~end,
                     1, "2020-04-04", "2020-04-19",
                     2, "2020-06-27", "2020-07-12",
                     3, "2020-09-19", "2020-10-05",
@@ -63,7 +63,7 @@ school_holiday_dates <- function() {
       mutate(
         state = "Queensland"
       ),
-    tibble::tribble(~school_holiday, ~start, ~end,
+    tribble(~school_holiday, ~start, ~end,
                     1, "2020-04-10", "2020-04-26",
                     2, "2020-07-04", "2020-07-19",
                     3, "2020-09-26", "2020-10-11",
@@ -76,7 +76,7 @@ school_holiday_dates <- function() {
       mutate(
         state = "South Australia"
       ),
-    tibble::tribble(~school_holiday, ~start, ~end,
+    tribble(~school_holiday, ~start, ~end,
                     1, "2020-04-10", "2020-04-26",
                     2, "2020-07-04", "2020-07-19",
                     3, "2020-09-26", "2020-10-11",
@@ -89,7 +89,7 @@ school_holiday_dates <- function() {
       mutate(
         state = "Tasmania"
       ),
-    tibble::tribble(~school_holiday, ~start, ~end,
+    tribble(~school_holiday, ~start, ~end,
                     # Vic extended each school holiday by a week during the
                     # pandemic
                     # https://www.education.vic.gov.au/about/department/Pages/datesterm.aspx
@@ -105,7 +105,7 @@ school_holiday_dates <- function() {
       mutate(
         state = "Victoria"
       ),
-    tibble::tribble(~school_holiday, ~start, ~end,
+    tribble(~school_holiday, ~start, ~end,
                     1, "2020-04-10", "2020-04-27",
                     2, "2020-07-04", "2020-07-19",
                     3, "2020-09-26", "2020-10-11",
@@ -120,8 +120,8 @@ school_holiday_dates <- function() {
       )
   ) %>%
     mutate(
-      start = lubridate::date(start),
-      end = lubridate::date(end)
+      start = date(start),
+      end = date(end)
     ) %>%
     # loop through, expanding out into dates within term time
     mutate(id = row_number()) %>%

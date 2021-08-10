@@ -20,7 +20,7 @@ get_age_distribution <- function(
   # Age structure of the Australian population by year of age, up to 100+
   # This is a "standard" distribution data frame but old population size data
   # from 2001 hence is adjusted later
-  # aust_population_standard <- readxl::read_xls(
+  # aust_population_standard <- read_xls(
   #   path = "data/vaccinatinon/abs_standard_age_31010DO003_200106.xls",
   #   sheet = "Table_1",
   #   skip = 6,
@@ -39,7 +39,7 @@ get_age_distribution <- function(
   #   )
   
   # use 2020 population, as this better matches proportion 80+
-  aust_population_2020 <- readxl::read_xls(
+  aust_population_2020 <- read_xls(
     path = "data/vaccinatinon/abs_population_2020.xls",
     sheet = "Table_8",
     range = cell_rows(c(223:328)),

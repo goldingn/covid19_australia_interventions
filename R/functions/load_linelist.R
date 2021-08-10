@@ -22,7 +22,7 @@ load_linelist <- function(date = NULL,
     # 
     # vic_linelist <- get_vic_linelist() %>%
     #   mutate(date_linelist = ll_date) %>%
-    #   dplyr::select(
+    #   select(
     #     -postcode_of_acquisition,
     #     -postcode_of_residence,
     #     -state_of_acquisition,
@@ -38,7 +38,7 @@ load_linelist <- function(date = NULL,
     #         import_status == "local"
     #     )
     #   ) #%>%
-    #   # dplyr::select(
+    #   # select(
     #   #   -postcode_of_acquisition,
     #   #   -postcode_of_residence,
     #   #   -state_of_acquisition,

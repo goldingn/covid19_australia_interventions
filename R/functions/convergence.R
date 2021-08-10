@@ -1,8 +1,8 @@
 # check convergence
 convergence <- function(draws) {
   
-  r_hats <- coda::gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
-  n_eff <- coda::effectiveSize(draws)
+  r_hats <- gelman.diag(draws, autoburnin = FALSE, multivariate = FALSE)$psrf[, 1]
+  n_eff <- effectiveSize(draws)
   
   # sometimes n_eff underflows to 0 simply because the values beinng traced are
   # very small, so remove these (exactly 0 is not possible)

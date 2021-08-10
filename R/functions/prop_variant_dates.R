@@ -1,5 +1,5 @@
 # prop_voc_date_state <- function() {
-#   tibble::tribble(
+#   tribble(
 #     ~state,        ~date, ~prop_voc,
 #      "ACT", "2021-01-27",         1,
 #      "NSW", "2021-01-27",         1,
@@ -28,7 +28,7 @@
 #       names_from = state,
 #       values_from = prop_voc
 #     ) %>%
-#     dplyr::select(-date) %>%
+#     select(-date) %>%
 #     as.matrix
 #   
 #   
@@ -50,7 +50,7 @@
 #   return(df)
 # }
 prop_variant_dates <- function(){
-  tibble::tribble(
+  tribble(
     ~state,        ~date, ~prop_wt, ~prop_alpha, ~prop_delta,
     "ACT",  "2020-01-01",        1,           0,          0,
     "NSW",  "2020-01-01",        1,           0,          0,

@@ -2,7 +2,7 @@ nsw_lga_populations <- function(
   file = "data/vaccinatinon/nsw/Coverage_data_July27/AIR Data 20210727 rates - v2.xlsx",
   sheet = "LGA Sex x Age Dose 1 rate"
 ) {
-  readxl::read_excel(
+  read_excel(
     path = file,
     sheet = sheet,
     skip = 5

@@ -1,7 +1,7 @@
 # cases of spillover (import-local transmission) in during mandatory hotel quarantine
 hotel_quarantine_spillover_data <- function() {
 
-  tibble::tribble(
+  tribble(
     ~earliest_date, ~latest_date, ~state, ~infectee, ~information_source,
     "2020-05-01", "2020-05-14", "VIC", "quarantine security guard (Rydges Hotel)",
     "https://www.dhhs.vic.gov.au/tracking-coronavirus-victoria",

@@ -3,7 +3,7 @@ nsw_vaccinations <- function(
 ) {
   
   # lookup to remove (C), (A) etc from lga in doses
-  lga_lookup <- tibble::tribble(
+  lga_lookup <- tribble(
     ~lga_long, ~lga_short,
     "Blacktown (C)", "Blacktown",
     "Canterbury-Bankstown (A)", "Canterbury-Bankstown",

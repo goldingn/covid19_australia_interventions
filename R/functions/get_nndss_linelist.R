@@ -90,7 +90,7 @@ get_nndss_linelist <- function(
     col_types <- col_types_2
   }
   
-  dat <- readxl::read_xlsx(
+  dat <- read_xlsx(
     data$file,
     col_types = col_types
   )

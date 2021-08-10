@@ -34,7 +34,7 @@ doses %>%
   )
 
 # lookup to disaggregate coverages to 5y age groups
-age_lookup <- tibble::tribble(
+age_lookup <- tribble(
   ~age_5y, ~age, ~proportion_of_group,
   "0-4", "0-14", 5/15,
   "5-9", "0-14", 5/15,   
@@ -85,7 +85,7 @@ coverage <- doses %>%
     across(
       c(only_dose_1_AstraZeneca, only_dose_1_Pfizer),
       .fns = list(
-        correction = ~slider::slide2_dbl(
+        correction = ~slide2_dbl(
           date, .,
           .f = immunity_lag_correction,
           weeks_increase = 2,
@@ -97,7 +97,7 @@ coverage <- doses %>%
     across(
       c(dose_2_AstraZeneca, dose_2_Pfizer),
       .fns = list(
-        correction = ~slider::slide2_dbl(
+        correction = ~slide2_dbl(
           date, .,
           .f = immunity_lag_correction,
           weeks_increase = 2,

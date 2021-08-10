@@ -66,7 +66,7 @@ reff_plotting <- function(
     ) %>%
     group_by(state)  %>%
     mutate(
-      recent_count = slider::slide_int(cases, sum, .before = 13),
+      recent_count = slide_int(cases, sum, .before = 13),
     ) %>%
     ungroup() %>%
     filter(date >= min_date) %>%
@@ -389,8 +389,8 @@ plot_trend_long <- function(
     
     geom_hline(yintercept = hline_at, linetype = "dotted") +
     
-    cowplot::theme_cowplot() +
-    cowplot::panel_border(remove = TRUE) +
+    theme_cowplot() +
+    panel_border(remove = TRUE) +
     theme(legend.position = "none",
           strip.background = element_blank(),
           strip.text = element_text(hjust = 0, face = "bold"),
@@ -526,8 +526,8 @@ plot_trend <- function(
     
     geom_hline(yintercept = hline_at, linetype = "dotted") +
     
-    cowplot::theme_cowplot() +
-    cowplot::panel_border(remove = TRUE) +
+    theme_cowplot() +
+    panel_border(remove = TRUE) +
     theme(legend.position = "none",
           strip.background = element_blank(),
           strip.text = element_text(hjust = 0, face = "bold"),

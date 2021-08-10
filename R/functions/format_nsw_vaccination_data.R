@@ -8,7 +8,7 @@ format_nsw_vaccination_data <- function (
 ) {
 
   # read oin the sheet, and skip the bumpf at the top
-  readxl::read_excel(
+  read_excel(
     path = file,
     sheet = sheet,
     skip = skip_rows
@@ -81,7 +81,7 @@ format_nsw_vaccination_data <- function (
     mutate(
       date = case_when(
         date == "previous_dates" ~ min_date - 1,
-        # stringr::str_starts(date, "...") ~ NA,
+        # str_starts(date, "...") ~ NA,
         TRUE ~ as.Date(
           suppressWarnings(
             as.numeric(

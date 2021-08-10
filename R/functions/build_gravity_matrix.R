@@ -10,7 +10,7 @@ build_gravity_matrix <- function(
     st_geometry() %>%
     st_centroid() %>%
     st_distance() %>%
-    units::drop_units()
+    drop_units()
   
   base <- lga %>%
     st_drop_geometry() %>%

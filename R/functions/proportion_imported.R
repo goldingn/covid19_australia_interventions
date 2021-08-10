@@ -18,7 +18,7 @@ proportion_imported <- function (local_infectious, imported_infectious) {
     date = rep(date_nums, n_states),
     state = rep(states, each = n_dates)
   )
-  model <- mgcv::gam(q_imported ~ s(date) +
+  model <- gam(q_imported ~ s(date) +
                        s(date, by = state, k = 30),
                      data = df)
   q_imported <- predict(model, newdata = df)

@@ -1,7 +1,7 @@
 # download and format Apple's mobility data
 apple_mobility <- function() {
   data <- apple_url() %>%
-    readr::read_csv(
+    read_csv(
       col_types = cols(
         .default = col_double(),
         geo_type = col_character(),
@@ -11,7 +11,7 @@ apple_mobility <- function() {
         `sub-region` = col_character(),
         country = col_character()
       )) %>%
-    tidyr::pivot_longer(
+    pivot_longer(
       cols = !any_of(
         c(
           "geo_type",
@@ -26,7 +26,7 @@ apple_mobility <- function() {
       values_to = "trend"
     ) %>%
     mutate(
-      date = lubridate::date(date)
+      date = date(date)
     ) %>%
     filter(
       region %in% ideal_regions()

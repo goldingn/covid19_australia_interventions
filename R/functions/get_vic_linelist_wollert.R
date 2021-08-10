@@ -31,7 +31,7 @@ get_vic_linelist_wollert <- function(file = "~/not_synced/vic/Whittlesea outbrea
       date_linelist = NA,
       date_detection = date_confirmation - 1
     ) %>%
-    dplyr::select(
+    select(
       date_onset,
       date_detection,
       date_confirmation,

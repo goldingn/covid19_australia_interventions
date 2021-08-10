@@ -12,7 +12,7 @@ dose_1_distributed <- function(){
     ) %>% 
     group_by(lead_digit) %>%
     mutate(class_fraction = fraction/sum(fraction)) %>%
-    dplyr::select(-pop, -fraction)
+    select(-pop, -fraction)
   
   dose_1_data() %>% 
     mutate(
@@ -31,7 +31,7 @@ dose_1_distributed <- function(){
     group_by(state, vaccine, age_class) %>%
     summarise(doses = sum(doses)) %>%
     ungroup %>%
-    dplyr::select(state, vaccine, age_class, doses)
+    select(state, vaccine, age_class, doses)
     
   
   

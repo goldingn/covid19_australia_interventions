@@ -27,7 +27,7 @@ update_past_cases <- function(past_cases_dir = "outputs/past_cases") {
     )
   
   # subset to only Wednesdays
-  # mutate(wday = lubridate::wday(date, label = TRUE)) %>%
+  # mutate(wday = wday(date, label = TRUE)) %>%
   # filter(wday == "Wed")
   
   linelists <- linelist_files %>%
@@ -43,7 +43,7 @@ update_past_cases <- function(past_cases_dir = "outputs/past_cases") {
     
     message("processing linelist: ", linelist_date)
     
-    tibble::tibble(
+    tibble(
       date_onset = rep(model_data$dates$onset, model_data$n_states),
       detection_probability = as.vector(model_data$detection_prob_mat),
       state = rep(model_data$states, each = model_data$n_dates),

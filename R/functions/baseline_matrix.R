@@ -10,7 +10,7 @@ baseline_matrix <- function(
   # from Prem matrix
   
   # Prem 2017 contact matrix
-  contact_matrix <- readxl::read_xlsx(
+  contact_matrix <- read_xlsx(
     path = "data/vaccinatinon/MUestimates_all_locations_1.xlsx",
     sheet = "Australia",
     col_types = rep("numeric", 16)
@@ -33,7 +33,7 @@ baseline_matrix <- function(
   
   if (type != "contact") {
     
-    age_disaggregation <- tibble::tribble(
+    age_disaggregation <- tribble(
       ~age_group_10y, ~age_group_5y,
       "0_9", "0-4",
       "0_9", "5-9",

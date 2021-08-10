@@ -2,7 +2,7 @@ nsw_lga_active_cases <- function() {
   # need to copy from here: https://www.health.nsw.gov.au/Infectious/covid-19/Pages/stats-local.aspx
   # paste in using datapasta addin
   # and remove the annoying asterisk and parentheses in title
-  tibble::tribble(
+  tribble(
     ~Local.Government.Area,  ~Cases, ~Cases.with.unknown.source, ~Total.tests,   ~Test.rate.per.1000,
     "Albury",       2,                          0,         3068,                    56,
     "Armidale Regional",       0,                          0,         1109,                    36,

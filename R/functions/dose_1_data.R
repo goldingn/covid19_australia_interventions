@@ -1,6 +1,6 @@
 dose_1_data <- function(){
   
-  dat <- readxl::read_xlsx(
+  dat <- read_xlsx(
     path = "~/not_synced/vaccination/Individuals received dose 1 by 10 year age group and jurisdiction[4].xlsx",
     skip = 1,
   )
@@ -19,7 +19,7 @@ dose_1_data <- function(){
         no = "az"
       )
     ) %>%
-    dplyr::select(-`Patient State`) %>%
+    select(-`Patient State`) %>%
     pivot_longer(
       cols = !state:vaccine,
       names_to = "age_class_10",

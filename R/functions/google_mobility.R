@@ -4,7 +4,7 @@
 google_mobility <- function() {
   # get link from: https://www.google.com/covid19/mobility/index.html
   url <- "https://www.gstatic.com/covid19/mobility/Global_Mobility_Report.csv"
-  data <- readr::read_csv(
+  data <- read_csv(
     url, 
     col_types = cols(
       country_region_code = col_character(),
@@ -24,12 +24,12 @@ google_mobility <- function() {
     filter(
       country_region == "Australia" & is.na(sub_region_2)
     ) %>%
-    tidyr::pivot_longer(
+    pivot_longer(
       ends_with("_percent_change_from_baseline"),
       names_to = "category",
       values_to = "trend"
     ) %>%
-    dplyr::select(
+    select(
       state = sub_region_1,
       category = category,
       date = date,

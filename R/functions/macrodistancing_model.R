@@ -34,7 +34,7 @@ macrodistancing_model <- function(data, parameters) {
   # actual weekday for that date
   idx <- cbind(
     seq_len(n),
-    lubridate::wday(data$location_change_trends$date)
+    wday(data$location_change_trends$date)
   )
   
   log_fraction_weekly_contacts <- log_imultilogit(eta)[idx]

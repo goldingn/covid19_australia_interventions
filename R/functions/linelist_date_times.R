@@ -9,7 +9,7 @@ linelist_date_times <- function(
   date_time_text <- gsub(".xlsx$", "", date_time_text)
   date_times <- as.POSIXct(date_time_text, format = "%d%b%Y %H%M")
   # return as a dataframe
-  tibble::tibble(
+  tibble(
     file = files,
     date_time = date_times
   )

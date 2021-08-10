@@ -1,5 +1,5 @@
 state_populations <- function() {
-  tibble::tribble(
+  tribble(
     ~state, ~population,
     "Australian Capital Territory", 426709,
     "New South Wales", 8089526,
