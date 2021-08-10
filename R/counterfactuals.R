@@ -146,7 +146,6 @@ contacts <- mapply(make_plot,
                      ),
                      SIMPLIFY = FALSE)
 
-library(patchwork)
 p <- 
   (quarantine[[1]] | quarantine[[2]] | quarantine[[3]]) /
   (distancing[[1]] | distancing[[2]] | distancing[[3]]) / 

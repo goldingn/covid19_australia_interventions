@@ -197,11 +197,6 @@ ifr_baseline_brazeau <- sum(age_distribution$fraction * ifr$brazeau)
 # )
 
 
-
-
-
-library(ggplot2)
-
 timeseries %>%
   select(date, fully_vaccinated, partially_vaccinated) %>%
   pivot_longer(

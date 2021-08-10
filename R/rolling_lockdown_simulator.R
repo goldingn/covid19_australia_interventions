@@ -339,7 +339,6 @@ r_eff_samples <- lapply(r_eff_samples_list, function(x) {
 })
 
 # prepare and run simulations in parallel
-library(future.apply)
 plan(multisession)
 
 # generation interval convolution matrix for dynamic part and for dynamic &
