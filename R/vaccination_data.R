@@ -1,24 +1,38 @@
-
-
-
 library(readxl)
 
-vaccine_files_dates <- function(
-  dir = "~/not_synced/vaccination/vaccination_data/",
-  name_pattern = " Individuals by Dose Number, Dose Type, and Demographics.xlsx"
+vax_files_dates <- function(
+  dir = "~/not_synced/vaccination/vaccination_data/"
 ) {
+  
   files <- list.files(
-    path = "~/not_synced/vaccination/vaccination_data/",
-    pattern = ".xlsx$",
+    path = dir,
+    pattern = ".xl",
     full.names = TRUE
   )
   
-  dates <- gsub(
-    pattern = " Individuals by Dose Number, Dose Type, and Demographics.xlsx",
-    replacement = "",
-    basename(files)
-  ) %>%
-    as.Date(format = "%Y.%m.%d")
+  filenames <- list.files(
+    path = dir,
+    pattern = ".xl",
+    full.names = FALSE
+  )
+  
+  dates <- sapply(
+    X = filenames,
+    FUN = function(x){
+      # this deals with the variable naming and format of files
+      # but may need to be tweaked further if file names change again
+      if (is.na(anytime::anydate(x))) {
+        xsplit <- strsplit(x, split = "_")[[1]] %>%
+          anytime::anydate(.)
+        
+        xsplit[!is.na(xsplit)]
+      } else {
+        anytime::anydate(x)
+      }
+
+    },
+    USE.NAMES = FALSE
+  ) %>% as.Date(origin = as.Date("1970-01-01"))
   
   tibble::tibble(
     file = files,
@@ -29,23 +43,15 @@ vaccine_files_dates <- function(
 
 
 
-file <- vaccine_files_dates() %>%
-  pull(file)
 
-file <- file[2]
-
-read_vaccine_data <- function(
-  file
+read_vax_data <- function(
+  file,
+  date
 ){
   
-  data_date <- sub(
-    pattern = " Individuals by Dose Number, Dose Type, and Demographics.xlsx",
-    replacement = "",
-    basename(file)
-  ) %>%
-    as.Date(format = "%Y.%m.%d")
+  data_date <- date
   
-  header <- readxl::read_xlsx(
+  header <- readxl::read_excel(
     path = file,
     n_max = 2,
     col_names = FALSE,
@@ -69,12 +75,12 @@ read_vaccine_data <- function(
     "100+"
   )
   
-  readxl::read_xlsx(
+  readxl::read_excel(
     path = file,
     skip = 2,
     col_names = header,
     sheet = "Vaccine Brand Split",
-    n_max = 37
+    n_max = 38
   ) %>%
     tidyr::fill(
       `NA_Vaccine Name`,
@@ -82,7 +88,7 @@ read_vaccine_data <- function(
     ) %>%
     dplyr::rename(
       vaccine = `NA_Vaccine Name`,
-      age_class = `Administered State_Age at Encounter Date - 5 Year`
+      age_class = 2 # need to fix this so works with either naming convention
     ) %>%
     pivot_longer(
       cols = -vaccine:-age_class,
@@ -138,14 +144,82 @@ read_vaccine_data <- function(
       dose_number = as.integer(dose_number),
       data_date = data_date,
     )
-  
 
 }
 
-vaccine_data <- sapply(
-  X = vaccine_files_dates() %>%
-    pull(file),
-  FUN = read_vaccine_data,
-  simplify = FALSE
-) %>%
-  bind_rows
+load_vax_data <- function(){
+ filesdates  <- vaccine_files_dates()
+ 
+ mapply(
+   FUN = read_vaccine_data,
+   file = filesdates$file,
+   date = filesdates$date,
+   SIMPLIFY = FALSE,
+   USE.NAMES = FALSE
+ ) %>%
+   bind_rows
+ 
+}
+
+vdat <- load_vax_data()
+
+
+vdat %>%
+  group_by(state, age_class, vaccine, dose_number) %>% 
+  arrange(state, age_class, vaccine, dose_number, date) %>%
+  mutate(
+    correction = slider::slide2(
+      .x = data_date,
+      .y = doses,
+      .f = immunity_lag_correction
+    ) %>%
+      unlist
+  )
+
+
+immunity_lag_correction <- function(date, coverage,
+                                    weeks_increase = 2,
+                                    weeks_wait = 1) {
+  
+  # compute the current coverage (by dose/vaccine)
+  max_date <- which.max(date)
+  latest_coverage <- coverage[max_date]
+  
+  # compute the diff of coverages for all dates to get the proportion of the
+  # population added on/by that date
+  new_coverages <- diff(c(0, coverage))
+  
+  # compute the ratio of the proportion added on each previous date to the
+  # current coverage (should sum to 1)
+  date_weights <- new_coverages / latest_coverage
+  
+  # multiply each of those ratios by the relative effect based on the date difference¿
+  week_diff <- as.numeric(date[max_date] - date) / 7
+  relative_effect <- pmax(0, pmin(1, (week_diff - weeks_wait) / weeks_increase))
+  
+  # sum the ratios to get the correction multiplier
+  correction <- sum(relative_effect * date_weights)
+  
+  if (is.na(correction)) {
+    correction <- 0
+  }
+  
+  correction
+  
+  
+}
+
+
+vdat %>%
+  arrange(state, age_class, vaccine, dose_number, date) %>%
+  group_by(state, age_class, vaccine, dose_number) %>% 
+  mutate(
+    correction = slider::slide2_dbl(
+      .x = data_date,
+      .y = doses,
+      .f = immunity_lag_correction,
+      .before = Inf
+    ) %>%
+      unlist
+  )
+
