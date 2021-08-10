@@ -1,5 +1,17 @@
 # read in and parse raw DoH survey files in a similar way to BETA
 parse_doh_survey <- function(filename) {
+  
+  # which household types correspond to the respondent being a parent (guessing at
+  # BETA's 'parent' field)
+  parenty_households <- c(
+    "Couple with non-dependent child(ren)",
+    "Couple with dependent child(ren)",
+    "Couple with dependent and non-dependent children",
+    "Single parent with non-dependent child(ren)",
+    "Single parent with dependent child(ren)",
+    "Single parent with dependent and non-dependent children"
+  )
+  
   full <- filename %>%
     read_csv(
       col_types = cols(
