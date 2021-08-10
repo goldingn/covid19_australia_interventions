@@ -49,9 +49,7 @@ read_vax_data <- function(
   date
 ){
   
-  data_date <- date
-  
-  header <- readxl::read_excel(
+ header <- readxl::read_excel(
     path = file,
     n_max = 2,
     col_names = FALSE,
@@ -142,7 +140,7 @@ read_vax_data <- function(
     ungroup %>%
     mutate(
       dose_number = as.integer(dose_number),
-      data_date = data_date,
+      date = date,
     )
 
 }
@@ -151,7 +149,7 @@ load_vax_data <- function(){
  filesdates  <- vaccine_files_dates()
  
  mapply(
-   FUN = read_vaccine_data,
+   FUN = read_vax_data,
    file = filesdates$file,
    date = filesdates$date,
    SIMPLIFY = FALSE,
@@ -164,34 +162,24 @@ load_vax_data <- function(){
 vdat <- load_vax_data()
 
 
-vdat %>%
-  group_by(state, age_class, vaccine, dose_number) %>% 
-  arrange(state, age_class, vaccine, dose_number, date) %>%
-  mutate(
-    correction = slider::slide2(
-      .x = data_date,
-      .y = doses,
-      .f = immunity_lag_correction
-    ) %>%
-      unlist
-  )
 
-
-immunity_lag_correction <- function(date, coverage,
-                                    weeks_increase = 2,
-                                    weeks_wait = 1) {
+immunity_lag_correction <- function(
+  date,
+  doses,
+  dose_number
+) {
   
-  # compute the current coverage (by dose/vaccine)
+  # compute the current doses (by dose/vaccine)
   max_date <- which.max(date)
-  latest_coverage <- coverage[max_date]
+  latest_doses <- doses[max_date]
   
-  # compute the diff of coverages for all dates to get the proportion of the
+  # compute the diff of dosess for all dates to get the proportion of the
   # population added on/by that date
-  new_coverages <- diff(c(0, coverage))
+  new_doses <- diff(c(0, doses))
   
   # compute the ratio of the proportion added on each previous date to the
-  # current coverage (should sum to 1)
-  date_weights <- new_coverages / latest_coverage
+  # current doses (should sum to 1)
+  date_weights <- new_doses / latest_doses
   
   # multiply each of those ratios by the relative effect based on the date difference¿
   week_diff <- as.numeric(date[max_date] - date) / 7
@@ -214,9 +202,12 @@ vdat %>%
   arrange(state, age_class, vaccine, dose_number, date) %>%
   group_by(state, age_class, vaccine, dose_number) %>% 
   mutate(
-    correction = slider::slide2_dbl(
-      .x = data_date,
-      .y = doses,
+    correction = slider::pslide_dbl(
+      .l = list(
+        date,
+        doses,
+        dose_number
+      ),
       .f = immunity_lag_correction,
       .before = Inf
     ) %>%
