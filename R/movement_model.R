@@ -3,6 +3,7 @@ source("./packages.R")
 source("./conflicts.R")
 ## Load your R files
 lapply(list.files("./R/functions", full.names = TRUE), source)
+source("./objects_and_settings.R")
 
 # load Cam's LGA ordering
 file <- "data/facebook/VIC_LGA18_OD_matrices_for_Nick_Golding_07072020/LGA_CODE18_sorted.csv"

@@ -4,7 +4,7 @@ source("./packages.R")
 source("./conflicts.R")
 ## Load your R files
 lapply(list.files("./R/functions", full.names = TRUE), source)
-
+source("./objects_and_settings.R")
 
 # load TP timeseries estimates for delta
 tp_delta_sims <- read.csv("outputs/reopening/delta_r_eff_1_local_samples.csv")

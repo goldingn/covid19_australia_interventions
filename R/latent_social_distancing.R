@@ -5,6 +5,7 @@ source("./packages.R")
 source("./conflicts.R")
 ## Load your R files
 lapply(list.files("./R/functions", full.names = TRUE), source)
+source("./objects_and_settings.R")
 
 
 # load mobility datastreams, keeping only state-level data

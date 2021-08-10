@@ -5,6 +5,7 @@ source("./packages.R")
 source("./conflicts.R")
 ## Load your R files
 lapply(list.files("./R/functions", full.names = TRUE), source)
+source("./objects_and_settings.R")
 
 # sync aggregated data for Dennis
 format_raw_survey_data()

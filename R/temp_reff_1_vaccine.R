@@ -2,6 +2,7 @@ source("./packages.R")
 source("./conflicts.R")
 ## Load your R files
 lapply(list.files("./R/functions", full.names = TRUE), source)
+source("./objects_and_settings.R")
 
 # reff component 1 under only surveillance changes
 reff_1_only_surveillance <- function(fitted_model) {

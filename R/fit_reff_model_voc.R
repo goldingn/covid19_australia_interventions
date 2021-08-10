@@ -2,10 +2,10 @@ source("./packages.R")
 source("./conflicts.R")
 ## Load your R files
 lapply(list.files("./R/functions", full.names = TRUE), source)
+source("./objects_and_settings.R")
 
 # define the model (and greta arrays) for Reff, and sample until convergence
 fitted_model_voc <- fit_reff_model(data)
-
 
 saveRDS(fitted_model_voc, "outputs/fitted_reff_model_voc.RDS")
 # fitted_model <- readRDS("outputs/fitted_reff_model.RDS")
@@ -15,6 +15,3 @@ saveRDS(fitted_model_voc, "outputs/fitted_reff_model_voc.RDS")
 
 # do plots for main period
 reff_plotting(fitted_model, dir = "long_figs", washout_cutoff = 5)
-
-
-###

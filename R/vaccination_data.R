@@ -2,6 +2,7 @@ source("./packages.R")
 source("./conflicts.R")
 ## Load your R files
 lapply(list.files("./R/functions", full.names = TRUE), source)
+source("./objects_and_settings.R")
 
 vaccine_files_dates <- function(
   dir = "~/not_synced/vaccination/vaccination_data/",

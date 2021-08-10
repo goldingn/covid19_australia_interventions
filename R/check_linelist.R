@@ -1,11 +1,11 @@
 # check NNDSS linelist for missing entries and local cases in last 3 weeks.
 
 source("R/lib.R")
-
 source("./packages.R")
 source("./conflicts.R")
-## Load your R files
 lapply(list.files("./R/functions", full.names = TRUE), source)
+source("./objects_and_settings.R")
+## Load your R files
 
 dir <- "~/not_synced/nndss"
   
