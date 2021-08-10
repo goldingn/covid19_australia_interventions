@@ -24,7 +24,13 @@ fs::file_move(path = "R/body.R",
               new_path = file_to_untangle)
 
 library(codelens)
+library(fs)
+library(purrr)
 
+r_files <- dir_ls(path = "R/", glob = "*.R$") 
+
+which_code_calls_ggsave <- map_dfr(r_files, file_find_fun, "ggsave")
+which_code_calls_ggsave
 
 source("./packages.R")
 source("./conflicts.R")
@@ -32,6 +38,15 @@ source("./conflicts.R")
 lapply(list.files("./R/functions", full.names = TRUE), source)
 
 # look for which files use `library()`
+
+r_source_files <- list.files(path = "R/",
+                             full.names = TRUE,
+                             pattern = ".R$")
+
+r_source_files
+
+which_code_calls_library <- map_dfr(r_source_files, file_library)
+which_code_calls_library
 
 # looking through these files to see where the changes are made
 untangle_file("R/plot_reff_voc.R")
