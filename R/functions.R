@@ -9028,7 +9028,8 @@ average_transmission_efficacy <- function() {
 vaccination_transmission_effect <- function(
   age_coverage,
   efficacy_mean,
-  next_generation_matrix
+  next_generation_matrix,
+  R0 = NULL
 ) {
   # given vaccination coverage in each age group, the average vaccine efficacy (by
   # age or overall), and the baseline next generation matrix, compute the
@@ -9042,7 +9043,11 @@ vaccination_transmission_effect <- function(
     FUN = "*"
   )
   
-  overall <- get_R(vc_next_gen_matrix) / get_R(next_generation_matrix)
+  if (is.null(R0)) {
+    R0 <-  get_R(next_generation_matrix)
+  }
+  Rv <- get_R(vc_next_gen_matrix)
+  overall <- Rv /R0
   
   list(
     by_age = age_transmission_reduction,
@@ -9426,4 +9431,51 @@ write_mobility_dates <- function(mobility, dir = "outputs/"){
     write_csv(
       file = file.path(dir, 'mobility_dates.csv')
     )
+}
+
+
+lga_age_population <- function() {
+  file <- "data/population/32350ds0003_2019.xls"
+  names_1 <- file %>%
+    read_excel(
+      sheet = "Table 3",
+      skip = 8,
+      n_max = 1
+    ) %>%
+    names()
+  names_2 <- file %>%
+    read_excel(
+      sheet = "Table 3",
+      skip = 7,
+      n_max = 1
+    ) %>%
+    names()
+  
+  names <- c(names_1[1:4], names_2[-(1:4)])
+  pop <- file %>%
+    read_excel(
+      sheet = "Table 3",
+      skip = 10,
+      col_names = names
+    ) %>%
+    select(
+      -`S/T code`,
+      -`Total Persons`
+    ) %>%
+    rename(
+      `85+` = `85 and over`,
+      state = `S/T name`,
+      LGA_NAME19 = `LGA name`,
+      LGA_CODE19 = `LGA code`
+    ) %>%
+    pivot_longer(
+      cols = -c(state, LGA_NAME19, LGA_CODE19),
+      names_to = "age",
+      values_to = "population"
+    ) %>%
+    # death to em-dashes
+    mutate(
+      age = str_replace(age, "–", "-")
+    )
+  
 }
