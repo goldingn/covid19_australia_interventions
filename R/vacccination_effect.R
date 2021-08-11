@@ -123,7 +123,6 @@ range(timeseries$over_70_ifr_effect)
 
 dev.off()
 
-
 # plot current vaccination coverage by age
 current_coverage_by_age <- all_effects[[length(all_effects)]]$coverage_by_age
 
@@ -174,7 +173,6 @@ ifr_baseline_brazeau <- sum(age_distribution$fraction * ifr$brazeau)
 # apply this to vaccine coverage (single dose) estimates to get new IFRs by age
 # and overall
 
-
 # # check against tables
 # lapply(populations_1A, sum)
 # lapply(populations_1B, sum)
@@ -196,7 +194,6 @@ ifr_baseline_brazeau <- sum(age_distribution$fraction * ifr$brazeau)
 #   n_doses
 # )
 
-
 timeseries %>%
   select(date, fully_vaccinated, partially_vaccinated) %>%
   pivot_longer(
@@ -214,7 +211,6 @@ timeseries %>%
   xlab("") +
   theme_minimal()
 
-
 # simple 1 dose model with lag
 ages <- age_classes(80)
 age_populations <- phase_age_populations()
@@ -222,7 +218,6 @@ age_distribution <- get_age_distribution(final_age_bin = 80)
 #timeseries <- scrape_doses_timeseries()
 timeseries <- vaccination_coverage()
 ifr <- get_ifr()
-
 
 # fake data
 n_days <- length(timeseries$doses)
@@ -241,20 +236,6 @@ cumulative_vaccinees_effective <- c(weights %*% daily_vaccinees)
 plot(cumulative_vaccinees, type = "l")
 lines(cumulative_vaccinees_effective, lty = 2)
 
-
-average_transmission_efficacy <- function() {
-  average_efficacy(
-    efficacy_pf_2_dose = 0.9685,
-    efficacy_az_2_dose = 0.93,
-    #efficacy_pf_1_dose = efficacy_pf_2_dose/2,
-    #efficacy_az_1_dose = efficacy_az_2_dose/2,
-    efficacy_pf_1_dose = 0.8317,
-    efficacy_az_1_dose = 0.892,
-    proportion_pf = 0.5,
-    proportion_2_dose = 0
-  )
-}
-
 all_effects <- lapply(
   cumulative_vaccinees_effective,
   summarise_effect,
@@ -269,7 +250,6 @@ timeseries$overall_transmission_effect <- vapply(
   extract_overall_transmission_effect,
   FUN.VALUE = numeric(1)
 )
-
 
 saveRDS(
  object = timeseries,
