@@ -1,5 +1,5 @@
 # compute TP for difference PHSM scenarios from an Reff run with TTIQ in component1
-source("R/lib.R")
+source("./lib.R")
 source("./packages.R")
 source("./conflicts.R")
 ## Load your R files

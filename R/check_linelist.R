@@ -1,6 +1,6 @@
 # check NNDSS linelist for missing entries and local cases in last 3 weeks.
 
-source("R/lib.R")
+source("./lib.R")
 source("./packages.R")
 source("./conflicts.R")
 lapply(list.files("./R/functions", full.names = TRUE), source)

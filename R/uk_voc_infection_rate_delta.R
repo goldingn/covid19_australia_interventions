@@ -226,7 +226,7 @@
 # confounding with other parameters - especially $\psi$. For this reason,
 # uncertainty in $\beta$ was not considered in this analysis.
 
-source("R/lib.R")
+source("./lib.R")
 source("./packages.R")
 source("./conflicts.R")
 ## Load your R files

@@ -1,6 +1,6 @@
   # analyse change in microdistancing behaviour by state, using survey questions
 # from the BETA barometer
-source("R/lib.R")
+source("./lib.R")
 source("./packages.R")
 source("./conflicts.R")
 ## Load your R files

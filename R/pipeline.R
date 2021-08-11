@@ -1,6 +1,6 @@
 # Run the full Reff pipeline
 
-source("R/lib.R")
+source("./lib.R")
 source("./packages.R")
 source("./conflicts.R")
 ## Load your R files

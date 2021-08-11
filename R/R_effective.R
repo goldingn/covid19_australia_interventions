@@ -1,7 +1,7 @@
 # fit a Bayesian model-based estimate of R_effective over time, quantifying the
 # impacts of both quarantine and physical distancing measures.
 
-source("R/lib.R")
+source("./lib.R")
 source("./packages.R")
 source("./conflicts.R")
 ## Load your R files
