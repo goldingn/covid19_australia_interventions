@@ -91,7 +91,7 @@ pop_air <- pop %>%
 
 # load air data, remove provider type, add populations, and tidy
 air_raw <- read_csv(
-  "data/vaccinatinon/nsw/AIR_2021-08-12_UNSW.csv",
+  "~/not_synced/vaccination/nsw/AIR_2021-08-12_UNSW.csv",
   col_types = cols(
     LGA_CODE19 = col_double(),
     LGA_NAME19 = col_character(),
