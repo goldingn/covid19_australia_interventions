@@ -91,7 +91,7 @@ pop_air <- pop %>%
 
 # load air data, remove provider type, add populations, and tidy
 air_raw <- read_csv(
-  "data/vaccinatinon/nsw/AIR_2021-08-09_UNSW.csv",
+  "data/vaccinatinon/nsw/AIR_2021-08-12_UNSW.csv",
   col_types = cols(
     LGA_CODE19 = col_double(),
     LGA_NAME19 = col_character(),
@@ -110,6 +110,8 @@ air_raw <- read_csv(
     -SNAPSHOT_DATE,
     -DAILY_COUNT
   )
+
+latest_data_date <- max(air_raw$ENCOUNTER_DATE)
 
 # add on 0 coverage for younger age groups, and collapse over 80 group
 air_current <- expand_grid(
@@ -216,7 +218,7 @@ air_current <- expand_grid(
 # start with an average, then try a random effects model (shrinkage & extrapolation will help for small populations)
 dailies <- air_current %>%
   filter(
-    date > (max(date) - 6 * 7)
+    date > (latest_data_date - 4 * 7)
   ) %>%
   group_by(
     lga, age_air_80, population,
@@ -238,7 +240,7 @@ dailies <- air_current %>%
 # cumulative number of doses as a the most recent time point
 starting <- air_current %>%
   filter(
-    date == max(date)
+    date == latest_data_date
   ) %>%
   rename_with(
     .fn = function(x) paste0("starting_", x),
@@ -256,7 +258,7 @@ starting <- air_current %>%
 air_forecast <- expand_grid(
   lga = unique(air_current$lga),
   age_air_80 = unique(air_current$age_air_80),
-  date = seq(max(air_current$date) + 1, as.Date("2021-09-30"), by = 1)
+  date = seq(latest_data_date + 1, as.Date("2021-09-30"), by = 1)
 ) %>%
   # add on daily vaccination rates (previous average)
   left_join(
@@ -303,11 +305,8 @@ air <- air_current %>%
   bind_rows(
     air_forecast
   ) %>%
-  arrange(date, lga, age_air_80)
-
-
-# where the number of vaccinations exceeds the population, cap it
-air <- air %>%
+  arrange(date, lga, age_air_80) %>%
+  # where the number of vaccinations exceeds the population, cap it
   mutate(
     # compute extra doses
     dose_1_extra = pmax(0, (dose_1_AstraZeneca + dose_1_Pfizer) - population),
@@ -350,40 +349,40 @@ air %>%
     legend.position = "none"
   )
 
-# some LGAs and ages have more vaccinations recorded than their 2019 census populations
-pop_air %>%
-  filter(LGA_NAME19 == "The Hills Shire (A)", age_air == "70-79")
-air_raw %>%
-  filter(LGA_NAME19 == "The Hills Shire (A)", AGE_GROUP == "70-79", ENCOUNTER_DATE == as.Date("2021-08-08") & DOSE_NUMBER == 1)
+# # some LGAs and ages have more vaccinations recorded than their 2019 census populations
+# pop_air %>%
+#   filter(LGA_NAME19 == "The Hills Shire (A)", age_air == "70-79")
+# air_raw %>%
+#   filter(LGA_NAME19 == "The Hills Shire (A)", AGE_GROUP == "70-79", ENCOUNTER_DATE == as.Date("2021-08-08") & DOSE_NUMBER == 1)
 
-# these are the places with too many vaccinations
-air %>%
-  filter(dose_1_extra > 0) %>%
-  group_by(lga, age_air_80) %>%
-  filter(date == max(date)) %>%
-  arrange(desc(dose_1_extra))
+# # these are the places with too many vaccinations
+# air %>%
+#   filter(dose_1_extra > 0) %>%
+#   group_by(lga, age_air_80) %>%
+#   filter(date == max(date)) %>%
+#   arrange(desc(dose_1_extra))
 
-# compute the total number of doses deleted, and the percentage of the total dose 1s and dose 2s that were removed
-air %>%
-  filter(date == as.Date("2021-08-08")) %>%
-  mutate(
-    dose_1 = dose_1_Pfizer + dose_1_AstraZeneca,
-    dose_2 = dose_2_Pfizer + dose_2_AstraZeneca
-  ) %>%
-  summarise(
-    across(
-      c(dose_1_extra, dose_2_extra),
-      sum
-    ),
-    across(
-      c(dose_1, dose_2),
-      sum
-    )
-  ) %>%
-  mutate(
-    dose_1_extra_percentage = 100 * dose_1_extra / (dose_1 + dose_1_extra),
-    dose_2_extra_percentage = 100 * dose_2_extra / (dose_2 + dose_2_extra)
-  )
+# # compute the total number of doses deleted, and the percentage of the total dose 1s and dose 2s that were removed
+# air %>%
+#   filter(date == as.Date("2021-08-08")) %>%
+#   mutate(
+#     dose_1 = dose_1_Pfizer + dose_1_AstraZeneca,
+#     dose_2 = dose_2_Pfizer + dose_2_AstraZeneca
+#   ) %>%
+#   summarise(
+#     across(
+#       c(dose_1_extra, dose_2_extra),
+#       sum
+#     ),
+#     across(
+#       c(dose_1, dose_2),
+#       sum
+#     )
+#   ) %>%
+#   mutate(
+#     dose_1_extra_percentage = 100 * dose_1_extra / (dose_1 + dose_1_extra),
+#     dose_2_extra_percentage = 100 * dose_2_extra / (dose_2 + dose_2_extra)
+#   )
 
 # compute efficacies against transmission, based on type and number of doses
 efficacy_az_1_dose <- combine_efficacy(0.18, 0.48)
@@ -440,10 +439,8 @@ coverage <- air %>%
     across(
       c(
         dose_1_AstraZeneca,
-        only_dose_1_AstraZeneca,
         dose_2_AstraZeneca,
         dose_1_Pfizer,
-        only_dose_1_Pfizer,
         dose_2_Pfizer
       ),
       .fns = c(
@@ -503,9 +500,12 @@ coverage <- air %>%
   ) %>%
   arrange(
     lga, date, age
+  ) %>%
+  # remove any data within 3 weeks of the start, since the time to acquired
+  # immunity isn't correctly accounted for
+  filter(
+    date > (min(date) + 21)
   )
-
-unique(coverage$lga)
 
 coverage %>%
   filter(
@@ -515,7 +515,8 @@ coverage %>%
     aes(
       date,
       coverage_any_vaccine * average_efficacy_transmission,
-      col = age
+      col = age,
+      linetype = forecast
     )
   ) +
   geom_line() +
@@ -529,7 +530,8 @@ coverage %>%
     aes(
       date,
       coverage_any_vaccine * average_efficacy_transmission,
-      col = age
+      col = age,
+      linetype = forecast
     )
   ) +
   geom_line() +
@@ -544,7 +546,8 @@ coverage %>%
     aes(
       date,
       coverage_any_vaccine * average_efficacy_transmission,
-      col = age
+      col = age,
+      linetype = forecast
     )
   ) +
   geom_line() +
@@ -552,9 +555,12 @@ coverage %>%
 
 # estimate effects of vaccination on transmission
 vaccination_effect <- coverage %>%
-  filter(date > as.Date("2021-06-16")) %>%
+  # subset to recent weeks to speed up computation
+  filter(
+    date > as.Date("2021-06-16")
+  ) %>%
   group_by(
-    lga, date
+    lga, date, forecast
   ) %>%
   summarise(
     vaccination_transmission_multiplier = vaccination_transmission_effect(
@@ -568,29 +574,21 @@ vaccination_effect <- coverage %>%
   mutate(
     vaccination_transmission_reduction_percent =
       100 * (1 - vaccination_transmission_multiplier)
-  ) %>%
-  mutate(
-    dubious = (date - min(date)) < 21,
-    across(
-      starts_with("effective_"),
-      ~ ifelse(dubious, NA, .)
-    )
-  ) %>%
-  select(
-    -dubious
   )
 
 
 # percentage reduction in transmission due to vaccination
 vaccination_effect %>%
-  filter(date == max(date)) %>%
+  filter(date == latest_data_date) %>%
   select(
     vaccination_transmission_reduction_percent,
     lga
-  )
+  ) %>%
+  pull(vaccination_transmission_reduction_percent) %>%
+  hist(breaks = 100)
 
 vaccination_effect %>%
-  filter(date == Sys.Date() - 14) %>%
+  filter(date == latest_data_date - 14) %>%
   select(
     vaccination_transmission_reduction_percent,
     lga
