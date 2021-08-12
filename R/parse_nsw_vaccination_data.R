@@ -576,7 +576,6 @@ vaccination_effect <- coverage %>%
       100 * (1 - vaccination_transmission_multiplier)
   )
 
-
 # percentage reduction in transmission due to vaccination
 vaccination_effect %>%
   filter(date == latest_data_date) %>%
@@ -598,5 +597,41 @@ vaccination_effect %>%
 write_csv(vaccination_effect, "~/Desktop/nsw_lgas_vaccination_effect.csv")  
 
 
+vaccination_effect %>%
+  filter(
+    lga != "Unincorporated NSW"
+  ) %>%
+  ggplot(
+    aes(
+      x = date,
+      y = vaccination_transmission_reduction_percent / 100,
+      col = lga,
+      linetype = forecast
+    )
+  ) +
+  geom_line() +
+  ylab("") +
+  xlab("") +
+  ggtitle(
+    "Reduction in transmission potential",
+    "for each NSW LGA"
+  ) +
+  theme_cowplot() +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  theme(
+    legend.position = "none"
+  )
 
+ggsave(
+  "~/Desktop/nsw_lga_tp_reduction.png",
+  bg = "white",
+  width = 7,
+  height = 5
+)
+
+vaccination_effect %>%
+  filter(
+    date == as.Date("2021-07-10"),
+    vaccination_transmission_reduction_percent < 2
+  )
 
