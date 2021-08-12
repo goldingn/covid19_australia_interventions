@@ -594,7 +594,7 @@ vaccination_effect %>%
   )
 
 
-write_csv(vaccination_effect, "~/Desktop/nsw_lgas_vaccination_effect.csv")  
+write_csv(vaccination_effect, "outputs/nsw/nsw_lgas_vaccination_effect.csv")  
 
 
 vaccination_effect %>%
@@ -623,7 +623,7 @@ vaccination_effect %>%
   )
 
 ggsave(
-  "~/Desktop/nsw_lga_tp_reduction.png",
+  "outputs/nsw/nsw_lga_tp_reduction.png",
   bg = "white",
   width = 7,
   height = 5
@@ -632,6 +632,6 @@ ggsave(
 vaccination_effect %>%
   filter(
     date == as.Date("2021-07-10"),
-    vaccination_transmission_reduction_percent < 2
+    vaccination_transmission_reduction_percent > 20
   )
 

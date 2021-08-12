@@ -196,7 +196,7 @@ for (this_lga in all_lgas) {
   dpi <- 150
   ggsave(
     filename = sprintf(
-      "outputs/figures/NSW_%s_datastream_model_fit_%s.png",
+      "outputs/nsw/NSW_%s_datastream_model_fit_%s.png",
       this_lga,
       last_date
     ),
@@ -350,14 +350,87 @@ reff_trend <- macro_model$data$location_change_trends %>%
   select(date, state) %>%
   # add predictions
   mutate(mean = colMeans(reff_sims)) %>%
-  bind_cols(as_tibble(quants))
+  bind_cols(as_tibble(quants)) %>%
+  rename(
+    lga = state
+  )
 
-for (this_lga in all_lgas) {
+# load vaccination effect estimates
+vaccine_effect <- read_csv(
+  "outputs/nsw/nsw_lgas_vaccination_effect.csv",
+  col_types = cols(
+    lga = col_character(),
+    date = col_date(format = ""),
+    forecast = col_logical(),
+    vaccination_transmission_multiplier = col_double(),
+    vaccination_transmission_reduction_percent = col_double()
+  )
+) %>%
+  mutate(
+    lga = str_remove(lga, " \\(A\\)"),
+    lga = str_remove(lga, " \\(C\\)"),
+    lga = str_remove(lga, " \\(NSW\\)"),
+  )
+
+
+
+# add a lookup between Reff names and vaccine names
+lga_lookup <- tibble::tribble(
+  ~lga_reff, ~lga_vaccine,
+  "Canterbury", "Canterbury-Bankstown",
+  "Bankstown", "Canterbury-Bankstown",
+  "MidCoast", "Mid-Coast",
+  "Strathfield Municipal", "Strathfield",
+  "Sutherland", "Sutherland Shire",
+  "The Hills", "The Hills Shire",
+  "Woolahra Municipal", "Woolahra"
+)
+
+reff_trend_vaccination <- reff_trend %>%
+  left_join(
+    lga_lookup,
+    by = c("lga" = "lga_reff")
+  ) %>%
+  mutate(
+    lga_vaccine = case_when(
+      is.na(lga_vaccine) ~ lga,
+      TRUE ~ lga_vaccine
+    )
+  ) %>%
+  filter(
+    lga_vaccine %in% vaccine_effect$lga
+  ) %>%
+  inner_join(
+    vaccine_effect,
+    by = c("lga_vaccine" = "lga", "date")
+  ) %>%
+  mutate(
+    across(
+      c(mean, starts_with("ci")),
+      ~ . * vaccination_transmission_multiplier
+    )
+  ) %>%
+  select(
+    -starts_with("vaccination")
+  )
+
+# save the reff trend outputs
+reff_trend %>%
+  write_csv("outputs/nsw/tp_trends_no_vacc.csv")
+
+reff_trend_vaccination %>%
+  write_csv("outputs/nsw/tp_trends_with_vacc.csv")
+
+for (this_lga in unique(reff_trend_vaccination$lga)) {
   
-  reff_trend %>%
-    filter(state == this_lga) %>%
+  reff_trend_vaccination %>%
+    filter(lga == this_lga) %>%
     ggplot(
-      aes(date, mean)
+      aes(
+        x = date,
+        y = mean,
+        linetype = forecast
+      )
     ) +
     geom_ribbon(
       aes(
@@ -412,15 +485,17 @@ for (this_lga in all_lgas) {
       date_breaks = "1 month",
       date_labels = "%e/%m"
     ) +
-    coord_cartesian(xlim = c(as.Date("2021-01-27"), last_date)) +
-    theme_cowplot()
+    # coord_cartesian(xlim = c(as.Date("2021-01-27"), last_date)) +
+    theme_cowplot() +
+    theme(
+      legend.position = "none"
+    )
   
   ggsave(
-    paste0("outputs/figures/NSW_", this_lga, "_reff.png"),
+    paste0("outputs/nsw/NSW_", this_lga, "_reff.png"),
     width = 1000 / dpi,
     height = 600 / dpi,
     bg = "white"
   )
   
 }
-
