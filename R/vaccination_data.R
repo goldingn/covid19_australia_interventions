@@ -169,6 +169,14 @@ immunity_lag_correction <- function(
   dose_number
 ) {
   
+  if (dose_number[1] == 1) {
+    weeks_increase <- 2
+    weeks_wait <- 1
+  } else if (dose_number[1] == 2) {
+    weeks_increase <- 2
+    weeks_wait <- 0
+  }
+  
   # compute the current doses (by dose/vaccine)
   max_date <- which.max(date)
   latest_doses <- doses[max_date]
@@ -198,7 +206,7 @@ immunity_lag_correction <- function(
 }
 
 
-vdat %>%
+dose_data <- vdat %>%
   arrange(state, age_class, vaccine, dose_number, date) %>%
   group_by(state, age_class, vaccine, dose_number) %>% 
   mutate(
@@ -211,6 +219,24 @@ vdat %>%
       .f = immunity_lag_correction,
       .before = Inf
     ) %>%
-      unlist
-  )
+      unlist,
+    effective_doses = correction * doses
+  ) %>%
+  ungroup %>%
+  group_by(state, age_class, date) %>%
+  mutate(
+    any_vaccine = sum(doses),
+    effective_any_vaccine = sum(effective_doses),
+  ) %>%
+  ungroup %>%
+  mutate(
+    fraction = doses / any_vaccine,
+    effective_fraction = effective_doses / effective_any_vaccine
+  ) %>%
+  arrange(state, age_class, date) 
 
+efficacy_data <- dose_data %>%
+  pivot_wider(
+    names_from = c(vaccine, dose_number),
+    values_from = c(doses, correction, effective_doses, fraction, effective_fraction)
+  )

@@ -8817,15 +8817,24 @@ doses_by_age <- function(n_doses, age_populations) {
 }
 
 
+combine_efficacy <- function(infection, transmission) {
+  1 - ((1 - infection) * (1 - transmission)) 
+}
+
+
+# proportion_pf and proportion_2_dose are only used if the other proportion
+# arguments are not specified
 average_efficacy <- function(
   efficacy_pf_2_dose = 0.9685,
   efficacy_az_2_dose = 0.93,
-  #efficacy_pf_1_dose = efficacy_pf_2_dose/2,
-  #efficacy_az_1_dose = efficacy_az_2_dose/2,
   efficacy_pf_1_dose = 0.8317,
   efficacy_az_1_dose = 0.892,
   proportion_pf = 0.5,
-  proportion_2_dose = 0
+  proportion_2_dose = 0.2,
+  proportion_pf_2_dose = proportion_pf * proportion_2_dose,
+  proportion_az_2_dose = (1 - proportion_pf) * proportion_2_dose,
+  proportion_pf_1_dose = proportion_pf * (1 - proportion_2_dose),
+  proportion_az_1_dose = (1 - proportion_pf) * (1 - proportion_2_dose)
 ) {
   
   # based on Pritchard MedRXiv / Harris via ATAGI advice paper
@@ -8846,10 +8855,10 @@ average_efficacy <- function(
   # proportion fully dosed
   proportion_1_dose <- 1 - proportion_2_dose # may need edit when 
   
-  efficacy_mean <- proportion_2_dose * proportion_pf * efficacy_pf_2_dose +
-    proportion_1_dose * proportion_pf * efficacy_pf_1_dose +
-    proportion_2_dose * proportion_az * efficacy_az_2_dose +
-    proportion_1_dose * proportion_az * efficacy_az_1_dose 
+  efficacy_mean <- proportion_pf_2_dose * efficacy_pf_2_dose +
+    proportion_pf_1_dose * efficacy_pf_1_dose +
+    proportion_az_2_dose * efficacy_az_2_dose +
+    proportion_az_1_dose * efficacy_az_1_dose 
   
   efficacy_mean 
   
