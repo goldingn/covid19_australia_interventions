@@ -1,9 +1,6 @@
 library(codelens)
 library(dplyr)
 library(purrr)
-debugonce(extract_functions)
-extract_functions("R/check_linelist.R")
-function_names("R/check_linelist.R")
 function_used("R/check_linelist.R") 
 function_names("R/functions/abbreviate_states.R")
 
@@ -14,24 +11,32 @@ fun_dir_ls <- fs::dir_ls(
 
 safe_function_name <- safely(function_names)
 safe_list_of_fun_names <- purrr::map(fun_dir_ls, safe_function_name)
-
 t_safe_list_of_fun_names <- transpose(safe_list_of_fun_names)
-
 potential_funs <- flatten_chr(t_safe_list_of_fun_names$result)
 
-potential_funs
+library(tidyr)
 
-potential_funs_df <- tibble(
-  funs = potential_funs
-)
+potential_funs_df <- expand_grid(potential_funs, fun_dir_ls)
 
-potential_funs_df
+read_line_collapse <- function(file){
+  paste0(readr::read_lines(file = file), collapse = "")
+}
 
 word_in_file <- function(files, word){
-  file_lines <- readr::read_lines(file = files)
+  file_lines <- read_line_collapse(files)
   stringr::str_detect(string = file_lines,
                       pattern = word)
 }
+
+expanded_potential_funs_df <- potential_funs_df %>% 
+  nest(nest = potential_funs) %>% 
+  mutate(data = map_chr(fun_dir_ls, read_line_collapse))
+         # data_chr = map_chr(data, paste0, collapse = ""))
+
+expanded_potential_funs_df %>% 
+  unnest(cols = nest) %>% 
+  mutate(fun_detect = stringr::str_count(data, potential_funs))
+
 
 word_in_file(files = "R/check_linelist.R",
              word = potential_funs_df$funs[1])
@@ -46,6 +51,9 @@ words_in_file <- function(words, file){
 
 words_in_file(file = "R/check_linelist.R",
               words = potential_funs_df$funs)
+
+
+potential_funs_df
 
 
 
