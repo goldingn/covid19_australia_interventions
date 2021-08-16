@@ -8,7 +8,7 @@
 #' \dontrun{
 #' tidy_vaccine_rollout_data("path/to/data")
 #' }
-tidy_vaccine_rollout_data <- function(path) {
+tidy_vaccine_rollout_data <- function(vacc_path) {
 
   # find the names of the sheets
   vacc_sheet_names <- excel_sheets(vacc_path)
