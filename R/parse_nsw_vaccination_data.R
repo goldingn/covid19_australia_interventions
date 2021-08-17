@@ -79,6 +79,7 @@ forecast_vaccination <- function(
   latest_data_date = max(air_current$date),
   weeks_average = 4,
   max_date = as.Date("2021-09-30"),
+  max_coverages = c(0.7, 0.8, 0.9, 1),
   extra_doses = NULL,
   scenario_name = "baseline"
 ) {
@@ -104,7 +105,38 @@ forecast_vaccination <- function(
       -date
     )
   
-  # use this to extrapolate the number of cumulative doses into the future
+  # compute maximum coverages by age and LGA (allowing them to exceed that in
+  # the observed data)
+  max_coverage <- air_current %>%
+    filter(
+      date == max(date)
+    ) %>%
+    # compute coverage as at the latest date for each age and LGA (capped at 100%)
+    mutate(
+      dose_2_any = dose_2_Pfizer + dose_2_AstraZeneca,
+      observed_max_coverage = pmin(1, dose_2_any / population)
+    ) %>%
+    select(
+      lga, age_air_80, observed_max_coverage
+    ) %>%
+    # add on the assumed maximum coverage (later, for one of a number of scenarios)
+    full_join(
+      expand_grid(
+        lga = unique(air_current$lga),
+        age_air_80 = unique(air_current$age_air_80),
+        hypothetical_max_coverage = max_coverages
+      ),
+      by = c("lga", "age_air_80")
+    ) %>%
+    # compute the maximum of the two for capping vaccination
+    mutate(
+      max_coverage = pmax(observed_max_coverage, hypothetical_max_coverage)
+    ) %>%
+    select(
+      -observed_max_coverage
+    )
+  
+  # extrapolate the number of cumulative doses into the future, without capping coverage
   
   # future dates for each LGA and age
   future_doses <- expand_grid(
@@ -142,7 +174,7 @@ forecast_vaccination <- function(
     
   }
   
-  # compute the cumulative sum to get total extra doses by each day
+  # compute the cumulative sum to get total future doses by each day
   air_forecast <- future_doses %>%
     arrange(lga, age_air_80, date) %>%
     group_by(lga, age_air_80, population) %>%
@@ -183,12 +215,17 @@ forecast_vaccination <- function(
     bind_rows(
       air_forecast
     ) %>%
+    # add on the max coverages (with different thresholds)
+    full_join(
+      max_coverage,
+      by = c("lga", "age_air_80")
+    ) %>%
     arrange(date, lga, age_air_80) %>%
-    # where the number of vaccinations exceeds the population, cap it
+    # where the number of vaccinations exceeds the maximum population coverage, cap it
     mutate(
       # compute extra doses
-      dose_1_extra = pmax(0, (dose_1_AstraZeneca + dose_1_Pfizer) - population),
-      dose_2_extra = pmax(0, (dose_2_AstraZeneca + dose_2_Pfizer) - population),
+      dose_1_extra = pmax(0, (dose_1_AstraZeneca + dose_1_Pfizer) - population * max_coverage),
+      dose_2_extra = pmax(0, (dose_2_AstraZeneca + dose_2_Pfizer) - population * max_coverage),
       # compute fraction of doses that are Pfizer
       dose_1_Pfizer_fraction = dose_1_Pfizer / (dose_1_AstraZeneca + dose_1_Pfizer),
       dose_2_Pfizer_fraction = dose_2_Pfizer / (dose_2_AstraZeneca + dose_2_Pfizer),
