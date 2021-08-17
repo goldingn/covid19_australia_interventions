@@ -5,3 +5,4 @@ outputs/*
 *.pdf
 *.tex
 gr_git_notes.txt
+R/readmes/
