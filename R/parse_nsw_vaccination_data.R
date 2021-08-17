@@ -113,8 +113,8 @@ forecast_vaccination <- function(
     ) %>%
     # compute coverage as at the latest date for each age and LGA (capped at 100%)
     mutate(
-      dose_2_any = dose_2_Pfizer + dose_2_AstraZeneca,
-      observed_max_coverage = pmin(1, dose_2_any / population)
+      any_doses = dose_1_Pfizer + dose_1_AstraZeneca,
+      observed_max_coverage = pmin(1, any_doses / population)
     ) %>%
     select(
       lga, age_air_80, observed_max_coverage
@@ -450,9 +450,54 @@ air_current <- expand_grid(
     .groups = "drop"
   )
 
+# 
+# # get forecast doses with 500k more dose 1s given out over the next 4 weeks, and forecast vaccinations
+# extra_dose_1s_4wk <- air_current %>%
+#   # get average daily doses
+#   average_daily_doses() %>%
+#   # filter to only LGAs of concern, and age groups of concern
+#   filter(
+#     lga %in% lgas_of_concern,
+#     age_air_80 %in% c("15-29", "30-39")
+#   ) %>%
+#   # mask out types of dose not required
+#   mutate(
+#     across(
+#       c(starts_with("dose_2"), ends_with("AstraZeneca")),
+#       ~ . * 0
+#     )
+#   ) %>%
+#   # add on range of dates on which to overload doses
+#   full_join(
+#     expand_grid(
+#       lga = lgas_of_concern,
+#       date = as_date("2021-08-18") + seq_len(28) - 1
+#     ),
+#     by = "lga"
+#   ) %>%
+#   # normalise and multiply by number of doses
+#   mutate(
+#     dose_1_Pfizer = 500000 * dose_1_Pfizer / sum(dose_1_Pfizer)
+#   )
+# 
+# extra_dose_1s_2s_4wk <- 
+#   bind_rows(
+#     # half as many dose 1s on the same days
+#     extra_dose_1s_4wk %>%
+#       mutate(
+#         dose_1_Pfizer = dose_1_Pfizer / 2
+#       ),
+#     # half as many dose 2s 4 weeks later
+#     extra_dose_1s_4wk %>%
+#       mutate(
+#         dose_2_Pfizer = dose_1_Pfizer / 2,
+#         dose_1_Pfizer = 0,
+#         date = date + 28
+#       )
+#   )
 
-# get forecast doses with 500k more dose 1s given out over the next 4 weeks, and forecast vaccinations
-extra_dose_1s_4wk <- air_current %>%
+# scenario for 670K more dose 1s delivered over the next three weeks
+extra_670K_dose_1 <- air_current %>%
   # get average daily doses
   average_daily_doses() %>%
   # filter to only LGAs of concern, and age groups of concern
@@ -467,45 +512,34 @@ extra_dose_1s_4wk <- air_current %>%
       ~ . * 0
     )
   ) %>%
-  # add on range of dates on which to overload doses
+  # add on range of dates on which to overload doses (three weeks, starting the daty after the data was provided)
   full_join(
     expand_grid(
       lga = lgas_of_concern,
-      date = as_date("2021-08-18") + seq_len(28) - 1
+      date = max(air_current$date) + seq_len(21)
     ),
     by = "lga"
   ) %>%
   # normalise and multiply by number of doses
   mutate(
-    dose_1_Pfizer = 500000 * dose_1_Pfizer / sum(dose_1_Pfizer)
+    dose_1_Pfizer = 670000 * dose_1_Pfizer / sum(dose_1_Pfizer)
   )
 
-extra_dose_1s_2s_4wk <- 
-  bind_rows(
-    # half as many dose 1s on the same days
-    extra_dose_1s_4wk %>%
-      mutate(
-        dose_1_Pfizer = dose_1_Pfizer / 2
-      ),
-    # half as many dose 2s 4 weeks later
-    extra_dose_1s_4wk %>%
-      mutate(
-        dose_2_Pfizer = dose_1_Pfizer / 2,
-        dose_1_Pfizer = 0,
-        date = date + 28
-      )
-  )
+# and add 670K more dose 2s delivered 8 weeks after that to get the full scenario
+extra_670K <- bind_rows(
+  # half as many dose 1s on the same days
+  extra_670K_dose_1,
+  # half as many dose 2s 4 weeks later
+  extra_670K_dose_1 %>%
+    mutate(
+      dose_2_Pfizer = dose_1_Pfizer,
+      dose_1_Pfizer = 0,
+      date = date + 7 * 8
+    )
+)
 
 # check totals
-extra_dose_1s_4wk %>%
-  summarise(
-    across(
-      starts_with("dose"),
-      sum
-    )
-  )
-
-extra_dose_1s_2s_4wk %>%
+extra_670K %>%
   summarise(
     across(
       starts_with("dose"),
@@ -521,81 +555,103 @@ air <- bind_rows(
   # forecast with additional dose 1s to 16-39s in LGAs of concern over 4 weeks
   forecast_vaccination(
     air_current,
-    extra_doses = extra_dose_1s_4wk,
-    scenario_name = "500K dose 1"
-  ),
-  # forecast with additional dose 1s and 2s to 16-39s in LGAs of concern, with
-  # dose 1s over 4 weeks
-  forecast_vaccination(
-    air_current,
-    extra_doses = extra_dose_1s_2s_4wk,
-    scenario_name = "250K dose 1&2"
+    extra_doses = extra_670K,
+    scenario_name = "670K extra doses"
   )
-)
+) %>%
+  mutate(
+    coverage_scenario = paste0(
+      "max ",
+      round(100 * hypothetical_max_coverage),
+      "% coverage"
+    )
+  )
 
-# plot coverage stats
+# identify LGAs with greater than 90% coverage in the data
 air %>%
   filter(
-    lga %in% lgas_of_concern
+    date == max(air_current$date),
+    coverage_scenario == "max 90% coverage",
+    max_coverage > hypothetical_max_coverage,
+    scenario == "baseline"
   ) %>%
-  mutate(
-    any_vaccinated = dose_1_AstraZeneca + dose_1_Pfizer,
-    fully_vaccinated = dose_2_AstraZeneca + dose_2_Pfizer
-  ) %>%
-  group_by(lga, date, forecast, scenario) %>%
-  summarise(
-    across(
-      ends_with("vaccinated"),
-      sum
-    ),
-    population = sum(population),
-    .groups = "drop"
-  ) %>%
-  pivot_longer(
-    cols = ends_with("vaccinated"),
-    names_to = "doses",
-    values_to = "vaccinated" 
-  ) %>%
-  mutate(
-    coverage = vaccinated / population,
-    doses = case_when(
-      doses == "any_vaccinated" ~ "either dose",
-      doses == "fully_vaccinated" ~ "both doses"
-    )
-  ) %>%
-  ggplot(
-    aes(
-      x = date,
-      y = coverage,
-      color = lga,
-      linetype = forecast,
-    ),
-  ) +
-  facet_grid(rows = vars(doses), cols = vars(scenario)) +
-  scale_y_continuous(
-    limits = c(0, 1),
-    labels = scales::percent_format(
-      accuracy = 1
-    )
-  ) +
-  geom_line() +
-  ylab("Vaccination coverage (whole population)") +
-  xlab("") +
-  ggtitle(
-    "Scenario forecast vaccination coverage in LGAs of concern"
-  ) +
-  theme_cowplot() +
-  theme(
-    legend.position = "none",
-    strip.background = element_blank()
-  )
+  select(lga, age_air_80) %>%
+  table()
 
-ggsave(
-  "outputs/nsw/scenario_coverage.png",
-  bg = "white",
-  width = 8,
-  height = 5
-)
+
+for (coverage in unique(air$coverage_scenario)) {
+  
+  # plot coverage stats
+  air %>%
+    filter(
+      lga %in% lgas_of_concern,
+      coverage_scenario == coverage,
+    ) %>%
+    mutate(
+      any_vaccinated = dose_1_AstraZeneca + dose_1_Pfizer,
+      fully_vaccinated = dose_2_AstraZeneca + dose_2_Pfizer
+    ) %>%
+    group_by(lga, date, forecast, scenario) %>%
+    summarise(
+      across(
+        ends_with("vaccinated"),
+        sum
+      ),
+      population = sum(population),
+      .groups = "drop"
+    ) %>%
+    pivot_longer(
+      cols = ends_with("vaccinated"),
+      names_to = "doses",
+      values_to = "vaccinated" 
+    ) %>%
+    mutate(
+      coverage = vaccinated / population,
+      doses = case_when(
+        doses == "any_vaccinated" ~ "either dose",
+        doses == "fully_vaccinated" ~ "both doses"
+      )
+    ) %>%
+    ggplot(
+      aes(
+        x = date,
+        y = coverage,
+        color = lga,
+        linetype = forecast,
+      ),
+    ) +
+    facet_grid(rows = vars(doses), cols = vars(scenario)) +
+    scale_y_continuous(
+      limits = c(0, 1),
+      labels = scales::percent_format(
+        accuracy = 1
+      )
+    ) +
+    geom_line() +
+    ylab("Vaccination coverage (whole population)") +
+    xlab("") +
+    ggtitle(
+      "Scenario forecast vaccination coverage in LGAs of concern",
+      paste0("assuming ", coverage, " in each age group")
+    ) +
+    theme_cowplot() +
+    theme(
+      legend.position = "none",
+      strip.background = element_blank()
+    )
+  
+  ggsave(
+    paste0(
+      "outputs/nsw/scenario_",
+      gsub(" ", "_", gsub("%", "", coverage)),
+      ".png"
+    ),
+    bg = "white",
+    width = 8,
+    height = 5
+  )
+  
+}
 
 # compute efficacies against transmission, based on type and number of doses
 efficacy_az_1_dose <- combine_efficacy(0.18, 0.48)
@@ -605,15 +661,16 @@ efficacy_pf_2_dose <- combine_efficacy(0.79, 0.65)
 
 # compute the *additional* effect of the second dose
 efficacy_az_2_dose_extra <- efficacy_az_2_dose - efficacy_az_1_dose
+
 efficacy_pf_2_dose_extra <- efficacy_pf_2_dose - efficacy_pf_1_dose
 
 # compute fractional coverage by type and number of doses, then compute average efficacy against delta
 coverage <- air %>%
   arrange(
-    scenario, lga, age_air_80, date
+    scenario, coverage_scenario, lga, age_air_80, date
   ) %>%
   group_by(
-    scenario, lga, age_air_80
+    scenario, coverage_scenario, lga, age_air_80
   ) %>%
   # compute corrections for lag in acquired immunity for 1 dose and for 2 doses
   mutate(
@@ -747,7 +804,7 @@ for (this_lga in lgas_of_concern) {
     scale_y_continuous(
       labels = scales::percent_format(accuracy = 1)
     ) +
-    facet_wrap(~scenario) +
+    facet_grid(~scenario + coverage_scenario) +
     theme_cowplot() +
     theme(
       strip.background = element_blank()
@@ -770,7 +827,7 @@ vaccination_effect <- coverage %>%
     date > as.Date("2021-06-16")
   ) %>%
   group_by(
-    lga, date, forecast, scenario
+    lga, date, forecast, scenario, coverage_scenario
   ) %>%
   summarise(
     vaccination_transmission_multiplier = vaccination_transmission_effect(
@@ -818,7 +875,7 @@ vaccination_effect %>%
       linetype = forecast
     )
   ) +
-  facet_wrap(~scenario) +
+  facet_wrap(~scenario + coverage_scenario) +
   geom_line(
     alpha = 0.2
   ) +
