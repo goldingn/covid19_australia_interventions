@@ -567,6 +567,199 @@ air <- bind_rows(
     )
   )
 
+extra_670K_dose_1_cumulative <- extra_670K_dose_1 %>%
+  filter(dose_1_Pfizer > 0) %>%
+  arrange(lga, age_air_80, date) %>%
+  group_by(lga, age_air_80) %>%
+  mutate(
+    across(
+      starts_with("dose"),
+      cumsum
+    )
+  ) %>%
+  ungroup()
+
+extra_670K_dose_1_excess <- extra_670K_dose_1_cumulative %>%
+  full_join(
+    air %>%
+      filter(
+        scenario != "baseline",
+        lga %in% lgas_of_concern,
+        age_air_80 %in% c("15-29", "30-39"),
+        date >= min(extra_670K_dose_1_cumulative$date),
+        date <= max(extra_670K_dose_1_cumulative$date)
+      ) %>%
+      select(
+        c(date, lga, age_air_80, coverage_scenario, ends_with("extra"))
+      ),
+    by = c("date", "lga", "age_air_80")
+  ) %>%
+  mutate(
+    dose_1_Pfizer_scenario_extra = pmin(dose_1_Pfizer_extra, dose_1_Pfizer)
+  ) %>%
+  select(
+    lga, age_air_80, coverage_scenario, date, dose_1_Pfizer_scenario_extra
+  ) %>%
+  # collapse across age groups and LGAs
+  group_by(date, coverage_scenario) %>%
+  summarise(
+    dose_1_Pfizer_scenario_extra = sum(dose_1_Pfizer_scenario_extra),
+    .groups = "drop"
+  )
+
+# compute the number of AZ dose 1s given out to target group during this period
+# under 670K rollout
+air %>%
+  filter(
+    scenario != "baseline",
+    lga %in% lgas_of_concern,
+    age_air_80 %in% c("15-29", "30-39"),
+    date >= min(extra_670K_dose_1_cumulative$date),
+    date <= max(extra_670K_dose_1_cumulative$date)
+  ) %>%
+  arrange(lga, age_air_80, coverage_scenario, date) %>%
+  group_by(lga, age_air_80, coverage_scenario) %>%
+  mutate(
+    across(
+      starts_with("dose"),
+      ~ . - min(.)
+    )
+  ) %>%
+  group_by(coverage_scenario, date) %>%
+  summarise(
+    across(
+      starts_with("dose_1"),
+      sum
+    )
+  ) %>%
+  ggplot(
+    aes(
+      x = date,
+      y = dose_1_AstraZeneca,
+      color = coverage_scenario
+    )
+  ) +
+  scale_y_continuous(
+    labels = scales::label_number()
+  ) +
+  geom_line() +
+  ylab("") +
+  xlab("") +
+  ggtitle(
+    "Cumulative number of AZ dose 1s used during 670K roll-out"
+  ) +
+  theme_cowplot()
+
+# need to fix the reallocation issue!
+
+# extra_670K_dose_1_excess %>%
+#   filter(
+#     lga == lga[1],
+#     age_air_80 == age_air_80[1],
+#     coverage_scenario == coverage_scenario[1]
+#   ) %>%
+#   plot(
+#     dose_1_Pfizer_scenario_extra ~ date,
+#     data = .,
+#     type = "p"
+#   )
+
+
+
+extra_670K_dose_1_excess %>%
+  ggplot(
+    aes(
+      x = date,
+      y = dose_1_Pfizer_scenario_extra,
+      color = coverage_scenario
+    )
+  ) +
+  scale_y_continuous(
+    labels = scales::label_number()
+  ) +
+  geom_line() +
+  ylab("") +
+  xlab("") +
+  ggtitle(
+    "Cumulative number of Pfizer dose 1s unused during 670K roll-out"
+  ) +
+  theme_cowplot()
+
+ggsave(
+  "outputs/nsw/unused_doses_670K.png",
+  bg = "white",
+  width = 9,
+  height = 5
+)
+
+# air %>%
+#   filter(
+#     date >= min(extra_670K_dose_1_cumulative$date),
+#     date <= max(extra_670K_dose_1_cumulative$date)
+#   ) %>%
+#   group_by(
+#     date, scenario, coverage_scenario
+#   ) %>%
+#   summarise(
+#     dose_1_Pfizer_extra = sum(dose_1_Pfizer_extra)
+#   )
+
+# compute the excess Pfizer dose 1s under 670K
+# compute the cumulative available Pfizer dose 1s
+
+# subtract the ones that are not in th 670K allowance
+
+
+# coverages by Pfizer reduce in the future, because the mix of AZ vs Pfizer
+# available change need to compute reallocation of the fraction based on the mix
+# at the time the population was saturated
+
+# can't compute spillage of Pfizer doses relative to baseline, because in
+# baseline people are getting AZ instead
+
+# need to compute the number of Pfizer doses spilled in total, the total number
+# of doses provided, and
+
+# compute dose wastage for the 670K extra doses under each maximum coverage scenario
+air %>%
+  filter(forecast) %>%
+  group_by(
+    date, scenario, coverage_scenario, forecast
+  ) %>%
+  summarise(
+    dose_1_Pfizer_extra = sum(dose_1_Pfizer_extra)
+  ) %>%
+  pivot_wider(
+    names_from = scenario,
+    values_from = dose_1_Pfizer_extra
+  ) %>%
+  mutate(
+    extra_doses_unused = `670K extra doses` - baseline
+  ) %>%
+  select(-baseline, -`670K extra doses`) %>%
+  ggplot(
+    aes(
+      x = date,
+      y = extra_doses_unused,
+      color = coverage_scenario
+    )
+  ) +
+  scale_y_continuous(
+    labels = scales::label_number()
+  ) +
+  geom_line() +
+  ylab("") +
+  xlab("") +
+  ggtitle(
+    "Cumulative number of additional Pfizer dose 1s unused under each vaccine acceptance scenario",
+    "Only considering unused doses from 670K additional dose 1s"
+  ) +
+  theme_cowplot()
+
+
+
+
+
 # identify LGAs with greater than 90% coverage in the data
 air %>%
   filter(
@@ -863,10 +1056,31 @@ vaccination_effect <- coverage %>%
 write_csv(vaccination_effect, "outputs/nsw/nsw_lgas_vaccination_effect.csv")  
 
 
-vaccination_effect %>%
+vaccination_effect_plot <- vaccination_effect %>%
   filter(
     lga != "Unincorporated NSW"
   ) %>%
+  mutate(
+    scenario = factor(
+      scenario,
+      levels = c(
+        "baseline",
+        "670K extra doses"
+      )
+    ),
+    coverage_scenario = factor(
+      coverage_scenario,
+      levels = c(
+        "max 70% coverage",
+        "max 80% coverage", 
+        "max 90% coverage",
+        "max 100% coverage"
+      )
+    )
+  )
+
+vaccination_effect_plot %>%
+  arrange(scenario, coverage_scenario, date, lga) %>%
   ggplot(
     aes(
       x = date,
@@ -875,12 +1089,14 @@ vaccination_effect %>%
       linetype = forecast
     )
   ) +
-  facet_wrap(~scenario + coverage_scenario) +
+  facet_grid(
+    scenario ~ coverage_scenario
+  ) +
   geom_line(
     alpha = 0.2
   ) +
   geom_line(
-    data = vaccination_effect %>%
+    data = vaccination_effect_plot %>%
       filter(
         lga %in% lgas_of_concern
       ),
@@ -893,7 +1109,11 @@ vaccination_effect %>%
     "LGAs of concern in bold"
   ) +
   theme_cowplot() +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  scale_y_continuous(
+    labels = scales::percent_format(
+      accuracy = 1
+    )
+  ) +
   theme(
     strip.background = element_blank(),
     legend.position = "none"
@@ -905,3 +1125,60 @@ ggsave(
   width = 7,
   height = 5
 )
+
+
+# for each lga of concern, plot the two scenarios, for each vaccination coverage
+# assumption
+for (this_lga in lgas_of_concern) {
+  
+  vaccination_effect_plot %>%
+    filter(lga == this_lga) %>%
+    mutate(
+      scenario = factor(
+        scenario,
+        levels = rev(levels(scenario))
+      )
+    ) %>%
+    ggplot(
+      aes(
+        x = date,
+        y = vaccination_transmission_reduction_percent / 100,
+        col = scenario,
+        linetype = forecast
+      )
+    ) +
+    geom_line(
+      size = 1
+    ) +
+    facet_wrap(
+      ~coverage_scenario,
+      ncol = 4
+    ) +
+    scale_y_continuous(
+      labels = scales::percent_format(accuracy = 1)
+    ) +
+    ylab("") +
+    xlab("") +
+    ggtitle(
+      paste0(this_lga, " - reduction in transmission potential"),
+      "baseline (green) versus 670K scenario (red)"
+    ) +
+    theme_cowplot() +
+    theme(
+      legend.position = "none",
+      strip.background = element_blank()
+    )
+
+  ggsave(
+    paste0(
+      "outputs/nsw/scenario_",
+      gsub("_", "", this_lga),
+      ".png"
+      ),
+    bg = "white",
+    width = 10,
+    height = 4
+  )
+    
+}
+
