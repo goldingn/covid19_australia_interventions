@@ -362,6 +362,8 @@ vaccine_effect <- read_csv(
     lga = col_character(),
     date = col_date(format = ""),
     forecast = col_logical(),
+    scenario = col_character(),
+    coverage_scenario = col_character(),
     vaccination_transmission_multiplier = col_double(),
     vaccination_transmission_reduction_percent = col_double()
   )
@@ -423,8 +425,28 @@ reff_trend_vaccination %>%
 
 for (this_lga in unique(reff_trend_vaccination$lga)) {
   
-  reff_trend_vaccination %>%
+  reff_trend_vaccination_plot <- reff_trend_vaccination %>%
     filter(lga == this_lga) %>%
+    mutate(
+      scenario = factor(
+        scenario,
+        levels = c(
+          "baseline",
+          "670K extra doses"
+        )
+      ),
+      coverage_scenario = factor(
+        coverage_scenario,
+        levels = c(
+          "max 70% coverage",
+          "max 80% coverage", 
+          "max 90% coverage",
+          "max 100% coverage"
+        )
+      )
+    ) 
+  
+  reff_trend_vaccination_plot %>%
     ggplot(
       aes(
         x = date,
@@ -463,7 +485,6 @@ for (this_lga in unique(reff_trend_vaccination$lga)) {
       linetype = 2,
       colour = grey(0.5)
     ) +
-    # geom_line() +
     geom_vline(
       aes(xintercept = date),
       data = interventions() %>%
@@ -471,11 +492,14 @@ for (this_lga in unique(reff_trend_vaccination$lga)) {
       colour = "grey75"
     ) +
     geom_vline(
-      #data = prop_voc_date_state(),
       data = prop_variant_dates(),
       aes(xintercept = date),
       colour = "firebrick1",
       linetype = 5
+    ) +
+    facet_grid(
+      scenario ~ coverage_scenario,
+      switch = "y"
     ) +
     ylab("Transmission potential") +
     xlab("") +
@@ -488,13 +512,15 @@ for (this_lga in unique(reff_trend_vaccination$lga)) {
     # coord_cartesian(xlim = c(as.Date("2021-01-27"), last_date)) +
     theme_cowplot() +
     theme(
-      legend.position = "none"
+      legend.position = "none",
+      strip.background = element_blank(),
+      # strip.placement = "outside"
     )
   
   ggsave(
     paste0("outputs/nsw/NSW_", this_lga, "_reff.png"),
-    width = 1000 / dpi,
-    height = 600 / dpi,
+    width = 10,
+    height = 5,
     bg = "white"
   )
   
