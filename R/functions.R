@@ -9289,3 +9289,15 @@ write_mobility_dates <- function(mobility, dir = "outputs/"){
       file = file.path(dir, 'mobility_dates.csv')
     )
 }
+
+
+states <- c(
+  "ACT",
+  "NT",
+  "NSW",
+  "QLD",
+  "SA",
+  "TAS",
+  "VIC",
+  "WA"
+)

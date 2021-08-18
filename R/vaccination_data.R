@@ -451,9 +451,21 @@ age_distribution_state <- get_age_distribution_by_state()
 
 vax_data <- load_vax_data()
 
+dose_dates <- unique(vax_data$date)
+
+
+
 
 dose_data <- vax_data %>%
-  left_join(age_distribution_state) %>%
+  full_join(
+    y = expand_grid(
+      date = dose_dates,
+      vaccine = c("az", "pf"),
+      dose_number = 1:2,
+      age_distribution_state
+    )
+  ) %>%
+  mutate(doses = ifelse(is.na(doses), 0, doses)) %>%
   dplyr::select(-fraction) %>%
   arrange(state, age_class, vaccine, dose_number, date) %>%
   group_by(state, age_class, vaccine, dose_number) %>% 
@@ -562,3 +574,81 @@ vaccination_effect <- efficacy_data %>%
     -dubious
   )
 
+
+earliest_effect_date <- min(vaccination_effect$date[which(!is.na(vaccination_effect$effective_vaccination_transmission_multiplier))])
+last_effect_date    <- max(vaccination_effect$date[which(!is.na(vaccination_effect$effective_vaccination_transmission_multiplier))])
+
+earliest_vaccination_effect <- vaccination_effect %>%
+  filter(date == earliest_effect_date) %>% 
+  dplyr::select(state, date, effective_vaccination_transmission_multiplier)
+
+state_effect_ratios <- timeseries %>% 
+  dplyr::select(date, overall_transmission_effect) %>% 
+  inner_join(earliest_vaccination_effect) %>%
+  mutate(
+    multiplier = (1-effective_vaccination_transmission_multiplier)/(1-overall_transmission_effect)
+  ) %>%
+  dplyr::select(state, multiplier)
+
+scaled_timeseries <- timeseries %>%
+  dplyr::select(date, overall_transmission_effect) %>% 
+  expand_grid(state_effect_ratios) %>%
+  filter(date <= earliest_effect_date) %>%
+  group_by(state) %>%
+  mutate(
+    datenum = as.numeric(date - min(date)),
+    #scaled_effect = overall_transmission_effect - (overall_transmission_effect * (1-ratio)* datenum/  max(datenum))
+    scaled_effect = 1 - (1 - overall_transmission_effect)*datenum/max(datenum)*multiplier
+  ) %>% 
+  dplyr::select(state, date, effect = scaled_effect)
+
+
+
+
+interpolated_effect <- vaccination_effect %>%
+  rename(effect = effective_vaccination_transmission_multiplier) %>%
+  dplyr::select(state, date, effect) %>%
+  filter(!is.na(effect)) %>%
+  full_join(
+    y = expand_grid(
+      date = seq.Date(
+          from = earliest_effect_date,
+          to = last_effect_date,
+          by = 1
+        ),
+      state = states
+      ),
+    by = c("state", "date")
+  ) %>%
+  arrange(state, date) %>%
+  group_by(state) %>%
+  mutate(
+    effect = ifelse(
+      is.na(effect),
+      approx(date, effect, date)$y,
+      effect
+    )
+  )
+
+vaccine_effect_timeseries <- bind_rows(
+  scaled_timeseries %>%
+    filter(date < earliest_effect_date),
+  interpolated_effect
+)
+
+
+ggplot(vaccine_effect_timeseries) +
+  geom_line(
+    aes(
+      x = date,
+      y = effect,
+      colour = state
+    )
+  )
+
+saveRDS(
+  vaccine_effect_timeseries,
+  file = "output/vaccine_effect_timeseries.RDS"
+)
+
+  
