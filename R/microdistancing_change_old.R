@@ -1,10 +1,11 @@
   # analyse change in microdistancing behaviour by state, using survey questions
 # from the BETA barometer
-source("R/lib.R")
-
-source("R/functions.R")
-
-library(bayesplot)
+source("./lib.R")
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
+source("./objects_and_settings.R")
 
 # sync aggregated data for Dennis
 format_raw_survey_data()
@@ -164,8 +165,8 @@ p <- ggplot(line_df) +
   
   facet_wrap(~state, ncol = 2, scales = "free") +
   
-  cowplot::theme_cowplot() +
-  cowplot::panel_border(remove = TRUE) +
+  theme_cowplot() +
+  panel_border(remove = TRUE) +
   theme(legend.position = "none",
         strip.background = element_blank(),
         strip.text = element_text(hjust = 0, face = "bold"),

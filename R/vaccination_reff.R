@@ -1,3 +1,8 @@
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
+source("./objects_and_settings.R")
 
 fitted_model <- readRDS("outputs/fitted_reff_model.RDS")
 

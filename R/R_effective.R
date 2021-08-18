@@ -1,10 +1,14 @@
 # fit a Bayesian model-based estimate of R_effective over time, quantifying the
 # impacts of both quarantine and physical distancing measures.
 
-source("R/lib.R")
+source("./lib.R")
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
+source("./objects_and_settings.R")
 
 set.seed(2020-04-29)
-source("R/functions.R")
 
 # sync up the case data
 sync_nndss()

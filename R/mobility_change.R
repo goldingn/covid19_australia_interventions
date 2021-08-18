@@ -1,6 +1,9 @@
-source("R/lib.R")
-
-source("R/functions.R")
+source("./lib.R")
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
+source("./objects_and_settings.R")
 
 # load, cache, and format the mobility data
 mobility <- all_mobility() %>%
@@ -107,8 +110,8 @@ for (this_state in all_states) {
         format(last_date, format = "%Y")
       )
     ) +
-    cowplot::theme_cowplot() +
-    cowplot::panel_border(remove = TRUE) +
+    theme_cowplot() +
+    panel_border(remove = TRUE) +
     theme(legend.position = "none",
           strip.background = element_blank(),
           strip.text = element_text(hjust = 0, face = "bold"),
@@ -223,8 +226,8 @@ mobility_fitted %>%
       format(last_date, format = "%Y")
     )
   ) +
-  cowplot::theme_cowplot() +
-  cowplot::panel_border(remove = TRUE) +
+  theme_cowplot() +
+  panel_border(remove = TRUE) +
   theme(legend.position = "none",
         strip.background = element_blank(),
         axis.text.y = element_text(size = 8),

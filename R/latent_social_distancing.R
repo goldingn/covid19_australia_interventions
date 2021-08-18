@@ -1,17 +1,16 @@
 # model overall movement changes in Australia, with parameteric latent factor
 # model on Google mobility data
 
-source("R/functions.R")
-library(dplyr)
-library(lubridate)
-library(greta)
-library(RColorBrewer)
-library(ggforce)
-library(RCurl)
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
+source("./objects_and_settings.R")
+
 
 # load mobility datastreams, keeping only state-level data
 mobility <- all_mobility() %>%
-  append_google_data(tidycovid_url) %>%
+  append_google_data() %>%
   filter(!is.na(state)) %>%
   filter(!is.na(trend)) %>%
   arrange(state, datastream, date) %>%
@@ -83,7 +82,7 @@ bump <- latent_behavioural_event(date_num, tau_bump, kappa_bump)
 
 # behaviour-switching latent factor for back to work period. schools go back
 # from Jan 28 to Feb 3-5, so set mean to Feb 1
-back_to_work_datenum <- as.numeric(lubridate::date("2020-02-01") - first_date)
+back_to_work_datenum <- as.numeric(date("2020-02-01") - first_date)
 tau_back_to_work <- normal(back_to_work_datenum, 1)
 kappa_back_to_work <- normal(1, 0.25, truncation = c(0, Inf))
 back_to_work <- latent_behaviour_switch(date_num,
@@ -97,7 +96,7 @@ back_to_work <- latent_behaviour_switch(date_num,
 day_weights <- mobility %>%
   filter(date > as.Date("2020-05-01")) %>%
   mutate(
-    day = lubridate::wday(date),
+    day = wday(date),
   ) %>%
   group_by(state_datastream, day) %>%
   summarise(weight = mean(trend)) %>%
@@ -117,7 +116,7 @@ id <- match(state_datastreams, colnames(day_weights))
 day_weights <- day_weights[, id]
 
 # expand out to dates-by-state-datastreams, and apply hierarchical model to loadings so effects are similar between states
-dow <- lubridate::wday(dates)
+dow <- wday(dates)
 dow_latent <- day_weights[dow, ]
 loadings_dow <- hierarchical_normal(n_state_datastreams, datastream_index)
 trends_dow <- sweep(dow_latent, 2, loadings_dow, FUN = "*")
@@ -166,14 +165,14 @@ trends_ntnl <- latents_ntnl %*% loadings_ntnl
 # IID effect on each state-holiday, 0s elsewhere
 holiday_matrix <- holidays %>%
   old_right_join(
-    tidyr::expand_grid(date = dates,
+    expand_grid(date = dates,
                        state = states)
   ) %>%
   mutate(is_holiday = !is.na(name)) %>%
-  dplyr::select(-name) %>%
-  tidyr::pivot_wider(names_from = state, values_from = is_holiday) %>%
+  select(-name) %>%
+  pivot_wider(names_from = state, values_from = is_holiday) %>%
   arrange(date) %>%
-  dplyr::select(-date) %>%
+  select(-date) %>%
   as.matrix()
 
 holiday_idx <- which(holiday_matrix, arr.ind = TRUE)
@@ -200,7 +199,7 @@ holiday_latents <- holiday[, state_index]
 trends_holiday <- sweep(holiday_latents, 2, loadings_holiday, FUN = "*")
 
 # set informative priors for some inflection dates
-inf_infl_date_priors <- tibble::tribble(
+inf_infl_date_priors <- tribble(
   ~state, ~mean_date, ~sd_days,
   # VIC announced reimposed restrictions on June 20 (to start June 22), and saw
   # an uptick in cases for the week preceding that; expect there may be a change
@@ -765,7 +764,7 @@ for(i in which(grepl("strip-t-", pg$layout$name))) {
   pg$grobs[[i]]$layout$clip <- "off"
   pg$layout[i, "t"] <- pg$layout[i, "b"] <- 20
 }
-# grid::grid.draw(pg)
+# grid.draw(pg)
 
 ggsave("outputs/figures/state_distancing_waning_warning.png",
        plot = pg,
@@ -863,7 +862,7 @@ perc_change_google_state <- trends_inflection[, datastreams_keep] + trends_inter
 perc_change_google <- perc_change_google_ntnl + perc_change_google_state
 change_google <- 1 + (perc_change_google / 100)
 
-nsim <- coda::niter(draws) * coda::nchain(draws)
+nsim <- niter(draws) * nchain(draws)
 change_google_sim <- calculate(change_google, values = draws, nsim = nsim)[[1]]
 change_google_means <- apply(change_google_sim, 2:3, mean)
 change_google_sds <- apply(change_google_sim, 2:3, sd)

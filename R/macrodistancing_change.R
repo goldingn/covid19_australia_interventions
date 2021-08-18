@@ -2,15 +2,19 @@
 # state, using a baseline rate, and survey questions from Freya's survey and the
 # BETA barometer
 
-source("R/lib.R")
+source("./lib.R")
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
+source("./objects_and_settings.R")
 
-source("R/functions.R")
 
 # informative priors for baseline contact parameters
 baseline_contact_params <- baseline_contact_parameters(gi_cdf)
 
 # data for plotting
-baseline_point <- tibble::tibble(
+baseline_point <- tibble(
   date = as.Date("2020-03-01"),
   estimate = baseline_contact_params$mean_contacts[2],
   sd = baseline_contact_params$se_contacts[2],
@@ -72,7 +76,7 @@ saveRDS(fitted_model, "outputs/fitted_macro_model.RDS")
 # fitted_model$data <- data
 # fitted_model$predictions <- macrodistancing_model(fitted_model$data, fitted_model$params)
 
-nsim <- coda::niter(fitted_model$draws) * coda::nchain(fitted_model$draws)
+nsim <- niter(fitted_model$draws) * nchain(fitted_model$draws)
 nsim <- min(10000, nsim)
 
 # check posterior calibration
@@ -84,7 +88,7 @@ contacts_ga <- discrete_lognormal(
   breaks = fitted_model$data$breaks
 )
 # contacts_sim <- calculate(contacts_ga, values = fitted_model$draws, nsim = nsim)[[1]][, , 1]
-# bayesplot::ppc_ecdf_overlay(
+# ppc_ecdf_overlay(
 #   fitted_model$data$contacts$contact_num,
 #   contacts_sim[1:1000, ],
 #   discrete = TRUE
@@ -138,7 +142,7 @@ log_fraction_weekly_contacts_mean <- fitted_model$predictions$log_fraction_weekl
     values = fitted_model$draws,
     nsim = 500
   ) %>%
-  magrittr::extract2(1) %>%
+  extract2(1) %>%
   apply(2:3, mean)
 
 

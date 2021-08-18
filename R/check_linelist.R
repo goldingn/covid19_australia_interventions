@@ -1,12 +1,11 @@
 # check NNDSS linelist for missing entries and local cases in last 3 weeks.
 
-source("R/lib.R")
-
-source("R/functions.R")
-
-#library(dplyr)
-#library(readxl)
-
+source("./lib.R")
+source("./packages.R")
+source("./conflicts.R")
+lapply(list.files("./R/functions", full.names = TRUE), source)
+source("./objects_and_settings.R")
+## Load your R files
 
 dir <- "~/not_synced/nndss"
   
@@ -85,12 +84,12 @@ ll_date <- data$date_time[[1]]
     col_types <- col_types_2
   }
   
-  dat <- readxl::read_xlsx(
+  dat <- read_xlsx(
     data$file,
     col_types = col_types
   )
   
-filter_date <- ll_date - lubridate::days(28)
+filter_date <- ll_date - days(28)
 
 
 
@@ -148,7 +147,7 @@ df <- dat %>%
 
 
 linelist_check <- df %>%
-  dplyr::select(
+  select(
     STATE,
     NOTIFICATION_DATE,
     NOTIFICATION_RECEIVE_DATE,
@@ -158,6 +157,6 @@ linelist_check <- df %>%
     CV_SOURCE_INFECTION,
     import_status
   ) %>% 
-  dplyr::arrange(STATE, desc(NOTIFICATION_RECEIVE_DATE)) %>%
+  arrange(STATE, desc(NOTIFICATION_RECEIVE_DATE)) %>%
   print(n = 100)
 

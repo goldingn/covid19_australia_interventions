@@ -1,6 +1,9 @@
-source("R/lib.R")
+source("./lib.R")
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
 
-source("R/functions.R")
 
 # sync aggregated data for Dennis
 format_raw_survey_data()
@@ -57,13 +60,13 @@ intervention_steps <- interventions(
 
 min_intervention_stage <- intervention_steps %>%
   filter(date == min_data_date) %>%
-  dplyr::rename(min_intervention_stage = intervention_stage) %>%
-  dplyr::select(-date)
+  rename(min_intervention_stage = intervention_stage) %>%
+  select(-date)
 
 max_intervention_stage <- intervention_steps %>%
   filter(date == max_data_date) %>%
-  dplyr::rename(max_intervention_stage = intervention_stage) %>%
-  dplyr::select(-date)  
+  rename(max_intervention_stage = intervention_stage) %>%
+  select(-date)  
 
 
 
@@ -72,7 +75,7 @@ df_fit <- survey_distance %>%
     intervention_steps,
     by = c("state", "date")
   )%>%
-  dplyr::select(
+  select(
     state,
     date,
     count,
@@ -113,7 +116,7 @@ df_pred <- pred_data %>%
       TRUE ~ intervention_stage
     )
   ) %>%
-  dplyr::select(
+  select(
     state,
     date,
     intervention_stage,
@@ -149,7 +152,7 @@ survey_fit <- mapply(
 pred_plot <- df_mic %>%
   mutate(fit = survey_fit) %>% 
   unnest(fit) %>%
-  dplyr::select(-fit_dat, -pred_dat)
+  select(-fit_dat, -pred_dat)
 
 
 line_df <- pred_plot %>%
@@ -255,8 +258,8 @@ p <- ggplot(line_df) +
   
   facet_wrap(~state, ncol = 2, scales = "free") +
   
-  cowplot::theme_cowplot() +
-  cowplot::panel_border(remove = TRUE) +
+  theme_cowplot() +
+  panel_border(remove = TRUE) +
   theme(legend.position = "none",
         strip.background = element_blank(),
         strip.text = element_text(hjust = 0, face = "bold"),

@@ -222,9 +222,11 @@
 # confounding with other parameters - especially $\psi$. For this reason,
 # uncertainty in $\beta$ was not considered in this analysis.
 
-source("spartan/lib.R")
-
-source("R/functions.R")
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
+source("./objects_and_settings.R")
 
 set.seed(2021-01-17)
 
@@ -235,7 +237,7 @@ set.seed(2021-01-17)
 # update 9/02/2021 table 4 technical briefing 5
 # https://www.gov.uk/government/publications/investigation-of-novel-sars-cov-2-variant-variant-of-concern-20201201
 
-uk_attack <- tibble::tribble(
+uk_attack <- tribble(
   ~region,                ~contacts_voc, ~cases_voc, ~contacts_wt, ~cases_wt, 
   "East Midlands",                  868,        100,         1734,       185,
   "East of England",               6801,        876,         2358,       243,
@@ -292,7 +294,7 @@ county_region_lookup <- read_csv(
 
 # get link from: https://www.google.com/covid19/mobility/index.html
 url <- "https://www.gstatic.com/covid19/mobility/Global_Mobility_Report.csv"
-uk_google_mobility <- readr::read_csv(
+uk_google_mobility <- read_csv(
   url, 
   col_types = cols(
     country_region_code = col_character(),
@@ -319,12 +321,12 @@ uk_google_mobility <- readr::read_csv(
   filter(
     !is.na(region)
   ) %>%
-  tidyr::pivot_longer(
+  pivot_longer(
     ends_with("_percent_change_from_baseline"),
     names_to = "category",
     values_to = "trend"
   ) %>%
-  dplyr::select(
+  select(
     county = sub_region_1,
     region = region,
     category = category,
@@ -351,7 +353,7 @@ uk_google_mobility_smoothed <- uk_google_mobility %>%
   ) %>%
   # smooth out day-of-the-week effects
   mutate(
-    trend = slider::slide_dbl(
+    trend = slide_dbl(
       trend,
       mean,
       na.rm = TRUE,
@@ -361,7 +363,7 @@ uk_google_mobility_smoothed <- uk_google_mobility %>%
   ) %>%
   # smooth across symptom onset delay distribution
   mutate(
-    trend = slider::slide_dbl(
+    trend = slide_dbl(
       trend,
       gaussian_smooth,
       na.rm = TRUE,
@@ -549,7 +551,7 @@ micro_data <- yougov %>%
 
 
 micro_responses <- cbind(micro_data$adhering, micro_data$not_adhering)
-micro_gam <- mgcv::gam(
+micro_gam <- gam(
   micro_responses ~ s(date_num) + s(date_num, by = region),
   family = stats::binomial,
   data = micro_data,
@@ -708,7 +710,7 @@ m <- model(phi, HC_0, HD_0, OD_0, p, psi)
 draws <- mcmc(m, chains = 10)
 draws <- extra_samples(draws, 2000)
 convergence(draws)
-bayesplot::mcmc_trace(draws)
+mcmc_trace(draws)
 
 # # calculate Reff for household, non-household, and overall for the two strains
 # reff_household_wt <- HC_0 * hsar_wt_i
@@ -748,26 +750,6 @@ colMeans(r_non_household_posterior)
 
 # compare priors and posteriors for all parameters
 
-hist_prior_posterior <- function(greta_array, draws, nsim = 1000, ...)  {
-  
-  prior_sim <- calculate(greta_array, nsim = nsim)[[1]]
-  posterior_sim <- calculate(greta_array, values = draws, nsim = nsim)[[1]]
-  
-  prior_sim <- c(prior_sim)
-  posterior_sim <- c(posterior_sim)
-  xlim <- range(c(prior_sim, posterior_sim))
-  
-  op <- par()
-  on.exit(par(op))
-  par(mfrow = c(1, 2))
-  
-  hist(c(prior_sim), xlim = xlim, ...)
-  hist(c(posterior_sim), xlim = xlim, ...)
-  
-}
-
-
-
 # compare priors and posteriors
 
 # parameters we want to estimate
@@ -790,12 +772,12 @@ cases_voc_ga <- binomial(uk_attack$contacts_voc, sar_star_observed_i)
 cases_wt_ga <- binomial(uk_attack$contacts_wt, sar_observed_i)
 cases_voc_sim <- calculate(cases_voc_ga, values = draws, nsim = 1000)[[1]][, , 1]
 cases_wt_sim <- calculate(cases_wt_ga, values = draws, nsim = 1000)[[1]][, , 1]
-bayesplot::ppc_ecdf_overlay(
+ppc_ecdf_overlay(
   uk_attack$cases_voc,
   cases_voc_sim,
   discrete = TRUE
 )
-bayesplot::ppc_ecdf_overlay(
+ppc_ecdf_overlay(
   uk_attack$cases_wt,
   cases_wt_sim,
   discrete = TRUE
@@ -815,7 +797,7 @@ empirical_sar_wt_ga <- cases_wt_ga / uk_attack$contacts_wt
 empirical_r_ga <- empirical_sar_voc_ga / empirical_sar_wt_ga
 empirical_r_sim <- calculate(empirical_r_ga, values = draws, nsim = 1000)[[1]][, , 1]
 
-bayesplot::ppc_ecdf_overlay(
+ppc_ecdf_overlay(
   empirical_r_observed,
   empirical_r_sim,
   discrete = FALSE

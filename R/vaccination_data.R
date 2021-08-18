@@ -1,7 +1,8 @@
-
-
-
-library(readxl)
+source("./packages.R")
+source("./conflicts.R")
+## Load your R files
+lapply(list.files("./R/functions", full.names = TRUE), source)
+source("./objects_and_settings.R")
 
 vaccine_files_dates <- function(
   dir = "~/not_synced/vaccination/vaccination_data/",
@@ -20,7 +21,7 @@ vaccine_files_dates <- function(
   ) %>%
     as.Date(format = "%Y.%m.%d")
   
-  tibble::tibble(
+  tibble(
     file = files,
     date = dates
   )
@@ -45,7 +46,7 @@ read_vaccine_data <- function(
   ) %>%
     as.Date(format = "%Y.%m.%d")
   
-  header <- readxl::read_xlsx(
+  header <- read_xlsx(
     path = file,
     n_max = 2,
     col_names = FALSE,
@@ -53,7 +54,7 @@ read_vaccine_data <- function(
   ) %>%
     t %>%
     as_tibble %>%
-    tidyr::fill(V1, .direction = "down") %>%
+    fill(V1, .direction = "down") %>%
     mutate(name = paste(V1, V2, sep = "_")) %>%
     pull(name)
   
@@ -69,18 +70,18 @@ read_vaccine_data <- function(
     "100+"
   )
   
-  readxl::read_xlsx(
+  read_xlsx(
     path = file,
     skip = 2,
     col_names = header,
     sheet = "Vaccine Brand Split",
     n_max = 37
   ) %>%
-    tidyr::fill(
+    fill(
       `NA_Vaccine Name`,
       .direction = "down"
     ) %>%
-    dplyr::rename(
+    rename(
       vaccine = `NA_Vaccine Name`,
       age_class = `Administered State_Age at Encounter Date - 5 Year`
     ) %>%
@@ -102,7 +103,7 @@ read_vaccine_data <- function(
       ) %>%
         as.integer
     ) %>%
-    dplyr::select(state, age_class, vaccine, dose_number, doses) %>%
+    select(state, age_class, vaccine, dose_number, doses) %>%
       filter(age_class != "Totals", state != "Totals") %>%
     mutate(
       vaccine = case_when(
