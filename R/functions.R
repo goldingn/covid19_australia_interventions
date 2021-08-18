@@ -479,13 +479,14 @@ interventions <- function(
     ~date, ~state,
     "2021-01-09", "QLD",
     "2021-03-29", "QLD",
-    "2021-06-29", "QLD" # starts 6 PM on 29th https://www.qld.gov.au/health/conditions/health-alerts/coronavirus-covid-19/current-status/public-health-directions/restrictions-in-qld-update
+    "2021-06-29", "QLD", # starts 6 PM on 29th https://www.qld.gov.au/health/conditions/health-alerts/coronavirus-covid-19/current-status/public-health-directions/restrictions-in-qld-update
+    "2021-08-01", "QLD" # starts 4 PM 31st July https://www.qld.gov.au/health/conditions/health-alerts/coronavirus-covid-19/current-status/public-health-directions/restrictions-impacted-areas
   )
   
   sa_interventions <- tibble::tribble(
     ~date, ~state,
     "2020-11-19", "SA",
-    "2021-07-20", "SA" # lockdown, starts 6pm on the 20th, https://www.sahealth.sa.gov.au/wps/wcm/connect/public+content/sa+health+internet/about+us/news+and+media/all+media+releases/covid-19+update+20+july+2021
+    "2021-07-21", "SA" # lockdown, starts 6pm on the 20th, https://www.sahealth.sa.gov.au/wps/wcm/connect/public+content/sa+health+internet/about+us/news+and+media/all+media+releases/covid-19+update+20+july+2021
   )
   
   tas_interventions <- tibble::tribble(
@@ -500,7 +501,8 @@ interventions <- function(
     "2020-08-02", "VIC",
     "2021-02-13", "VIC",
     "2021-05-28", "VIC",
-    "2021-07-16", "VIC" # lockdown, 5 days from 11:59 the 15th, then extended https://www.dhhs.vic.gov.au/coronavirus-update-victoria-15-july-2021
+    "2021-07-16", "VIC", # lockdown, 5 days from 11:59 the 15th, then extended https://www.dhhs.vic.gov.au/coronavirus-update-victoria-15-july-2021
+    "2021-08-06", "VIC" # lockdown from 20:00 2021/08/05 
   )
   
   wa_interventions <- tibble::tribble(
@@ -549,7 +551,8 @@ interventions <- function(
           ~date, ~state,
           "2021-01-12", "QLD",
           "2021-04-01", "QLD",
-          "2021-07-04", "QLD" # Lifted 6 PM 3rd July https://www.qld.gov.au/health/conditions/health-alerts/coronavirus-covid-19/current-status/public-health-directions/restrictions-impacted-areas
+          "2021-07-04", "QLD", # Lifted 6 PM 3rd July https://www.qld.gov.au/health/conditions/health-alerts/coronavirus-covid-19/current-status/public-health-directions/restrictions-impacted-areas
+          "2021-08-09", "QLD" # lifted 4 PM 8th Aug https://www.qld.gov.au/health/conditions/health-alerts/coronavirus-covid-19/current-status/public-health-directions/restrictions-in-qld-update
         )
       )
     
@@ -557,7 +560,8 @@ interventions <- function(
       bind_rows(
         tibble::tribble(
           ~date, ~state,
-          "2020-11-22", "SA"
+          "2020-11-22", "SA",
+          "2021-07-28", "SA" # restrictions eased from 28th https://www.sahealth.sa.gov.au/wps/wcm/connect/public+content/sa+health+internet/about+us/news+and+media/all+media+releases/covid-19+update+28+july+2021
         )
       )
     
@@ -574,7 +578,8 @@ interventions <- function(
         tibble::tribble(
           ~date, ~state,
           "2021-02-18", "VIC",
-          "2021-06-11", "VIC"
+          "2021-06-11", "VIC",
+          "2021-07-28", "VIC" # lockdown lifted 11.59 PM 2021/07/27 https://www.premier.vic.gov.au/lockdown-lifted-across-victoria
         )
       )
     
@@ -4314,7 +4319,8 @@ get_nndss_linelist <- function(
   
   dat <- readxl::read_xlsx(
     data$file,
-    col_types = col_types
+    col_types = col_types,
+    na = "NULL" # usually turn this off
   )
   
   if(ll_date < "2021-03-08"){
@@ -5823,7 +5829,7 @@ write_reff_sims <- function(fitted_model,
   
 }
 
-fit_reff_model <- function(data, max_tries = 3, iterations_per_step = 2000) {
+fit_reff_model <- function(data, max_tries = 1, iterations_per_step = 2000) {
   
   # build the greta model
   model_output <- reff_model(data)
@@ -6134,7 +6140,7 @@ load_vic <- function (file) {
 
 load_linelist <- function(date = NULL,
                           use_vic = FALSE,
-                          use_sa = TRUE,
+                          use_sa = FALSE,
                           use_nsw = TRUE) {
   
   # load the latest NNDSS linelist (either the latest or specified file)
