@@ -648,7 +648,10 @@ ggplot(vaccine_effect_timeseries) +
 
 saveRDS(
   vaccine_effect_timeseries,
-  file = "output/vaccine_effect_timeseries.RDS"
+  file = "outputs/vaccine_effect_timeseries.RDS"
 )
 
-  
+write_csv(
+  vaccine_effect_timeseries,
+  path = "outputs/vaccine_effect_timeseries.RDS"
+)

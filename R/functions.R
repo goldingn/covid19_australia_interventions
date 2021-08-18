@@ -5326,22 +5326,33 @@ reff_1_only_micro <- function(fitted_model) {
 
 
 # reff component 1 if only vaccination
-reff_1_vaccine_effect <- function(fitted_model, timeseries){
+reff_1_vaccine_only <- function(fitted_model, vaccine_effect){
   
   ga <- fitted_model$greta_arrays
   
   dates <- fitted_model$data$dates$infection_project
   
   df <- full_join(
-    tibble(date = dates),
-    timeseries
+    expand_grid(
+      date = dates,
+      state = unique(vaccine_effect$state)
+    ),
+    vaccine_effect
   ) %>%
+    arrange(state, date) %>% 
+    group_by(state) %>%
     tidyr::fill(
-      overall_transmission_effect,
+      effect,
       .direction = "updown"
+    ) %>%
+    pivot_wider(
+      names_from = state,
+      values_from = effect
     )
   
-  ote <- df$overall_transmission_effect
+  ote <- df %>%
+    dplyr::select(-date) %>%
+    as.matrix
   
   
   baseline_surveillance_effect <- ga$surveillance_reff_local_reduction[1]
@@ -5359,7 +5370,45 @@ reff_1_vaccine_effect <- function(fitted_model, timeseries){
   
   reff_non_vac <- hourly_infections_vacc_extended * baseline_surveillance_effect 
   
-  sweep(reff_non_vac, 1, ote, "*")
+  #sweep(reff_non_vac, 1, ote, "*")
+  
+  reff_non_vac*ote
+  
+}
+
+# reff component 1 incorporating vaccine
+reff_1_with_vaccine <- function(fitted_model, vaccine_effect){
+  
+  ga <- fitted_model$greta_arrays
+  
+  dates <- fitted_model$data$dates$infection_project
+  
+  df <- full_join(
+    expand_grid(
+      date = dates,
+      state = unique(vaccine_effect$state)
+    ),
+    vaccine_effect
+  ) %>%
+    arrange(state, date) %>% 
+    group_by(state) %>%
+    tidyr::fill(
+      effect,
+      .direction = "updown"
+    ) %>%
+    pivot_wider(
+      names_from = state,
+      values_from = effect
+    )
+  
+  ote <- df %>%
+    dplyr::select(-date) %>%
+    as.matrix
+  
+  
+  reff1 <- ga$R_eff_loc_1 
+  
+  reff1*ote
   
 }
 
@@ -5440,7 +5489,7 @@ reff_plotting <- function(
   mobility_extrapolation_rectangle = TRUE,
   projection_date = NA,
   washout_cutoff = 0,
-  vaccine_timeseries = timeseries
+  vaccine_timeseries = vaccine_effect_timeseries
 ) {
   
   if(is.na(min_date)){
@@ -5532,7 +5581,8 @@ reff_plotting <- function(
       R_eff_loc_1_macro = reff_1_only_macro(fitted_model_extended),
       R_eff_loc_1_micro = reff_1_only_micro(fitted_model_extended),
       R_eff_loc_1_surv = reff_1_only_surveillance(fitted_model_extended),
-      R_eff_loc_1_vaccine_effect = reff_1_vaccine_effect(fitted_model_extended, vaccine_timeseries)
+      R_eff_loc_1_vaccine_only = reff_1_vaccine_only(fitted_model_extended, vaccine_timeseries),
+      R_eff_loc_1_with_vaccine = reff_1_with_vaccine(fitted_model_extended, vaccine_timeseries)
     ) 
   )
   
@@ -5546,7 +5596,8 @@ reff_plotting <- function(
     "R_eff_loc_1_micro",
     "R_eff_loc_1_macro",
     "R_eff_loc_1_surv",
-    "R_eff_loc_1_vaccine_effect"
+    "R_eff_loc_1_vaccine_only",
+    "R_eff_loc_1_with_vaccine"
   )
   vector_list <- lapply(fitted_model_extended$greta_arrays[trajectory_types], c)
   
@@ -5555,14 +5606,14 @@ reff_plotting <- function(
   sims <- do.call(calculate, args)
   
   # vaccine effect only
-  plot_trend(sims$R_eff_loc_1_vaccine_effect[,1:fitted_model_extended$data$n_date_nums,], # clunky fix
+  plot_trend(sims$R_eff_loc_1_vaccine_only, # clunky fix
              data = fitted_model_extended$data,
              min_date = min_date,
              max_date = max_date,
-             multistate = FALSE,
+             multistate = TRUE,
              base_colour = fifo,
              projection_at = projection_date,
-             ylim = c(0, 6),
+             ylim = c(0, 8),
              intervention_at = vaccination_dates(),
              plot_voc = TRUE
   ) + 
@@ -5570,8 +5621,24 @@ reff_plotting <- function(
             subtitle = expression(R["eff"]~"if"~only~vaccination~had~occurred)) +
     ylab(expression(R["eff"]~component))
   
-  save_ggplot("R_eff_1_local_vaccine_effect.png", dir, subdir, multi = FALSE)
+  save_ggplot("R_eff_1_vaccine_only.png", dir, subdir, multi = TRUE)
   
+    # vaccine effect in C1
+  plot_trend(sims$R_eff_loc_1_with_vaccine,
+             data = fitted_model_extended$data,
+             min_date = min_date,
+             max_date = max_date,
+             multistate = TRUE,
+             #ylim = c(0, 6),
+             intervention_at = vaccination_dates(),
+             base_colour = green,
+             projection_at = projection_date,
+             plot_voc = TRUE) + 
+    ggtitle(label = "Impact of social distancing & vaccination",
+            subtitle = expression(Component~of~R["eff"]~due~to~social~distancing~and~vaccination)) +
+    ylab(expression(R["eff"]~component))
+  
+  save_ggplot("R_eff_1_local_with_vaccine.png", dir, subdir, multi = TRUE)
   
   # microdistancing only
   plot_trend(sims$R_eff_loc_1_micro,

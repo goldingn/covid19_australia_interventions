@@ -35,7 +35,7 @@ write_reff_sims(fitted_model, dir = "outputs/projection")
 # visual checks of model fit
 plot_reff_checks(fitted_model)
 
-timeseries <- readRDS(file = "outputs/vaccine_timeseries.RDS")
+vaccine_effect_timeseries <- readRDS(file = "outputs/vaccine_effect_timeseries.RDS")
 
 # do plots for main period
 reff_plotting(fitted_model, dir = "outputs")
