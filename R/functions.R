@@ -461,13 +461,14 @@ interventions <- function(
   
   act_interventions <- tibble::tribble(
     ~date, ~state,
-    
+    "2021-08-13", "ACT" # lockdown from 1700 12/08/2021 https://twitter.com/ACTHealth/status/1425652154526621700?s=20
   )
   
   nsw_interventions <- tibble::tribble(
     ~date, ~state,
     "2021-06-25", "NSW", # stay-at-home order for 4 LGAs from 11.59 PM 24th, extended to all greater sydney +++ from 11.59 PM 25th. 
-    "2021-07-18", "NSW" # increased restrictions from midnight 17th https://www.nsw.gov.au/media-releases/restrictions-to-further-limit-spread-of-covid-19-delta-strain
+    "2021-07-18", "NSW", # increased restrictions from midnight 17th https://www.nsw.gov.au/media-releases/restrictions-to-further-limit-spread-of-covid-19-delta-strain
+    "2021-08-15", "NSW" # increase to state-wide lockdown 5 PM 2021/08/14 https://twitter.com/NSWHealth/status/1426735650384998400?s=20
   )
   
   nt_interventions <- tibble::tribble(
