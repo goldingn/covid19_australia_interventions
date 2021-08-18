@@ -287,6 +287,9 @@ pred_trend <- macro_model$data$location_change_trends %>%
 saveRDS(pred_trend,
         file = "outputs/macrodistancing_trends_lga.RDS")
 
+# write this out for Nic R
+write.csv(pred_trend, file = "outputs/nsw/nonhousehold_contacts_lga_modelled.csv")
+
 # combine these with NSW data for other components to get TP for each LGA
 
 # load fitted reff model

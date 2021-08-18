@@ -901,6 +901,8 @@ coverage <- air %>%
     date > (min(date) + 21)
   )
 
+write.csv(coverage, file = "outputs/nsw/nsw_lgas_vaccination_coverage.csv")
+
 for (this_lga in lgas_of_concern) {
   
   coverage %>%
