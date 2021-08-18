@@ -73,12 +73,15 @@ read_vax_data <- function(
     "100+"
   )
   
+  n_max <- ifelse(date < "2021-08-17", 38, 40)
+  
   readxl::read_excel(
     path = file,
     skip = 2,
     col_names = header,
     sheet = "Vaccine Brand Split",
-    n_max = 38
+    n_max = n_max,
+    col_types = "text"
   ) %>%
     tidyr::fill(
       `NA_Vaccine Name`,
@@ -113,6 +116,14 @@ read_vax_data <- function(
         vaccine == "COVID-19 Vaccine AstraZeneca" ~ "az",
         TRUE ~ "pf"
       )
+    ) %>%
+    mutate(
+      doses = ifelse(
+        doses == "-",
+        0,
+        doses
+      ) %>%
+        as.integer
     ) %>%
     pivot_wider(
       names_from = dose_number,
@@ -205,8 +216,245 @@ immunity_lag_correction <- function(
   
 }
 
+# lookup to disaggregate coverages to 5y age groups
+age_lookup <- tibble::tribble(
+  ~age_5y, ~age, ~proportion_of_group,
+  "0-4", "0-14", 5/15,
+  "5-9", "0-14", 5/15,   
+  "10-14", "0-14", 5/15,
+  "15-19", "15-29", 5/15,
+  "20-24", "15-29", 5/15,
+  "25-29", "15-29", 5/15,
+  "30-34", "30-39", 5/10,
+  "35-39", "30-39", 5/10,
+  "40-44", "40-49", 5/10,
+  "45-49", "40-49", 5/10,
+  "50-54", "50-59", 5/10,
+  "55-59", "50-59", 5/10,
+  "60-64", "60-69", 5/10,
+  "65-69", "60-69", 5/10,
+  "70-74", "70-79", 5/10,
+  "75-79", "70-79", 5/10,
+  "80+", "80+", 1/1
+)
 
-dose_data <- vdat %>%
+# check these proportions all sum to 1
+age_lookup %>% group_by(age) %>%
+  summarise(
+    sum(proportion_of_group)
+  )
+
+age_distribution <- get_age_distribution(final_age_bin = 80)
+
+get_age_distribution_by_state <- function(
+  final_age_bin = 80,
+  by = 5,
+  population_total = 25693000
+) {
+  
+  # check the final age bin in sensible
+  if (final_age_bin > 85) {
+    stop(
+      "No age-specific population data for ages greater than 85",
+      call. = TRUE
+    )
+  }
+  
+  ages <- age_classes(
+    final_age_bin = final_age_bin,
+    by = by
+  )
+  
+  # Age structure of the Australian population by year of age, up to 100+
+  # This is a "standard" distribution data frame but old population size data
+  # from 2001 hence is adjusted later
+  # aust_population_standard <- readxl::read_xls(
+  #   path = "data/vaccinatinon/abs_standard_age_31010DO003_200106.xls",
+  #   sheet = "Table_1",
+  #   skip = 6,
+  #   col_names = c(
+  #     "age",
+  #     "pop"
+  #   )
+  # ) %>%
+  #   filter(age != "Total", !is.na(age), age != "© Commonwealth of Australia 2013") %>%
+  #   mutate(
+  #     age = case_when(
+  #       age == "100 and over" ~ "100",
+  #       TRUE ~ age
+  #     ) %>%
+  #       as.integer,
+  #   )
+  
+  # use 2020 population, as this better matches proportion 80+
+  aust_population_2020 <- readxl::read_xls(
+    path = "data/vaccinatinon/abs_population_2020.xls",
+    sheet = "Table_8",
+    range = cell_rows(c(223:328)),
+    col_names = c(
+      "age",
+      "NSW",
+      "VIC",
+      "QLD",
+      "SA",
+      "WA",
+      "TAS",
+      "NT",
+      "ACT",
+      "Aus"
+    )
+  ) %>%
+    dplyr::select(-Aus) %>%
+    mutate(
+      age = case_when(
+        age == "85-89" ~ "85",
+        age == "90-94" ~ "85",
+        age == "95-99" ~ "85",
+        age == "100 and over" ~ "85",
+        TRUE ~ age
+      )
+    ) %>%
+    filter(
+      !grepl("-", age)
+    ) %>%
+    pivot_longer(
+      cols = -age,
+      names_to = "state",
+      values_to = "pop"
+    ) %>%
+    group_by(
+      state,
+      age
+    ) %>%
+    summarise(
+      pop = sum(pop),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      age = as.integer(age)
+    ) %>%
+    arrange(age)
+  
+  
+  state_pops <- aust_population_2020 %>%
+    group_by(state) %>%
+    summarise(pop = sum(pop)) %>%
+    mutate(state_pop = pop*population_total/sum(pop)) %>%
+    dplyr::select(-pop)
+  
+  # aggregate into age classes and return
+  age_class_fractions <- aust_population_2020 %>%
+    mutate(
+      age_class = cut(
+        age,
+        breaks = c(ages$lower - 1, Inf),
+        labels = ages$classes
+      ),
+      age_class = as.character(age_class),
+      age_class = factor(age_class, levels= unique(age_class))
+    ) %>%
+    group_by(
+      state,
+      age_class
+    ) %>%
+    summarise(
+      pop = sum(pop)
+    ) %>%
+    left_join(
+      y = state_pops,
+      by = "state"
+    ) %>%
+    group_by(state) %>%
+    mutate(
+      fraction = pop / sum(pop),
+      pop = fraction * state_pop
+    ) %>%
+    dplyr::select(-state_pop)
+  
+  return(age_class_fractions)
+  
+}
+
+
+
+
+
+# over_80 <- c(
+#   "80+",
+#   "80-84",
+#   "85+",
+#   "85-89",
+#   "90+",
+#   "90-94",
+#   "95+",
+#   "95-99",
+#   "100+"
+# )
+# 
+# read_csv("~/not_synced/vaccination/2021-08-16-1559-tidy-not-clean-vaccine-rollout-ts.csv") %>%
+#   rename(
+#     age_class = age_group,
+#     dose_number = dose
+#   ) %>% 
+#   mutate(
+#     vaccine = case_when(
+#       vaccine_type == "astra_zeneca" ~ "az",
+#       vaccine_type == "pfizer_comirnaty" ~ "pf"
+#     ),
+#     state = case_when(
+#       state == "act" ~ "ACT",
+#       state == "nt"  ~ "NT",
+#       state == "nsw" ~ "NSW",
+#       state == "qld" ~ "QLD",
+#       state == "sa"  ~ "SA",
+#       state == "tas" ~ "TAS",
+#       state == "vic" ~ "VIC",
+#       state == "wa"  ~ "WA",
+#       state == "unknown" ~ "unk"
+#     ),
+#     date_doses = ifelse(is.na(count), 0, count)
+#   ) %>%
+#   dplyr::select(state, date, age_class, vaccine, dose_number, date_doses) %>%
+#   arrange(state, date, age_class, vaccine, dose_number) %>%
+#   rowwise %>%
+#   mutate(
+#     age_class = case_when(
+#       any(age_class == c(
+#         "80+",
+#         "80-84",
+#         "85+",
+#         "85-89",
+#         "90+",
+#         "90-94",
+#         "95+",
+#         "95-99",
+#         "100+"
+#       )) ~ "80+",
+#       TRUE ~ age_class
+#     )
+#   ) %>%
+#   group_by(state, date, age_class, vaccine, dose_number) %>%
+#   summarise(date_doses = sum(date_doses)) %>%
+#   arrange(date, age_class, vaccine, dose_number) %>%
+#   group_by(date, age_class, vaccine, dose_number) %>%
+#   mutate(
+#    unknown = date_doses[7], # this is the unknown dose row,
+#    aus_doses = sum(date_doses) - unknown,
+#    date_doses_adjusted = date_doses + date_doses/aus_doses * unknown,
+#    date_doses_adjusted = ifelse(is.nan(date_doses_adjusted), 0, date_doses_adjusted)
+#   ) %>%
+#   group_by(
+#     state, date, age_class
+#   )
+
+age_distribution_state <- get_age_distribution_by_state()
+
+vax_data <- load_vax_data()
+
+
+dose_data <- vax_data %>%
+  left_join(age_distribution_state) %>%
+  dplyr::select(-fraction) %>%
   arrange(state, age_class, vaccine, dose_number, date) %>%
   group_by(state, age_class, vaccine, dose_number) %>% 
   mutate(
@@ -231,7 +479,9 @@ dose_data <- vdat %>%
   ungroup %>%
   mutate(
     fraction = doses / any_vaccine,
-    effective_fraction = effective_doses / effective_any_vaccine
+    effective_fraction = effective_doses / effective_any_vaccine,
+    coverage_any_vaccine = any_vaccine / pop,
+    effective_coverage_any_vaccine = effective_any_vaccine / pop,
   ) %>%
   arrange(state, age_class, date) 
 
@@ -239,4 +489,76 @@ efficacy_data <- dose_data %>%
   pivot_wider(
     names_from = c(vaccine, dose_number),
     values_from = c(doses, correction, effective_doses, fraction, effective_fraction)
+  ) %>%
+  mutate(
+    average_efficacy_transmission = average_efficacy(
+      efficacy_az_2_dose = combine_efficacy(0.60, 0.65),
+      efficacy_pf_2_dose = combine_efficacy(0.79, 0.65),
+      efficacy_pf_1_dose = combine_efficacy(0.30, 0.46),
+      efficacy_az_1_dose = combine_efficacy(0.18, 0.48),    
+      proportion_pf_2_dose = fraction_pf_2,
+      proportion_az_2_dose = fraction_az_2,
+      proportion_pf_1_dose = fraction_pf_1,
+      proportion_az_1_dose = fraction_az_1
+    ),
+    effective_average_efficacy_transmission = average_efficacy(
+      efficacy_az_2_dose = combine_efficacy(0.60, 0.65),
+      efficacy_pf_2_dose = combine_efficacy(0.79, 0.65),
+      efficacy_pf_1_dose = combine_efficacy(0.30, 0.46),
+      efficacy_az_1_dose = combine_efficacy(0.18, 0.48),    
+      proportion_pf_2_dose = effective_fraction_pf_2,
+      proportion_az_2_dose = effective_fraction_az_2,
+      proportion_pf_1_dose = effective_fraction_pf_1,
+      proportion_az_1_dose = effective_fraction_az_1
+    ),
+    average_efficacy_transmission = replace_na(average_efficacy_transmission, 0),
+    effective_average_efficacy_transmission = replace_na(effective_average_efficacy_transmission, 0)
+  ) %>%
+  left_join(
+    age_lookup,
+    by = c("age_class" = "age_5y")
+  )  %>%
+  dplyr::select(
+    -age
+  ) %>%
+  rename(
+    age = age_class
   )
+
+efficacy_data
+efficacy_data %>% glimpse
+
+vaccination_effect <- efficacy_data %>%
+  group_by(
+    state, date
+  ) %>%
+  summarise(
+    vaccination_transmission_multiplier = vaccination_transmission_effect(
+      age_coverage = coverage_any_vaccine,
+      efficacy_mean = average_efficacy_transmission,
+      next_generation_matrix = baseline_matrix()
+    )$overall,
+    effective_vaccination_transmission_multiplier = vaccination_transmission_effect(
+      age_coverage = effective_coverage_any_vaccine,
+      efficacy_mean = effective_average_efficacy_transmission,
+      next_generation_matrix = baseline_matrix()
+    )$overall,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    vaccination_transmission_reduction_percent =
+      100 * (1 - vaccination_transmission_multiplier),
+    effective_vaccination_transmission_reduction_percent =
+      100 * (1 - effective_vaccination_transmission_multiplier)
+  ) %>%
+  mutate(
+    dubious = (date - min(date)) < 21,
+    across(
+      starts_with("effective_"),
+      ~ ifelse(dubious, NA, .)
+    )
+  ) %>%
+  select(
+    -dubious
+  )
+
