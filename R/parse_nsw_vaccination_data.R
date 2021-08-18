@@ -208,7 +208,7 @@ forecast_vaccination <- function(
     )
   
   # add the forecast to the current air data to get the full time series
-  air <- air_current %>%
+  air_saturated <- air_current %>%
     mutate(
       forecast = FALSE
     ) %>%
@@ -225,18 +225,71 @@ forecast_vaccination <- function(
     mutate(
       # compute extra doses
       dose_1_extra = pmax(0, (dose_1_AstraZeneca + dose_1_Pfizer) - population * max_coverage),
-      dose_2_extra = pmax(0, (dose_2_AstraZeneca + dose_2_Pfizer) - population * max_coverage),
-      # compute fraction of doses that are Pfizer
+      dose_2_extra = pmax(0, (dose_2_AstraZeneca + dose_2_Pfizer) - population * max_coverage)
+    )
+  
+  # compute fraction of doses that are Pfizer - *as at the date the
+  # population was saturated* otherwise it will keep adjusting
+  # retrospectively
+  air_final_fraction_dose_1 <- air_saturated %>%
+    filter(
+      dose_1_extra == 0
+    ) %>%
+    group_by(lga, age_air_80, hypothetical_max_coverage) %>%
+    filter(
+      date == max(date)
+    ) %>%
+    ungroup() %>%
+    mutate(
       dose_1_Pfizer_fraction = dose_1_Pfizer / (dose_1_AstraZeneca + dose_1_Pfizer),
-      dose_2_Pfizer_fraction = dose_2_Pfizer / (dose_2_AstraZeneca + dose_2_Pfizer),
+    ) %>%
+    select(
+      lga, age_air_80, hypothetical_max_coverage, dose_1_Pfizer_fraction 
+    )
+  
+  air_final_fraction_dose_2 <- air_saturated %>%
+    filter(
+      dose_2_extra == 0
+    ) %>%
+    group_by(lga, age_air_80, hypothetical_max_coverage) %>%
+    filter(
+      date == max(date)
+    ) %>%
+    ungroup() %>%
+    mutate(
+      dose_2_Pfizer_fraction = dose_2_Pfizer / (dose_2_AstraZeneca + dose_2_Pfizer)
+    ) %>%
+    select(
+      lga, age_air_80, hypothetical_max_coverage, dose_2_Pfizer_fraction 
+    )
+
+  # cap these extra doses, keeping the allocation between AZ and Pfizer constant after saturation   
+  air <- air_saturated %>%
+    left_join(
+      air_final_fraction_dose_1,
+      by = c("lga", "age_air_80", "hypothetical_max_coverage")
+    ) %>%
+    left_join(
+      air_final_fraction_dose_2,
+      by = c("lga", "age_air_80", "hypothetical_max_coverage")
+    ) %>%
+    mutate(
+      # fill in any missing fractions (those that have not yet reached saturation)
       dose_1_Pfizer_fraction = replace_na(dose_1_Pfizer_fraction, 0),
       dose_2_Pfizer_fraction = replace_na(dose_2_Pfizer_fraction, 0),
-      # compute number of excess Pfizer doses
-      dose_1_Pfizer_extra = round(dose_1_extra * dose_1_Pfizer_fraction),
-      dose_2_Pfizer_extra = round(dose_2_extra * dose_2_Pfizer_fraction),
-      # compute number of excess AstraZeneca doses (remainder)
-      dose_1_AstraZeneca_extra = dose_1_extra - dose_1_Pfizer_extra,
-      dose_2_AstraZeneca_extra = dose_2_extra - dose_2_Pfizer_extra,
+      
+      # compute the number of Pfizer doses at saturation
+      dose_1_Pfizer_maximum = (population * max_coverage * dose_1_Pfizer_fraction),
+      dose_1_AstraZeneca_maximum = (population * max_coverage * (1 - dose_1_Pfizer_fraction)),
+      dose_2_Pfizer_maximum = (population * max_coverage * dose_2_Pfizer_fraction),
+      dose_2_AstraZeneca_maximum = (population * max_coverage * (1 - dose_2_Pfizer_fraction)),
+      
+      # compute the numbers of excess doses
+      dose_1_Pfizer_extra = pmax(0, dose_1_Pfizer - dose_1_Pfizer_maximum),
+      dose_1_AstraZeneca_extra = pmax(0, dose_1_AstraZeneca - dose_1_AstraZeneca_maximum),
+      dose_2_Pfizer_extra = pmax(0, dose_2_Pfizer - dose_2_Pfizer_maximum),
+      dose_2_AstraZeneca_extra = pmax(0, dose_2_AstraZeneca - dose_2_AstraZeneca_maximum),
+
       # remove the excess doses
       dose_1_Pfizer = dose_1_Pfizer - dose_1_Pfizer_extra,
       dose_1_AstraZeneca = dose_1_AstraZeneca - dose_1_AstraZeneca_extra,
@@ -450,52 +503,6 @@ air_current <- expand_grid(
     .groups = "drop"
   )
 
-# 
-# # get forecast doses with 500k more dose 1s given out over the next 4 weeks, and forecast vaccinations
-# extra_dose_1s_4wk <- air_current %>%
-#   # get average daily doses
-#   average_daily_doses() %>%
-#   # filter to only LGAs of concern, and age groups of concern
-#   filter(
-#     lga %in% lgas_of_concern,
-#     age_air_80 %in% c("15-29", "30-39")
-#   ) %>%
-#   # mask out types of dose not required
-#   mutate(
-#     across(
-#       c(starts_with("dose_2"), ends_with("AstraZeneca")),
-#       ~ . * 0
-#     )
-#   ) %>%
-#   # add on range of dates on which to overload doses
-#   full_join(
-#     expand_grid(
-#       lga = lgas_of_concern,
-#       date = as_date("2021-08-18") + seq_len(28) - 1
-#     ),
-#     by = "lga"
-#   ) %>%
-#   # normalise and multiply by number of doses
-#   mutate(
-#     dose_1_Pfizer = 500000 * dose_1_Pfizer / sum(dose_1_Pfizer)
-#   )
-# 
-# extra_dose_1s_2s_4wk <- 
-#   bind_rows(
-#     # half as many dose 1s on the same days
-#     extra_dose_1s_4wk %>%
-#       mutate(
-#         dose_1_Pfizer = dose_1_Pfizer / 2
-#       ),
-#     # half as many dose 2s 4 weeks later
-#     extra_dose_1s_4wk %>%
-#       mutate(
-#         dose_2_Pfizer = dose_1_Pfizer / 2,
-#         dose_1_Pfizer = 0,
-#         date = date + 28
-#       )
-#   )
-
 # scenario for 670K more dose 1s delivered over the next three weeks
 extra_670K_dose_1 <- air_current %>%
   # get average daily doses
@@ -646,25 +653,17 @@ air %>%
   ylab("") +
   xlab("") +
   ggtitle(
-    "Cumulative number of AZ dose 1s used during 670K roll-out"
+    "Cumulative number of AZ dose 1s used during 670K roll-out",
+    "in 16-39 year olds in the LGAs of concern"
   ) +
   theme_cowplot()
 
-# need to fix the reallocation issue!
-
-# extra_670K_dose_1_excess %>%
-#   filter(
-#     lga == lga[1],
-#     age_air_80 == age_air_80[1],
-#     coverage_scenario == coverage_scenario[1]
-#   ) %>%
-#   plot(
-#     dose_1_Pfizer_scenario_extra ~ date,
-#     data = .,
-#     type = "p"
-#   )
-
-
+ggsave(
+  "outputs/nsw/AZ_doses_670K_target_pop.png",
+  bg = "white",
+  width = 9,
+  height = 5
+)
 
 extra_670K_dose_1_excess %>%
   ggplot(
@@ -691,74 +690,6 @@ ggsave(
   width = 9,
   height = 5
 )
-
-# air %>%
-#   filter(
-#     date >= min(extra_670K_dose_1_cumulative$date),
-#     date <= max(extra_670K_dose_1_cumulative$date)
-#   ) %>%
-#   group_by(
-#     date, scenario, coverage_scenario
-#   ) %>%
-#   summarise(
-#     dose_1_Pfizer_extra = sum(dose_1_Pfizer_extra)
-#   )
-
-# compute the excess Pfizer dose 1s under 670K
-# compute the cumulative available Pfizer dose 1s
-
-# subtract the ones that are not in th 670K allowance
-
-
-# coverages by Pfizer reduce in the future, because the mix of AZ vs Pfizer
-# available change need to compute reallocation of the fraction based on the mix
-# at the time the population was saturated
-
-# can't compute spillage of Pfizer doses relative to baseline, because in
-# baseline people are getting AZ instead
-
-# need to compute the number of Pfizer doses spilled in total, the total number
-# of doses provided, and
-
-# compute dose wastage for the 670K extra doses under each maximum coverage scenario
-air %>%
-  filter(forecast) %>%
-  group_by(
-    date, scenario, coverage_scenario, forecast
-  ) %>%
-  summarise(
-    dose_1_Pfizer_extra = sum(dose_1_Pfizer_extra)
-  ) %>%
-  pivot_wider(
-    names_from = scenario,
-    values_from = dose_1_Pfizer_extra
-  ) %>%
-  mutate(
-    extra_doses_unused = `670K extra doses` - baseline
-  ) %>%
-  select(-baseline, -`670K extra doses`) %>%
-  ggplot(
-    aes(
-      x = date,
-      y = extra_doses_unused,
-      color = coverage_scenario
-    )
-  ) +
-  scale_y_continuous(
-    labels = scales::label_number()
-  ) +
-  geom_line() +
-  ylab("") +
-  xlab("") +
-  ggtitle(
-    "Cumulative number of additional Pfizer dose 1s unused under each vaccine acceptance scenario",
-    "Only considering unused doses from 670K additional dose 1s"
-  ) +
-  theme_cowplot()
-
-
-
-
 
 # identify LGAs with greater than 90% coverage in the data
 air %>%
