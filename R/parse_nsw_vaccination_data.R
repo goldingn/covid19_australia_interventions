@@ -691,6 +691,12 @@ ggsave(
   height = 5
 )
 
+# print the number of excess Pfizer doses by coverage scenario
+extra_670K_dose_1_excess %>% filter(
+  date == max(date)
+) %>%
+  select(-date)
+
 # identify LGAs with greater than 90% coverage in the data
 air %>%
   filter(
@@ -785,7 +791,6 @@ efficacy_pf_2_dose <- combine_efficacy(0.79, 0.65)
 
 # compute the *additional* effect of the second dose
 efficacy_az_2_dose_extra <- efficacy_az_2_dose - efficacy_az_1_dose
-
 efficacy_pf_2_dose_extra <- efficacy_pf_2_dose - efficacy_pf_1_dose
 
 # compute fractional coverage by type and number of doses, then compute average efficacy against delta
