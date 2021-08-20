@@ -653,5 +653,9 @@ saveRDS(
 
 write_csv(
   vaccine_effect_timeseries,
-  path = "outputs/vaccine_effect_timeseries.RDS"
+  path = "outputs/vaccine_effect_timeseries.csv"
 )
+
+saveRDS(vax_data, "outputs/vax_data.RDS")
+
+saveRDS(dose_data, "outputs/dose_data.RDS")
