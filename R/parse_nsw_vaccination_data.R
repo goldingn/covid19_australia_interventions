@@ -400,7 +400,9 @@ pop_disagg <- read_csv(
     # 5y
     fraction_10_14_eligible_child = is_12_14_pop / is_10_14_pop,
     fraction_15_19_eligible_adult = is_16_19_pop / is_15_19_pop,
-    fraction_15_19_eligible_child = is_15_pop / is_15_19_pop
+    fraction_15_19_eligible_child = is_15_pop / is_15_19_pop,
+    # AIR to 5y
+    fraction_0_14_are_10_14 = is_10_14_pop / is_0_14_pop
   ) %>%
   select(starts_with("fraction"))
   
@@ -968,11 +970,59 @@ coverage <- air %>%
     date > (min(date) + 21)
   )
 
-write.csv(coverage, file = "outputs/nsw/nsw_lgas_vaccination_coverage.csv")
+# correct the coverages within the 5y age bins for the fraction of those age
+# bins that are within the broader AIR age bins.    
+coverage_corrected <- coverage %>%
+  # remove the maxima - it doesn't make sense to correct these
+  select(
+    -ends_with("maximum")
+  ) %>%
+  # For 0-14 AIR (0-4, 5-9, 10-14 5y), set 0-4 and 5-9 to 0, and set 10-14 to
+  # mop up the coverages they lose by dividing by the fraction of 0-14 year
+  # olds that are 10-14
+  mutate(
+    # compute correction factors
+    age_correction = case_when(
+      age %in% c("0-4", "5-9") ~ 0,
+      age == "10-14" ~ 1 / pop_disagg$fraction_0_14_are_10_14,
+      TRUE ~ 1
+    ),
+    # apply correction factors
+    across(
+      c(any_vaccine, coverage_any_vaccine, starts_with("dose")),
+      ~ . * age_correction
+    )
+  ) %>%
+  select(-age_correction)
+
+# check the number of doses is the same after correction
+identical(
+  coverage %>%
+    select(
+      -ends_with("maximum")
+    ) %>%
+    group_by(age) %>%
+    summarise(
+      across(
+        starts_with("dose"),
+      sum
+      )
+    ),
+  coverage_corrected %>%
+    group_by(age) %>%
+    summarise(
+      across(
+        starts_with("dose"),
+        sum
+      )
+    )
+)
+
+write.csv(coverage_corrected, file = "outputs/nsw/nsw_lgas_vaccination_coverage.csv")
 
 for (this_lga in lgas_of_concern) {
   
-  coverage %>%
+  coverage_corrected %>%
     filter(
       lga == this_lga
     ) %>%
@@ -1014,7 +1064,7 @@ for (this_lga in lgas_of_concern) {
 
 
 # estimate effects of vaccination on transmission
-vaccination_effect <- coverage %>%
+vaccination_effect <- coverage_corrected %>%
   # subset to recent weeks to speed up computation
   filter(
     date > as.Date("2021-06-16")
