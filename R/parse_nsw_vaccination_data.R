@@ -47,12 +47,12 @@ immunity_lag_correction <- function(date, coverage,
 average_daily_doses <- function (
   air_current,
   latest_data_date = max(air_current$date),
-  weeks_average = 4
+  previous_days_average = 0:27
 ) {
 
   air_current %>%
     filter(
-      date > (latest_data_date - weeks_average * 7)
+      date %in% (latest_data_date - previous_days_average)
     ) %>%
     group_by(
       lga, age_air_80, population,
@@ -75,21 +75,28 @@ average_daily_doses <- function (
 
 # turn the forecast into a function, and add on a method to add extra vaccinations in some LGAs/weeks
 forecast_vaccination <- function(
+  # current vaccination coverage timeseries
   air_current,
-  latest_data_date = max(air_current$date),
-  weeks_average = 4,
+  # which previous days to average over in computing daily vaccination rate
+  # (default previous 4 weeks)
+  previous_days_average = 0:27,
+  # end of simulations
   max_date = as.Date("2021-09-30"),
+  # proportion of population accepting vaccines
   max_coverages = c(0.7, 0.8, 0.9, 1),
+  # optional file of additional doses
   extra_doses = NULL,
   scenario_name = "baseline"
 ) {
+  
+  latest_data_date <- max(air_current$date)
   
   # compute daily average numbers of doses in each age group and lga over the past weeks
   # start with an average, then try a random effects model (shrinkage & extrapolation will help for small populations)
   dailies <- average_daily_doses(
     air_current = air_current,
     latest_data_date = latest_data_date,
-    weeks_average = weeks_average
+    previous_days_average = previous_days_average
   )
   
   # cumulative number of doses as a the most recent time point
