@@ -349,6 +349,65 @@ forecast_vaccination <- function(
   
 }
 
+extra_pfizer <- function (
+  air_current,
+  dose_1_dates = max(air_current$date) + 1:21,
+  n_extra_pfizer = 670000,
+  target_ages_air = c("15-29", "30-39"),
+  target_lgas = lgas_of_concern,
+  previous_days_average = 0:27,
+  dose_interval = 8 * 7
+) {
+  
+  # scenario for 670K more dose 1s delivered to 16-39s over the next 2.5 weeks
+  extra_dose_1s <- air_current %>%
+    # get average daily doses
+    average_daily_doses(
+      previous_days_average = previous_days_average
+    ) %>%
+    # filter to only LGAs of concern, and age groups of concern
+    filter(
+      lga %in% target_lgas,
+      age_air_80 %in% target_ages_air
+    ) %>%
+    # mask out types of dose not required
+    mutate(
+      across(
+        c(starts_with("dose_2"), ends_with("AstraZeneca")),
+        ~ . * 0
+      )
+    ) %>%
+    # add on range of dates on which to overload doses
+    full_join(
+      expand_grid(
+        lga = lgas_of_concern,
+        date = dose_1_dates
+      ),
+      by = "lga"
+    ) %>%
+    # normalise and multiply by number of doses
+    mutate(
+      dose_1_Pfizer = n_extra_pfizer * dose_1_Pfizer / sum(dose_1_Pfizer)
+    )
+  
+  if (is.finite(dose_interval)) {
+    # add 670K more dose 2s delivered some weeks after this to get the full scenario
+    extra_dose_2s <- extra_dose_1s %>%
+      mutate(
+        dose_2_Pfizer = dose_1_Pfizer,
+        dose_1_Pfizer = 0,
+        date = date + dose_interval
+      )
+  } else{
+    extra_dose_2s <- NULL
+  }
+  
+  bind_rows(
+    extra_dose_1s,
+    extra_dose_2s
+  )
+  
+}
 
 # lookup to disaggregate coverages to 5y age groups
 age_lookup <- tibble::tribble(
@@ -614,50 +673,31 @@ air_current <- expand_grid(
     .groups = "drop"
   )
 
-# scenario for 670K more dose 1s delivered over the next three weeks
-extra_670K_dose_1 <- air_current %>%
-  # get average daily doses
-  average_daily_doses() %>%
-  # filter to only LGAs of concern, and age groups of concern
-  filter(
-    lga %in% lgas_of_concern,
-    age_air_80 %in% c("15-29", "30-39")
-  ) %>%
-  # mask out types of dose not required
-  mutate(
-    across(
-      c(starts_with("dose_2"), ends_with("AstraZeneca")),
-      ~ . * 0
-    )
-  ) %>%
-  # add on range of dates on which to overload doses (three weeks, starting the daty after the data was provided)
-  full_join(
-    expand_grid(
-      lga = lgas_of_concern,
-      date = max(air_current$date) + seq_len(21)
-    ),
-    by = "lga"
-  ) %>%
-  # normalise and multiply by number of doses
-  mutate(
-    dose_1_Pfizer = 670000 * dose_1_Pfizer / sum(dose_1_Pfizer)
-  )
+# which previous days to average over for computing the latest data date?
+# the 4 weeks prior to Monday August 16 (start of vaccination drive)
+dates_average <- as_date("2021-08-16") - 0:27
+previous_days_average <- as.numeric(max(air_current$date) - dates_average)
 
-# and add 670K more dose 2s delivered 8 weeks after that to get the full scenario
-extra_670K <- bind_rows(
-  # half as many dose 1s on the same days
-  extra_670K_dose_1,
-  # half as many dose 2s 4 weeks later
-  extra_670K_dose_1 %>%
-    mutate(
-      dose_2_Pfizer = dose_1_Pfizer,
-      dose_1_Pfizer = 0,
-      date = date + 7 * 8
-    )
+# over which dates to administer the 670K extra doses (from the day after the
+# latet data until 3 weeks after the start fof the drive)
+dates_670K <- seq(
+  from = max(air_current$date) + 1,
+  to = as_date("2021-08-16") + 21,
+  by = 1
+)
+
+extra_670K_16_39 <- extra_pfizer(
+  air_current = air_current,
+  dose_1_dates = dates_670K,
+  n_extra_pfizer = 670000,
+  target_ages_air = c("15-29", "30-39"),
+  target_lgas = lgas_of_concern,
+  previous_days_average = previous_days_average,
+  dose_interval = 8 * 7
 )
 
 # check totals
-extra_670K %>%
+extra_670K_16_39 %>%
   summarise(
     across(
       starts_with("dose"),
@@ -666,16 +706,29 @@ extra_670K %>%
   )
 
 air <- bind_rows(
-  # forecast doses under current vaccination rate
+  # forecast doses under current vaccination rate, assuming no under 16s are
+  # being vaccinated (we cannot determine the rate of vaccination of 15 year olds from the data)
   forecast_vaccination(
-    air_current
+    air_current,
+    previous_days_average = previous_days_average,
+    vaccinating_12_15 = FALSE
   ),
   # forecast with additional dose 1s to 16-39s in LGAs of concern over 4 weeks
   forecast_vaccination(
     air_current,
-    extra_doses = extra_670K,
-    scenario_name = "670K extra doses"
-  )
+    extra_doses = extra_670K_16_39,
+    scenario_name = "670K extra doses 16-39",
+    previous_days_average = previous_days_average,
+    vaccinating_12_15 = FALSE
+  ),
+  # # forecast with additional dose 1s to 16-49s in LGAs of concern over 4 weeks
+  # forecast_vaccination(
+  #   air_current,
+  #   extra_doses = extra_670K_16_49,
+  #   scenario_name = "670K extra doses 16-49",
+  #   previous_days_average = previous_days_average,
+  #   vaccinating_12_15 = FALSE
+  # )
 ) %>%
   mutate(
     coverage_scenario = paste0(
@@ -685,7 +738,7 @@ air <- bind_rows(
     )
   )
 
-extra_670K_dose_1_cumulative <- extra_670K_dose_1 %>%
+extra_670K_dose_1_cumulative <- extra_670K_16_39 %>%
   filter(dose_1_Pfizer > 0) %>%
   arrange(lga, age_air_80, date) %>%
   group_by(lga, age_air_80) %>%
@@ -748,7 +801,8 @@ air %>%
     across(
       starts_with("dose_1"),
       sum
-    )
+    ),
+    .groups = "drop"
   ) %>%
   ggplot(
     aes(
