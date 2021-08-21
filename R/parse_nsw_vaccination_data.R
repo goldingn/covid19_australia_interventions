@@ -55,7 +55,7 @@ average_daily_doses <- function (
       date %in% (latest_data_date - previous_days_average)
     ) %>%
     group_by(
-      lga, age_air_80, population,
+      lga, age_air_80,
     ) %>%
     mutate(
       across(
@@ -104,6 +104,23 @@ forecast_vaccination <- function(
     fraction_15_29_eligible <- pop_disagg$fraction_15_29_eligible_adult
   }
   
+  # correct the populations in air current to account for eligibility of different age groups
+  air_current <- air_current %>%
+    mutate(
+      # correct age group populations for eligibility of ages within them, and
+      # the rate of vaccine acceptance
+      eligibility_correction = case_when(
+        # if we are vaccinating
+        age_air_80 == "0-14" ~ fraction_0_14_eligible,
+        age_air_80 == "15-29" ~ fraction_15_29_eligible,
+        TRUE ~ 1
+      ),
+      eligible_population = population * eligibility_correction
+    ) %>%
+    select(
+      -eligibility_correction
+    )
+  
   # compute daily average numbers of doses in each age group and lga over the past weeks
   # start with an average, then try a random effects model (shrinkage & extrapolation will help for small populations)
   dailies <- average_daily_doses(
@@ -125,8 +142,8 @@ forecast_vaccination <- function(
       -date
     )
   
-  # compute maximum coverages by age and LGA (allowing them to exceed that in
-  # the observed data)
+  # compute maximum coverages by age and LGA (allowing them to exceed the
+  # eligible population coverages in the observed data)
   max_coverage <- air_current %>%
     filter(
       date == max(date)
@@ -134,7 +151,7 @@ forecast_vaccination <- function(
     # compute coverage as at the latest date for each age and LGA (capped at 100%)
     mutate(
       any_doses = dose_1_Pfizer + dose_1_AstraZeneca,
-      observed_max_coverage = pmin(1, any_doses / population)
+      observed_max_coverage = pmin(1, any_doses / eligible_population)
     ) %>%
     select(
       lga, age_air_80, observed_max_coverage
@@ -179,7 +196,7 @@ forecast_vaccination <- function(
         extra_doses
       ) %>%
       group_by(
-        lga, age_air_80, date, population
+        lga, age_air_80, date,# eligible_population
       ) %>%
       summarise(
         across(
@@ -197,7 +214,11 @@ forecast_vaccination <- function(
   # compute the cumulative sum to get total future doses by each day
   air_forecast <- future_doses %>%
     arrange(lga, age_air_80, date) %>%
-    group_by(lga, age_air_80, population) %>%
+    group_by(
+      lga,
+      age_air_80,
+      # eligible_population
+    ) %>%
     mutate(
       across(
         starts_with("dose"),
@@ -211,7 +232,7 @@ forecast_vaccination <- function(
     # add on current observed total number of doses
     left_join(
       starting,
-      by = c("lga", "age_air_80", "population")
+      by = c("lga", "age_air_80")
     ) %>%
     mutate(
       dose_1_AstraZeneca = dose_1_AstraZeneca + starting_dose_1_AstraZeneca,
@@ -242,15 +263,6 @@ forecast_vaccination <- function(
     ) %>%
     arrange(date, lga, age_air_80) %>%
     mutate(
-      # correct age group populations for eligibility of ages within them, and
-      # the rate of vaccine acceptance
-      eligibility_correction = case_when(
-        # if we are vaccinating
-        age_air_80 == "0-14" ~ fraction_0_14_eligible,
-        age_air_80 == "15-29" ~ fraction_15_29_eligible,
-        TRUE ~ 1
-      ) %>%
-      eligible_population = population * eligibility_correction,
       accepting_population = eligible_population * max_coverage
     ) %>%
     # where the number of vaccinations exceeds the maximum population coverage, cap it
