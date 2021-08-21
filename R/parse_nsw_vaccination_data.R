@@ -86,10 +86,23 @@ forecast_vaccination <- function(
   max_coverages = c(0.7, 0.8, 0.9, 1),
   # optional file of additional doses
   extra_doses = NULL,
+  # whether or not under 15s are being vaccinated (affects maximum population
+  # for 10-14 and 15-19 age groups)
+  vaccinating_12_15 = TRUE,
+  # the name of this scenario
   scenario_name = "baseline"
 ) {
   
   latest_data_date <- max(air_current$date)
+  
+  # what fractions of the 0-14 and 15-29 age groups are eligible for vaccination?
+  if (vaccinating_12_15) {
+    fraction_0_14_eligible <- pop_disagg$fraction_0_14_eligible_child
+    fraction_15_29_eligible <- 1
+  } else {
+    fraction_0_14_eligible <- 0
+    fraction_15_29_eligible <- pop_disagg$fraction_15_29_eligible_adult
+  }
   
   # compute daily average numbers of doses in each age group and lga over the past weeks
   # start with an average, then try a random effects model (shrinkage & extrapolation will help for small populations)
@@ -228,11 +241,23 @@ forecast_vaccination <- function(
       by = c("lga", "age_air_80")
     ) %>%
     arrange(date, lga, age_air_80) %>%
+    mutate(
+      # correct age group populations for eligibility of ages within them, and
+      # the rate of vaccine acceptance
+      eligibility_correction = case_when(
+        # if we are vaccinating
+        age_air_80 == "0-14" ~ fraction_0_14_eligible,
+        age_air_80 == "15-29" ~ fraction_15_29_eligible,
+        TRUE ~ 1
+      ) %>%
+      eligible_population = population * eligibility_correction,
+      accepting_population = eligible_population * max_coverage
+    ) %>%
     # where the number of vaccinations exceeds the maximum population coverage, cap it
     mutate(
       # compute extra doses
-      dose_1_extra = pmax(0, (dose_1_AstraZeneca + dose_1_Pfizer) - population * max_coverage),
-      dose_2_extra = pmax(0, (dose_2_AstraZeneca + dose_2_Pfizer) - population * max_coverage)
+      dose_1_extra = pmax(0, (dose_1_AstraZeneca + dose_1_Pfizer) - accepting_population),
+      dose_2_extra = pmax(0, (dose_2_AstraZeneca + dose_2_Pfizer) - accepting_population)
     )
   
   # compute fraction of doses that are Pfizer - *as at the date the
@@ -286,10 +311,10 @@ forecast_vaccination <- function(
       dose_2_Pfizer_fraction = replace_na(dose_2_Pfizer_fraction, 0),
       
       # compute the number of Pfizer doses at saturation
-      dose_1_Pfizer_maximum = (population * max_coverage * dose_1_Pfizer_fraction),
-      dose_1_AstraZeneca_maximum = (population * max_coverage * (1 - dose_1_Pfizer_fraction)),
-      dose_2_Pfizer_maximum = (population * max_coverage * dose_2_Pfizer_fraction),
-      dose_2_AstraZeneca_maximum = (population * max_coverage * (1 - dose_2_Pfizer_fraction)),
+      dose_1_Pfizer_maximum = (accepting_population * dose_1_Pfizer_fraction),
+      dose_1_AstraZeneca_maximum = (accepting_population * (1 - dose_1_Pfizer_fraction)),
+      dose_2_Pfizer_maximum = (accepting_population * dose_2_Pfizer_fraction),
+      dose_2_AstraZeneca_maximum = (accepting_population * (1 - dose_2_Pfizer_fraction)),
       
       # compute the numbers of excess doses
       dose_1_Pfizer_extra = pmax(0, dose_1_Pfizer - dose_1_Pfizer_maximum),
@@ -305,7 +330,10 @@ forecast_vaccination <- function(
     )
   
   air %>%
-    mutate(scenario = scenario_name)
+    mutate(scenario = scenario_name) %>%
+    select(
+      -ends_with("maximum")
+    )
   
 }
 
