@@ -341,7 +341,69 @@ lgas_of_concern <- c(
   "Penrith (C)"
 )
 
-
+# load population data from Cth Health (at SA2 level, not LGA) to compute
+# NSW-wide fractions of the 0-14 that are 12-14, and fractions of the 15-29 that
+# are 16-29 (for AIR age distributions), and fractions of the 10-14 that are
+# 12-14, and fractions of the 15-19 that are 16-19 (for 5y age distributions),
+# and any other interesting fractions
+pop_disagg <- read_csv(
+  file = "data/vaccinatinon/2021-07-13-census-populations.csv",
+  col_types = cols(
+    ste_name16 = col_character(),
+    sa3_name16 = col_character(),
+    sa2_name16 = col_character(),
+    mmm2019 = col_double(),
+    age_lower = col_double(),
+    age_upper = col_double(),
+    is_indigenous = col_logical(),
+    is_comorbidity = col_logical(),
+    vaccine_segment = col_character(),
+    population = col_double()
+  )
+) %>%
+  filter(
+    ste_name16 == "New South Wales"
+  ) %>%
+  select(
+    -starts_with("is")
+  ) %>%
+  # indicators for belonging to population groups 
+  mutate(
+    # AIR age bins
+    is_0_14 = age_lower >= 0 & age_upper <= 14,
+    is_15_29 = age_lower >= 15 & age_upper <= 29,
+    # 5y age bins
+    is_10_14 = age_lower >= 10 & age_upper <= 14,
+    is_15_19 = age_lower >= 15 & age_upper <= 19,
+    # age bins needed to disaggregating these around the 16+ adult eligibility
+    # and 12-15 child eligibility
+    # children
+    is_12_14 = age_lower >= 12 & age_upper <= 14,
+    is_15 = age_lower >= 15 & age_upper <= 15,
+    # adults
+    is_16_19 = age_lower >= 16 & age_upper <= 19,
+    is_16_29 = age_lower >= 16 & age_upper <= 29,
+    is_any = TRUE
+  ) %>%
+  # populations in these groups in NSW
+  summarise(
+    across(
+      starts_with("is_"),
+      .fns = list(pop = ~ sum(population * .))
+    )
+  ) %>%
+  mutate(
+    # AIR
+    fraction_0_14_eligible_child = is_12_14_pop / is_0_14_pop,
+    fraction_15_29_eligible_child = is_15_pop / is_15_29_pop,
+    fraction_15_29_eligible_adult = is_16_29_pop / is_15_29_pop,
+    # 5y
+    fraction_10_14_eligible_child = is_12_14_pop / is_10_14_pop,
+    fraction_15_19_eligible_adult = is_16_19_pop / is_15_19_pop,
+    fraction_15_19_eligible_child = is_15_pop / is_15_19_pop
+  ) %>%
+  select(starts_with("fraction"))
+  
 # get populations with all the age aggregations
 pop <- lga_age_population() %>%
   filter(
