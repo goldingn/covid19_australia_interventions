@@ -1750,3 +1750,231 @@ for (this_lga in lgas_of_concern) {
     
 }
 
+# compare scenarios for a single max coverage for three representative LGAs
+lgas_plot <- c("Campbelltown (C) (NSW)", "Fairfield (C)", "Strathfield (A)")
+for (this_max_coverage in unique(vaccination_effect_plot$coverage_scenario)) {
+  
+  vaccination_effect_plot %>%
+    filter(
+      lga %in% lgas_plot,
+      coverage_scenario == this_max_coverage,
+      forecast
+    ) %>%
+    mutate(
+      scenario = str_replace(
+        scenario,
+        "670K extra",
+        "670K extra dose 1s for"),
+      scenario = factor(
+        scenario,
+        levels = rev(unique(scenario))
+      )
+    ) %>%
+    ggplot(
+      aes(
+        x = date,
+        y = vaccination_transmission_multiplier,
+        group = paste(lga, scenario),
+        color = scenario,
+        linetype = scenario != "baseline"
+      )
+    ) + 
+    geom_text(
+      aes(
+        x  = date,
+        y = vaccination_transmission_multiplier,
+        label = lga
+      ),
+      data = vaccination_effect_plot %>%
+        filter(
+          lga %in% lgas_plot,
+          coverage_scenario == this_max_coverage,
+          scenario == "baseline",
+          forecast
+        ) %>%
+        filter(
+          date == max(date)
+        ),
+      hjust = 0,
+      vjust = 0.5,
+      nudge_x = 1,
+      color = "black",
+      size = 4
+    ) +
+    scale_linetype(guide = "none") +
+    coord_cartesian(
+      clip = "off"
+    ) +
+    geom_line(
+      size = 1
+    ) +
+    ylab("Multiplicative effect on Rt") +
+    xlab("") +
+    ggtitle(
+      "Future effect of vaccination on transmission under alternative scenarios",
+      paste(
+        "for three representative LGAs of concern, assuming maximum",
+        str_remove(this_max_coverage, "max "),
+        "vaccine acceptance"
+      )
+    ) +
+    theme_cowplot() +
+    theme(
+      legend.position = c(0.6, 0.8),
+      plot.margin = unit(c(1, 4, 0, 1), "cm")
+    )
+  
+  ggsave(
+    file = paste0(
+      "outputs/nsw/scenario_effect_",
+      str_replace(
+        str_remove(this_max_coverage, "%"),
+        " ",
+        "_"
+      ),
+      "_three_lgas.png"
+    ),
+    bg = "white",
+    width = 9,
+    height = 7
+  )
+  
+}
+
+
+# do the same, but relative to baseline
+relative_vaccination_effect_plot <- vaccination_effect_plot %>%
+  select(
+    -vaccination_transmission_reduction_percent,
+  ) %>%
+  pivot_wider(
+    names_from = scenario,
+    values_from = vaccination_transmission_multiplier
+  ) %>%
+  mutate(
+    across(
+      starts_with("670K"),
+      ~ . / baseline
+    )
+  ) %>%
+  pivot_longer(
+    cols = starts_with("670K"),
+    names_to = "scenario",
+    values_to = "transmission_multiplier_relative_to_baseline"
+  ) %>%
+  select(
+    -baseline
+  )
+
+gg_color_hue <- function(n) {
+  hues = seq(15, 375, length = n + 1)
+  hcl(h = hues, l = 65, c = 100)[1:n]
+}
+
+for (this_max_coverage in unique(relative_vaccination_effect_plot$coverage_scenario)) {
+  for(this_scenario in unique(relative_vaccination_effect_plot$scenario)) {
+    
+    this_colour_index <- match(this_scenario, rev(unique(vaccination_effect_plot$scenario)))
+    this_colour <- gg_color_hue(4)[this_colour_index]
+    relative_vaccination_effect_plot %>%
+      filter(
+        lga %in% lgas_plot,
+        coverage_scenario == this_max_coverage,
+        scenario == this_scenario,
+        forecast
+      ) %>%
+      mutate(
+        scenario = str_replace(
+          scenario,
+          "670K extra",
+          "670K extra dose 1s for"),
+        scenario = factor(
+          scenario,
+          levels = rev(unique(scenario))
+        )
+      ) %>%
+      ggplot(
+        aes(
+          x = date,
+          y = transmission_multiplier_relative_to_baseline,
+          group = paste(lga, scenario),
+          linetype = scenario
+        )
+      ) + 
+      geom_text(
+        aes(
+          x  = date,
+          y = transmission_multiplier_relative_to_baseline,
+          label = lga
+        ),
+        data = relative_vaccination_effect_plot %>%
+          filter(
+            lga %in% lgas_plot,
+            coverage_scenario == this_max_coverage,
+            scenario == this_scenario
+          ) %>%
+          filter(
+            date == max(date)
+          ),
+        hjust = 0,
+        vjust = 0.5,
+        nudge_x = 1,
+        color = "black",
+        size = 4
+      ) +
+      scale_linetype(guide = "none") +
+      coord_cartesian(
+        clip = "off"
+      ) +
+      geom_line(
+        size = 1,
+        color = this_colour
+      ) +
+      ylab("Relative multiplicative effect on Rt") +
+      xlab("") +
+      ggtitle(
+        "Relative effect of vaccination on transmission for scenarios\nrelative to baseline",
+        paste(
+          "for three representative LGAs of concern, assuming maximum",
+          str_remove(
+            this_max_coverage,
+            "max "
+          ),
+          "vaccine acceptance\nand",
+          str_replace(
+            this_scenario,
+            "670K extra ",
+            "670K extra dose 1s to "
+          ),
+          "year olds"
+        )
+      ) +
+      theme_cowplot() +
+      theme(
+        legend.position = "none",
+        plot.margin = unit(c(1, 4, 0, 1), "cm")
+      )
+    
+    ggsave(
+      file = paste(
+        "outputs/nsw/relative_scenario_effect",
+        str_remove(
+          this_scenario,
+          "670K extra "
+        ),
+        str_replace(
+          str_remove(this_max_coverage, "%"),
+          " ",
+          "_"
+        ),
+        "three_lgas.png",
+        sep = "_"
+      ),
+      bg = "white",
+      width = 9,
+      height = 7
+    )
+  
+  }
+}
+      
