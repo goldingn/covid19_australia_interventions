@@ -321,6 +321,7 @@ forecast_vaccination <- function(
       by = c("lga", "age_air_80", "hypothetical_max_coverage")
     ) %>%
     mutate(
+      
       # fill in any missing fractions (those that have not yet reached saturation)
       dose_1_Pfizer_fraction = replace_na(dose_1_Pfizer_fraction, 0),
       dose_2_Pfizer_fraction = replace_na(dose_2_Pfizer_fraction, 0),
@@ -341,7 +342,8 @@ forecast_vaccination <- function(
       dose_1_Pfizer = dose_1_Pfizer - dose_1_Pfizer_extra,
       dose_1_AstraZeneca = dose_1_AstraZeneca - dose_1_AstraZeneca_extra,
       dose_2_Pfizer = dose_2_Pfizer - dose_2_Pfizer_extra,
-      dose_2_AstraZeneca = dose_2_AstraZeneca - dose_2_AstraZeneca_extra,
+      dose_2_AstraZeneca = dose_2_AstraZeneca - dose_2_AstraZeneca_extra
+      
     )
   
   air %>%
@@ -592,6 +594,21 @@ pop_air <- pop %>%
   group_by(LGA_CODE19, LGA_NAME19, age_air) %>%
   summarise(
     population = sum(population),
+    .groups = "drop"
+  )
+
+# and to 5y age bins
+pop_5y <- pop %>%
+  select(
+    lga = LGA_NAME19,
+    age_5y,
+    population
+  ) %>%
+  group_by(
+    lga, age_5y
+  ) %>%
+  summarise(
+    across(population, sum),
     .groups = "drop"
   )
 
@@ -1304,7 +1321,7 @@ efficacy_az_2_dose_extra <- efficacy_az_2_dose - efficacy_az_1_dose
 efficacy_pf_2_dose_extra <- efficacy_pf_2_dose - efficacy_pf_1_dose
 
 # compute fractional coverage by type and number of doses, then compute average efficacy against delta
-coverage <- air %>%
+coverage_air_80 <- air %>%
   arrange(
     scenario, coverage_scenario, lga, age_air_80, date
   ) %>%
@@ -1353,7 +1370,7 @@ coverage <- air %>%
         dose_2_Pfizer
       ),
       .fns = c(
-        fraction = ~ . / any_vaccine
+        fraction = ~ replace_na(. / any_vaccine, 0.25)
       ),
       .names = "{.fn}_{.col}"
     )
@@ -1384,8 +1401,35 @@ coverage <- air %>%
     average_efficacy_transmission = replace_na(average_efficacy_transmission, 0),
     .after = coverage_any_vaccine
   ) %>%
-  ungroup() %>%
-  # break into the 5y age bins, assuming the same coverage
+  ungroup()
+
+correction_10_14 <- pop %>%
+  select(
+    lga = LGA_NAME19,
+    age_5y,
+    age_air_80,
+    population
+  ) %>%
+  filter(
+    age_air_80 == "0-14"
+  ) %>%
+  group_by(lga) %>%
+  summarise(
+    fraction_0_14_are_10_14 = sum(population * (age_5y == "10-14")) / sum(population)
+  )
+
+# tidy up unnecessary columns and disaggregate from AIR (capped at 80) age bins
+# into 5y age bins, assuming the same coverage within the eligible population
+coverage <- coverage_air_80 %>%
+  # keep only coverages and fractions, which we can disaggregate
+  select(
+    scenario, coverage_scenario,
+    date, lga, age_air_80, forecast,
+    coverage_any_vaccine,
+    average_efficacy_transmission,
+    starts_with("fraction")
+  ) %>%
+  # join on the ages (duplicating some rows)
   left_join(
     age_lookup %>%
       select(
@@ -1398,17 +1442,39 @@ coverage <- air %>%
   relocate(
     age_5y, .after = age_air_80
   ) %>%
+  # Correct the coverages for three 5y age brackets falling in the 0-14 AIR age
+  # bracket, since the first two (0-4 and 5-9) should have 0 coverage, and
+  # coverage for 10-14 should be higher, by the ratio of 0-14 population to
+  # 10-14 population. I.e.:
+  #   n_vaccinated = coverage * pop0_14
+  #   new_coverage = n_vaccinated / pop10_14
+  # so:
+  #   new_coverage = coverage * pop0_14 / pop10_14
+  #                = coverage * 1 / (pop10_14 / pop0_14)
+  left_join(
+    correction_10_14,
+    by = "lga"
+  ) %>%
+  mutate(
+    coverage_any_vaccine = case_when(
+      age_5y %in% c("0-4", "5-9") ~ 0,
+      age_5y == "10-14" ~ coverage_any_vaccine / fraction_0_14_are_10_14,
+      TRUE ~ coverage_any_vaccine
+    )
+  ) %>%
   select(
-    # -age_air_80,
-    -population,
-    -ends_with("correction"),
-    -starts_with("fraction")
+    -fraction_0_14_are_10_14
+  ) %>%
+  # join on 5y populations for later use
+  left_join(
+    pop_5y,
+    by = c("lga", "age_5y")
   ) %>%
   rename(
     age = age_5y
   ) %>%
   arrange(
-    lga, date, age
+    scenario, coverage_scenario, date, lga, age
   ) %>%
   # remove any data within 3 weeks of the start, since the time to acquired
   # immunity isn't correctly accounted for
@@ -1416,67 +1482,75 @@ coverage <- air %>%
     date > (min(date) + 21)
   )
 
-# correct the coverages within the 5y age bins for the fraction of those age
-# bins that are within the broader AIR age bins.    
-coverage_corrected <- coverage %>%
-  # remove the maxima - it doesn't make sense to correct these
-  select(
-    -ends_with("maximum")
-  ) %>%
-  # For 0-14 AIR (0-4, 5-9, 10-14 5y), set 0-4 and 5-9 to 0, and set 10-14 to
-  # mop up the coverages they lose by dividing by the fraction of 0-14 year
-  # olds that are 10-14
-  mutate(
-    # compute correction factors
-    age_correction = case_when(
-      age %in% c("0-4", "5-9") ~ 0,
-      age == "10-14" ~ 1 / pop_disagg$fraction_0_14_are_10_14,
-      TRUE ~ 1
-    ),
-    # apply correction factors
-    across(
-      c(any_vaccine, coverage_any_vaccine, starts_with("dose")),
-      ~ . * age_correction
-    )
-  ) %>%
-  select(-age_correction)
-
-# check the number of doses is the same after correction
-identical(
-  coverage %>%
-    select(
-      -ends_with("maximum")
-    ) %>%
-    group_by(age) %>%
-    summarise(
-      across(
-        starts_with("dose"),
-      sum
-      )
-    ),
-  coverage_corrected %>%
-    group_by(age) %>%
-    summarise(
-      across(
-        starts_with("dose"),
-        sum
-      )
-    )
+# check the number of doses by lga/date is the same after disaggregation and
+# correction (to within a small numerical tolerance)
+1e-9 > max(
+  abs(
+    coverage_air_80 %>%
+      filter(
+        date > (min(date) + 21)
+      ) %>%
+      group_by(
+        scenario,
+        coverage_scenario,
+        lga,
+        date
+      ) %>%
+      summarise(
+        doses = sum(coverage_any_vaccine * population),
+        .groups = "drop"
+      ) %>%
+      pull(doses) -
+      coverage %>%
+      group_by(
+        scenario,
+        coverage_scenario,
+        lga,
+        date
+      ) %>%
+      summarise(
+        doses = sum(coverage_any_vaccine * population),
+        .groups = "drop"
+      ) %>%
+      pull(doses)
+  )
 )
 
-write.csv(coverage_corrected, file = "outputs/nsw/nsw_lgas_vaccination_coverage.csv")
+write.csv(coverage, file = "outputs/nsw/nsw_lgas_vaccination_coverage.csv")
+
+# collapse back to air age bin for plotting
+coverage_age_air_80_plot <- coverage %>%
+  group_by(
+    scenario,
+    coverage_scenario,
+    date,
+    lga,
+    age_air_80,
+    forecast
+  ) %>%
+  summarise(
+    coverage_any_vaccine = sum(coverage_any_vaccine * population) / sum(population),
+    average_efficacy_transmission = first(average_efficacy_transmission),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    age_air_80 = factor(
+      age_air_80,
+      levels = rev(unique(age_air_80))
+    )
+  )
 
 for (this_lga in lgas_of_concern) {
   
-  coverage_corrected %>%
+  coverage_age_air_80_plot %>%
     filter(
       lga == this_lga
     ) %>%
     mutate(
       vaccination_effect = coverage_any_vaccine * average_efficacy_transmission,
+      coverage_scenario = str_remove(coverage_scenario, " coverage")
     ) %>%
     rename(
-      age_5y = age,
       age = age_air_80
     ) %>%
     ggplot(
@@ -1493,7 +1567,7 @@ for (this_lga in lgas_of_concern) {
     scale_y_continuous(
       labels = scales::percent_format(accuracy = 1)
     ) +
-    facet_grid(~scenario + coverage_scenario) +
+    facet_grid(coverage_scenario ~ scenario) +
     theme_cowplot() +
     theme(
       strip.background = element_blank()
@@ -1502,15 +1576,14 @@ for (this_lga in lgas_of_concern) {
   ggsave(
     filename = sprintf("outputs/nsw/NSW_%s_age_effect.png", this_lga),
     bg = "white",
-    width = 9,
-    height = 4
+    width = 10,
+    height = 8
   )
   
 }
 
-
 # estimate effects of vaccination on transmission
-vaccination_effect <- coverage_corrected %>%
+vaccination_effect <- coverage %>%
   # subset to recent weeks to speed up computation
   filter(
     date > as.Date("2021-06-16")
@@ -1559,20 +1632,19 @@ vaccination_effect_plot <- vaccination_effect %>%
   mutate(
     scenario = factor(
       scenario,
-      levels = c(
-        "baseline",
-        "670K extra 16-39",
-        "670K extra 16-49"
+      levels = rev(
+        unique(
+          vaccination_effect$scenario
+        )
       )
+    ),
+    coverage_scenario = str_remove(
+      coverage_scenario,
+      " coverage"
     ),
     coverage_scenario = factor(
       coverage_scenario,
-      levels = c(
-        "max 70% coverage",
-        "max 80% coverage", 
-        "max 90% coverage",
-        "max 100% coverage"
-      )
+      levels = unique(coverage_scenario)
     )
   )
 
@@ -1587,7 +1659,7 @@ vaccination_effect_plot %>%
     )
   ) +
   facet_grid(
-    scenario ~ coverage_scenario
+    coverage_scenario ~ scenario
   ) +
   geom_line(
     alpha = 0.2
@@ -1657,12 +1729,11 @@ for (this_lga in lgas_of_concern) {
     ylab("") +
     xlab("") +
     ggtitle(
-      paste0(this_lga, " - reduction in transmission potential"),
-      "baseline (green) versus 670K scenario (red)"
+      paste0(this_lga, " - reduction in transmission potential")
     ) +
     theme_cowplot() +
     theme(
-      legend.position = "none",
+      legend.position = "bottom",
       strip.background = element_blank()
     )
 
