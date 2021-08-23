@@ -99,8 +99,6 @@ isolation_delays_from_onset <- estimate_delays(
   date = nsw_ll$date_onset,
   delay = nsw_ll$time_to_isolation,
   direction = "forward",
-  min_records = 300,
-  absolute_min_records = 50,
   revert_to_national = FALSE
 )
 
@@ -109,8 +107,6 @@ detection_delays_from_onset <- estimate_delays(
   date = nsw_ll$date_onset,
   delay = nsw_ll$time_to_detection,
   direction = "forward",
-  min_records = 300,
-  absolute_min_records = 50,
   revert_to_national = FALSE
 )
 

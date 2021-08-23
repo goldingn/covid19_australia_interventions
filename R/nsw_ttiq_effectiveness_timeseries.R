@@ -43,15 +43,18 @@ nsw_ll <- read_csv(
       TRUE ~ date_infection
     )
   ) %>%
-  # use modelled date of onset for period where dates of infection are reliable
   mutate(
-    modelled_onset = date_detection < as_date("2021-02-28"),
-    date_onset = if_else(
-      modelled_onset,
-      date_infection + 5,
-      date_onset
-    )
+    date_onset = date_infection + 5
   ) %>%
+  # # use modelled date of onset for period where dates of infection are reliable
+  # mutate(
+  #   modelled_onset = date_detection < as_date("2021-02-28"),
+  #   date_onset = if_else(
+  #     modelled_onset,
+  #     date_infection + 5,
+  #     date_onset
+  #   )
+  # ) %>%
   # compute time from (possibly modelled) onset to isolation
   mutate(
     time_to_isolation = pmax(-5, as.numeric(date_isolation - date_onset)),
@@ -72,8 +75,6 @@ isolation_delays_from_onset <- estimate_delays(
   date = nsw_ll$date_onset,
   delay = nsw_ll$time_to_isolation,
   direction = "forward",
-  min_records = 300,
-  absolute_min_records = 50,
   revert_to_national = FALSE
 )
 
@@ -82,14 +83,12 @@ detection_delays_from_onset <- estimate_delays(
   date = nsw_ll$date_onset,
   delay = nsw_ll$time_to_detection,
   direction = "forward",
-  min_records = 300,
-  absolute_min_records = 50,
   revert_to_national = FALSE
 )
 
-null_function <- function(...) {NA}
 p_isolation <- isolation_delays_from_onset %>%
   filter(
+    date <= max(nsw_ll$date_detection),
     !use_national
   ) %>%
   plot_delays(
