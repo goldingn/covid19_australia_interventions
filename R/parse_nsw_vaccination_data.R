@@ -471,6 +471,125 @@ extra_pfizer_dose_1_excess <- function (
   
 }
 
+# compute the number of 12-15 year olds in the stated LGAs, and the fraction
+# of them in each of the two AIR age bins
+child_pop <- function(lgas) {
+  lga_child_pop <- pop_air %>%
+    filter(
+      age_air %in% c("0-14", "15-29"),
+      LGA_NAME19 %in% lgas
+    ) %>%
+    group_by(age_air) %>%
+    summarise(
+      population = sum(population)
+    ) %>%
+    pivot_wider(
+      names_from = age_air,
+      values_from = population
+    ) %>%
+    mutate(
+      # compute the number of 12-15 year olds
+      `12-14` = `0-14` * pop_disagg$fraction_0_14_eligible_child,
+      `15` = `15-29` * pop_disagg$fraction_15_29_eligible_child,
+      `12-15` = `12-14` + `15`,
+      # compute the fraction of each bin that are eligible
+      fraction_12_15_in_0_14 = `12-14` / `0-14`,
+      fraction_12_15_in_15_29 = `15` / `15-29`,
+    )
+}
+
+# give out extra doses to all 12-15 year olds in the stated lgas
+extra_pfizer_child <- function (
+  air_current,
+  dose_1_dates,
+  n_extra_pfizer,
+  target_adult_ages_air = c("15-29", "30-39"),
+  target_lgas = lgas_of_concern,
+  previous_days_average,
+  n_child_doses = lga_child_pop(lgas)$`12-15`
+) {
+  
+  lga_child_pop <- child_pop(target_lgas)
+  
+  # give out 140K dose 1s to 12-15 year olds in the LGAs of concern, proportionally to population
+  child_doses <- extra_pfizer(
+    air_current = air_current,
+    dose_1_dates = dose_1_dates,
+    n_extra_pfizer = 0,
+    target_ages_air = c("0-14", "15-29"),
+    target_lgas = target_lgas,
+    previous_days_average = previous_days_average,
+    dose_interval = Inf
+  ) %>%
+    left_join(
+      pop_air,
+      by = c(age_air_80 = "age_air", lga = "LGA_NAME19")
+    ) %>%
+    select(
+      -LGA_CODE19
+    ) %>%
+    # adjust populations to get the number of 12-15 year olds in each age bin,
+    # then compute fraction of 12-15 population in each AIR age band and LGA
+    mutate(
+      population = case_when(
+        age_air_80 == "0-14" ~ population * lga_child_pop$fraction_12_15_in_0_14,
+        age_air_80 == "15-29" ~ population * lga_child_pop$fraction_12_15_in_15_29
+      ),
+      fraction = population / sum(population)
+    ) %>%
+    # allocate Pfizer dose 1s to these LGAs
+    mutate(
+      dose_1_AstraZeneca = 0,
+      dose_1_Pfizer = fraction * n_child_doses,
+      dose_2_AstraZeneca = 0,
+      dose_2_Pfizer = 0,
+    ) %>%
+    select(
+      -population,
+      -fraction
+    ) %>%
+    add_pfizer_dose_2s(
+      dose_interval = 8 * 7
+    )
+  
+  # give out remaining dose 1s to 16-39 year olds in LGAs of concern
+  adult_doses <- extra_pfizer(
+    air_current = air_current,
+    dose_1_dates = dose_1_dates,
+    n_extra_pfizer = pmax(0, n_extra_pfizer - n_child_doses),
+    target_ages_air = target_adult_ages_air,
+    target_lgas = target_lgas,
+    previous_days_average = previous_days_average,
+    dose_interval = 8 * 7
+  )
+  
+  # join these, and sum across ages since there are two different 15-29
+  # allocations. Note that the daily number of doses in 15-29 is an allocation
+  # based on the population of 15 year olds, plus an allocation of additional
+  # doses for the 15-29 age category as a whole, based on the rate of vaccination
+  # in this age band. If only 16+ were vaccinated previously, this would be
+  # identical to doing allocation on 15 year olds (based on population) and on
+  # 16-29 year olds (based on previous rate). In reality, a small number of
+  # priority 15 year olds will already have been vaccinated so this will lead to a
+  # slightly too-fast allocation in those LGAs. But this should be a very small
+  # bias, irrelevant at the scale of all 12 LGAs combined, and irrelevant by the
+  # time the population is saturated.
+  bind_rows(
+    child_doses,
+    adult_doses,
+  ) %>%
+    group_by(
+      lga, age_air_80, date
+    ) %>%
+    summarise(
+      across(
+        starts_with("dose"),
+        sum
+      ),
+      .groups = "drop"
+    )
+}
+
 # lookup to disaggregate coverages to 5y age groups
 age_lookup <- tibble::tribble(
   ~age_5y, ~age_air, ~age_abs, ~age_air_80,
@@ -898,111 +1017,30 @@ extra_670K_16_39 <- extra_pfizer(
 #   dose_interval = 8 * 7
 # )
 
-# compute the number of 12-15 year olds in the LGAs of concern, and the fraction
-# of them in each of the two AIR age bins
-lga_child_pop <- pop_air %>%
-  filter(
-    age_air %in% c("0-14", "15-29"),
-    LGA_NAME19 %in% lgas_of_concern
-  ) %>%
-  group_by(age_air) %>%
-  summarise(
-    population = sum(population)
-  ) %>%
-  pivot_wider(
-    names_from = age_air,
-    values_from = population
-  ) %>%
-  mutate(
-    # compute the number of 12-15 year olds
-    `12-14` = `0-14` * pop_disagg$fraction_0_14_eligible_child,
-    `15` = `15-29` * pop_disagg$fraction_15_29_eligible_child,
-    `12-15` = `12-14` + `15`,
-    # compute the fraction of each bin that are eligible
-    fraction_12_15_in_0_14 = `12-14` / `0-14`,
-    fraction_12_15_in_15_29 = `15` / `15-29`,
-  )
-
-
 # scenario 3: 530K doses to 16-39, 140K doses to 12-15 (by age)
-
-# give out 140K dose 1s to 12-15 year olds in the LGAs of concern, proportionally to population
-extra_140K_12_15 <- extra_pfizer(
+extra_670K_12_39 <- extra_pfizer_child(
   air_current = air_current,
   dose_1_dates = dates_670K,
-  n_extra_pfizer = 0,
-  target_ages_air = c("0-14", "15-29"),
+  n_extra_pfizer = remaining_bolus,
+  target_adult_ages_air = c("15-29", "30-39"),
   target_lgas = lgas_of_concern,
   previous_days_average = previous_days_average,
-  dose_interval = Inf
-) %>%
-  left_join(
-    pop_air,
-    by = c(age_air_80 = "age_air", lga = "LGA_NAME19")
-  ) %>%
-  select(
-    -LGA_CODE19
-  ) %>%
-  # adjust populations to get the number of 12-15 year olds in each age bin,
-  # then compute fraction of 12-15 population in each AIR age band and LGA
-  mutate(
-    population = case_when(
-      age_air_80 == "0-14" ~ population * lga_child_pop$fraction_12_15_in_0_14,
-      age_air_80 == "15-29" ~ population * lga_child_pop$fraction_12_15_in_15_29
-    ),
-    fraction = population / sum(population)
-  ) %>%
-  # allocate Pfizer dose 1s to these LGAs
-  mutate(
-    dose_1_AstraZeneca = 0,
-    dose_1_Pfizer = fraction * 140000,
-    dose_2_AstraZeneca = 0,
-    dose_2_Pfizer = 0,
-  ) %>%
-  select(
-    -population,
-    -fraction
-  ) %>%
-  add_pfizer_dose_2s(
-    dose_interval = 8 * 7
-  )
-
-# give out remaining dose 1s to 16-39 year olds in LGAs of concern
-extra_530K_16_39 <- extra_pfizer(
-  air_current = air_current,
-  dose_1_dates = dates_670K,
-  n_extra_pfizer = pmax(0, remaining_bolus - 140000),
-  target_ages_air = c("15-29", "30-39"),
-  target_lgas = lgas_of_concern,
-  previous_days_average = previous_days_average,
-  dose_interval = 8 * 7
+  n_child_doses = 140000
 )
 
-# join these, and sum across ages since there are two different 15-29
-# allocations. Note that the daily number of doses in 15-29 is an allocation
-# based on the population of 15 year olds, plus an allocation of additional
-# doses for the 15-29 age category as a whole, based on the rate of vaccination
-# in this age band. If only 16+ were vaccinated previously, this would be
-# identical to doing allocation on 15 year olds (based on population) and on
-# 16-29 year olds (based on previous rate). In reality, a small number of
-# priority 15 year olds will already have been vaccinated so this will lead to a
-# slightly too-fast allocation in those LGAs. But this should be a very small
-# bias, irrelevant at the scale of all 12 LGAs combined, and irrelevant by the
-# time the population is saturated.
-extra_670K_12_39 <- bind_rows(
-  extra_140K_12_15,
-  extra_530K_16_39,
-) %>%
-  group_by(
-    lga, age_air_80, date
-  ) %>%
-  summarise(
-    across(
-      starts_with("dose"),
-      sum
-    ),
-    .groups = "drop"
-  )
+lga_extra_child_pop <- child_pop(c(lgas_of_concern, extra_lgas))
+
+extra_670K_12_39_extra_lgas <- extra_pfizer_child(
+  air_current = air_current,
+  dose_1_dates = dates_670K,
+  n_extra_pfizer = remaining_bolus,
+  target_adult_ages_air = c("15-29", "30-39"),
+  target_lgas = c(lgas_of_concern, extra_lgas),
+  previous_days_average = previous_days_average,
+  n_child_doses = 200000
+)
+
+
 
 extra_670K_16_39 %>%
   summarise(
@@ -1031,6 +1069,15 @@ extra_670K_16_39_extra_lgas %>%
 
 # check totals
 extra_670K_12_39 %>%
+  summarise(
+    across(
+      starts_with("dose"),
+      sum
+    )
+  )
+
+# check totals
+extra_670K_12_39_extra_lgas %>%
   summarise(
     across(
       starts_with("dose"),
@@ -1069,6 +1116,14 @@ air <- bind_rows(
     air_current,
     extra_doses = extra_670K_12_39,
     scenario_name = "670K extra 12-39",
+    previous_days_average = previous_days_average,
+    vaccinating_12_15 = TRUE
+  ),
+  # forecast with additional dose 1s to 12-39s in LGAs of concern over 4 weeks
+  forecast_vaccination(
+    air_current,
+    extra_doses = extra_670K_12_39_extra_lgas,
+    scenario_name = "670K extra 12-39 extra LGAs",
     previous_days_average = previous_days_average,
     vaccinating_12_15 = TRUE
   )
@@ -1118,10 +1173,19 @@ extra_670K_12_39_dose_1_excess <- extra_670K_12_39 %>%
     scenario = "670K extra 12-39"
   )
 
+extra_670K_12_39_extra_lgas_dose_1_excess <- extra_670K_12_39_extra_lgas %>%
+  extra_pfizer_dose_1_excess(
+    air %>% filter(scenario == "670K extra 12-39 extra LGAs")
+  ) %>%
+  mutate(
+    scenario = "670K extra 12-39 extra LGAs"
+  )
+
 extra_670K_dose_1_excess <- bind_rows(
   extra_670K_16_39_dose_1_excess,
   extra_670K_16_39_extra_lgas_dose_1_excess,
-  extra_670K_12_39_dose_1_excess
+  extra_670K_12_39_dose_1_excess,
+  extra_670K_12_39_extra_lgas_dose_1_excess
 )
 
 # compute the number of AZ dose 1s given out to target group during this period
@@ -1237,7 +1301,7 @@ ggsave(
   "outputs/nsw/unused_doses_670K.png",
   bg = "white",
   width = 9,
-  height = 4
+  height = 7
 )
 
 # print the number of excess Pfizer doses by coverage scenario
@@ -1249,33 +1313,36 @@ extra_670K_dose_1_excess %>% filter(
     names_from = coverage_scenario,
     values_from = dose_1_Pfizer_scenario_extra
   )
+# 
+# # print the total pfizer doses by scenario and coverage
+# air %>%
+#   filter(
+#     date == max(date),
+#     coverage_scenario == "max 80% coverage"
+#   ) %>%
+#   select(
+#     -contains("AstraZeneca"),
+#     -ends_with("fraction")
+#   ) %>%
+#   group_by(scenario) %>%
+#   summarise(
+#     across(
+#       starts_with("dose"),
+#       ~ sum(., na.rm = TRUE)
+#     )
+#   )
 
-# print the total pfizer doses by scenario and coverage
-air %>%
-  filter(date == max(date)) %>%
-  select(
-    -contains("AstraZeneca"),
-    -ends_with("fraction")
-  ) %>%
-  group_by(scenario) %>%
-  summarise(
-    across(
-      starts_with("dose"),
-      ~ sum(., na.rm = TRUE)
-    )
-  )
 
-
-# identify LGAs with greater than 90% coverage in the data
-air %>%
-  filter(
-    date == max(air_current$date),
-    coverage_scenario == "max 90% coverage",
-    max_coverage > hypothetical_max_coverage,
-    scenario == "baseline"
-  ) %>%
-  select(lga, age_air_80) %>%
-  table()
+# # identify LGAs with greater than 90% coverage in the data
+# air %>%
+#   filter(
+#     date == max(air_current$date),
+#     coverage_scenario == "max 90% coverage",
+#     max_coverage > hypothetical_max_coverage,
+#     scenario == "baseline"
+#   ) %>%
+#   select(lga, age_air_80) %>%
+#   table()
 
 
 for (coverage in unique(air$coverage_scenario)) {
@@ -1319,7 +1386,9 @@ for (coverage in unique(air$coverage_scenario)) {
         linetype = forecast,
       ),
     ) +
-    facet_grid(rows = vars(doses), cols = vars(scenario)) +
+    facet_grid(
+      scenario ~ doses
+    ) +
     scale_y_continuous(
       limits = c(0, 1),
       labels = scales::percent_format(
@@ -1327,7 +1396,7 @@ for (coverage in unique(air$coverage_scenario)) {
       )
     ) +
     geom_hline(
-      yintercept = seq(0, 1, by = 0.2),
+      yintercept = seq(0, 1, by = 0.25),
       color = grey(0.7),
       size = 0.2
     ) +
@@ -1351,8 +1420,8 @@ for (coverage in unique(air$coverage_scenario)) {
       ".png"
     ),
     bg = "white",
-    width = 8,
-    height = 5
+    width = 9,
+    height = 14
   )
   
 }
@@ -1584,10 +1653,14 @@ coverage_age_air_80_plot <- coverage %>%
     age_air_80 = factor(
       age_air_80,
       levels = rev(unique(age_air_80))
+    ),
+    coverage_scenario = factor(
+      coverage_scenario,
+      levels = unique(coverage_scenario)
     )
   )
 
-for (this_lga in lgas_of_concern) {
+for (this_lga in c(lgas_of_concern, extra_lgas)) {
   
   coverage_age_air_80_plot %>%
     filter(
@@ -1746,7 +1819,7 @@ ggsave(
 
 # for each lga of concern, plot the two scenarios, for each vaccination coverage
 # assumption
-for (this_lga in lgas_of_concern) {
+for (this_lga in c(lgas_of_concern, extra_lgas)) {
   
   vaccination_effect_plot %>%
     filter(lga == this_lga) %>%
