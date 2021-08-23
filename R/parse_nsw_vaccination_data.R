@@ -774,8 +774,82 @@ air_current <- expand_grid(
 
 # which previous days to average over for computing the latest data date?
 # the 4 weeks prior to Monday August 16 (start of vaccination drive)
-dates_average <- as_date("2021-08-16") - 0:27
+dates_average <- as_date("2021-08-16") - 1:28
 previous_days_average <- as.numeric(max(air_current$date) - dates_average)
+
+# calculate how many of the additional doses in the surge have been given out
+# 1. compute the average daily vaccination rate in the target LGAs and ages
+# prior to Monday
+average_doses <- air_current %>%
+  filter(
+    lga %in% lgas_of_concern,
+    date %in% dates_average,
+    age_air_80 %in% c("15-29", "30-39")
+  ) %>%
+  group_by(
+    lga, age_air_80
+  ) %>%
+  summarise(
+    across(
+      ends_with("Pfizer"),
+      ~ (max(.) - min(.)) / n()
+    ),
+    .groups = "drop"
+  ) %>%
+  rowwise() %>%
+  mutate(
+    doses_Pfizer = sum(across(ends_with("Pfizer")))
+  ) %>%
+  ungroup() %>%
+  summarise(
+    across(
+      ends_with("Pfizer"),
+      sum
+    )
+  )
+
+# 2. compute the daily vaccination rate in the target LGAs and ages for each day
+# on and after Monday
+recent_doses <- air_current %>%
+  filter(
+    lga %in% lgas_of_concern,
+    date > max(dates_average),
+    age_air_80 %in% c("15-29", "30-39")
+  ) %>%
+  group_by(
+    lga, age_air_80
+  ) %>%
+  summarise(
+    across(
+      ends_with("Pfizer"),
+      ~ (max(.) - min(.)) / n()
+    ),
+    .groups = "drop"
+  ) %>%
+  rowwise() %>%
+  mutate(
+    doses_Pfizer = sum(across(ends_with("Pfizer")))
+  ) %>%
+  ungroup() %>%
+  summarise(
+    across(
+      ends_with("Pfizer"),
+      sum
+    )
+  )
+
+# 3. subtract the average rate from the observed rate and sum to get the number
+# of additional doses delivered
+
+# number of extra doses given out since the start of the bolus
+days_since_start <- as.numeric(latest_data_date - max(dates_average))
+doses_so_far <- (recent_doses$doses_Pfizer - average_doses$doses_Pfizer) * days_since_start
+
+# bolus size
+initial_bolus <- 670000
+
+# remainder
+remaining_bolus <- initial_bolus - pmax(0, doses_so_far)
 
 # over which dates to administer the 670K extra doses (from the day after the
 # latet data until 3 weeks after the start fof the drive)
@@ -791,7 +865,7 @@ dates_670K <- seq(
 extra_670K_16_39 <- extra_pfizer(
   air_current = air_current,
   dose_1_dates = dates_670K,
-  n_extra_pfizer = 670000,
+  n_extra_pfizer = remaining_bolus,
   target_ages_air = c("15-29", "30-39"),
   target_lgas = lgas_of_concern,
   previous_days_average = previous_days_average,
@@ -806,35 +880,12 @@ extra_670K_16_39 <- extra_pfizer(
 extra_670K_16_49 <- extra_pfizer(
   air_current = air_current,
   dose_1_dates = dates_670K,
-  n_extra_pfizer = 670000,
+  n_extra_pfizer = remaining_bolus,
   target_ages_air = c("15-29", "30-39", "40-49"),
   target_lgas = lgas_of_concern,
   previous_days_average = previous_days_average,
   dose_interval = 8 * 7
 )
-# extra_370K_16_39 <- extra_pfizer(
-#   air_current = air_current,
-#   dose_1_dates = dates_670K,
-#   n_extra_pfizer = 370000,
-#   target_ages_air = c("15-29", "30-39"),
-#   target_lgas = lgas_of_concern,
-#   previous_days_average = previous_days_average,
-#   dose_interval = 8 * 7
-# )
-# extra_300K_40_49 <- extra_pfizer(
-#   air_current = air_current,
-#   dose_1_dates = dates_670K,
-#   n_extra_pfizer = 300000,
-#   target_ages_air = c("40-49"),
-#   target_lgas = lgas_of_concern,
-#   previous_days_average = previous_days_average,
-#   dose_interval = 8 * 7
-# )
-# 
-# extra_670K_16_49 <- bind_rows(
-#   extra_370K_16_39,
-#   extra_300K_40_49
-# )
 
 # compute the number of 12-15 year olds in the LGAs of concern, and the fraction
 # of them in each of the two AIR age bins
@@ -905,11 +956,11 @@ extra_140K_12_15 <- extra_pfizer(
     dose_interval = 8 * 7
   )
 
-# give out 530K dose 1s to 16-39 year olds in LGAs of concern
+# give out remaining dose 1s to 16-39 year olds in LGAs of concern
 extra_530K_16_39 <- extra_pfizer(
   air_current = air_current,
   dose_1_dates = dates_670K,
-  n_extra_pfizer = 530000,
+  n_extra_pfizer = pmax(0, remaining_bolus - 140000),
   target_ages_air = c("15-29", "30-39"),
   target_lgas = lgas_of_concern,
   previous_days_average = previous_days_average,
@@ -941,34 +992,6 @@ extra_670K_12_39 <- bind_rows(
     ),
     .groups = "drop"
   )
-# 
-# # scenario 4: 530K doses to 16-49, 140K doses to 12-15 (by age)
-# extra_670K_12_49 <- bind_rows(
-# 
-#   # give out 140K dose 1s to 12-15 year olds in LGAs of concern
-#   extra_140K_12_15,
-# 
-#   # give out 530K dose 1s to 16-49 year olds in LGAs of concern
-#   extra_pfizer(
-#     air_current = air_current,
-#     dose_1_dates = dates_670K,
-#     n_extra_pfizer = 530000,
-#     target_ages_air = c("15-29", "30-39", "40-49"),
-#     target_lgas = lgas_of_concern,
-#     previous_days_average = previous_days_average,
-#     dose_interval = 8 * 7
-#   )
-# ) %>%
-#   group_by(
-#     lga, age_air_80, date
-#   ) %>%
-#   summarise(
-#     across(
-#       starts_with("dose"),
-#       sum
-#     ),
-#     .groups = "drop"
-#   )
 
 extra_670K_16_39 %>%
   summarise(
@@ -995,14 +1018,7 @@ extra_670K_12_39 %>%
     )
   )
 
-# # check totals
-# extra_670K_12_49 %>%
-#   summarise(
-#     across(
-#       starts_with("dose"),
-#       sum
-#     )
-#   )
+remaining_bolus
 
 air <- bind_rows(
   # forecast doses under current vaccination rate, assuming no under 16s are
