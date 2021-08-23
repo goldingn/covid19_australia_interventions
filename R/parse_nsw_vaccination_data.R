@@ -509,6 +509,7 @@ lgas_of_concern <- c(
   "Penrith (C)"
 )
 
+
 # load population data from Cth Health (at SA2 level, not LGA) to compute
 # NSW-wide fractions of the 0-14 that are 12-14, and fractions of the 15-29 that
 # are 16-29 (for AIR age distributions), and fractions of the 10-14 that are
@@ -613,7 +614,7 @@ pop_5y <- pop %>%
   )
 
 # load air data, remove provider type, add populations, and tidy
-air_raw <- list.files(
+air_raw_postcode <- list.files(
   "~/not_synced/vaccination/nsw/",
   pattern = "^AIR_.*_UNSW.csv$",
   full.names = TRUE
@@ -633,6 +634,7 @@ air_raw <- list.files(
     col_types = cols(
       LGA_CODE19 = col_double(),
       LGA_NAME19 = col_character(),
+      POSTCODE = col_character(),
       DOSE_NUMBER = col_double(),
       VACCINE_TYPE = col_character(),
       AGE_GROUP = col_character(),
@@ -647,6 +649,24 @@ air_raw <- list.files(
     -LGA_CODE19,
     -SNAPSHOT_DATE,
     -DAILY_COUNT
+  )
+
+# aggregate to LGA level
+air_raw <- air_raw_postcode %>%
+  group_by(
+    LGA_NAME19,
+    DOSE_NUMBER,
+    VACCINE_TYPE,
+    AGE_GROUP,
+    PROVIDER_TYPE,
+    ENCOUNTER_DATE
+  ) %>%
+  summarise(
+    across(
+      CUMULATIVE_DAILY_COUNT,
+      sum
+    ),
+    .groups = "drop"
   )
 
 latest_data_date <- max(air_raw$ENCOUNTER_DATE)
