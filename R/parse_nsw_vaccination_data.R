@@ -1706,6 +1706,8 @@ for (this_lga in c(lgas_of_concern, extra_lgas)) {
   
 }
 
+baseline_ngm <- baseline_matrix(1)
+
 # estimate effects of vaccination on transmission
 vaccination_effect <- coverage %>%
   # subset to recent weeks to speed up computation
@@ -1720,7 +1722,7 @@ vaccination_effect <- coverage %>%
     vaccination_transmission_multiplier = vaccination_transmission_effect(
       age_coverage = coverage_any_vaccine,
       efficacy_mean = average_efficacy_transmission,
-      next_generation_matrix = baseline_matrix(1),
+      next_generation_matrix = baseline_ngm,
       R0 = 1
     )$overall,
     .groups = "drop"
