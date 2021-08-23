@@ -1668,7 +1668,11 @@ for (this_lga in c(lgas_of_concern, extra_lgas)) {
     ) %>%
     mutate(
       vaccination_effect = coverage_any_vaccine * average_efficacy_transmission,
-      coverage_scenario = str_remove(coverage_scenario, " coverage")
+      coverage_scenario = str_remove(coverage_scenario, " coverage"),
+      coverage_scenario = factor(
+        coverage_scenario,
+        levels = rev(unique(coverage_scenario))
+      )
     ) %>%
     rename(
       age = age_air_80
@@ -1696,7 +1700,7 @@ for (this_lga in c(lgas_of_concern, extra_lgas)) {
   ggsave(
     filename = sprintf("outputs/nsw/NSW_%s_age_effect.png", this_lga),
     bg = "white",
-    width = 10,
+    width = 12,
     height = 8
   )
   
