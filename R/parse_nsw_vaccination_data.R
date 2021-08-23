@@ -387,7 +387,7 @@ extra_pfizer <- function (
     # add on range of dates on which to overload doses
     full_join(
       expand_grid(
-        lga = lgas_of_concern,
+        lga = target_lgas,
         date = dose_1_dates
       ),
       by = "lga"
@@ -507,6 +507,17 @@ lgas_of_concern <- c(
   "Parramatta (C)",
   "Strathfield (A)",
   "Penrith (C)"
+)
+
+extra_lgas <- c(
+  "Hawkesbury (C)",
+  "Camden (A)",
+  "Sutherland Shire (A)",
+  "Ryde (C)",
+  "Inner West (A)",
+  "Blue Mountains (C)",
+  "The Hills Shire (A)",
+  "Sydney (C)"
 )
 
 
@@ -873,19 +884,19 @@ extra_670K_16_39 <- extra_pfizer(
 )
 
 # scenario 2: 670K doses to 16-49 year olds
-
-# give out 670K dose 1s to 16-49 year olds in LGAs of concern. Note that this
-# yields broadly the same results as allocating 370K dose 1s to 16-39 year olds
-# and 300K dose 1s to 40-49 year olds in LGAs of concern.
-extra_670K_16_49 <- extra_pfizer(
-  air_current = air_current,
-  dose_1_dates = dates_670K,
-  n_extra_pfizer = remaining_bolus,
-  target_ages_air = c("15-29", "30-39", "40-49"),
-  target_lgas = lgas_of_concern,
-  previous_days_average = previous_days_average,
-  dose_interval = 8 * 7
-)
+# 
+# # give out 670K dose 1s to 16-49 year olds in LGAs of concern. Note that this
+# # yields broadly the same results as allocating 370K dose 1s to 16-39 year olds
+# # and 300K dose 1s to 40-49 year olds in LGAs of concern.
+# extra_670K_16_49 <- extra_pfizer(
+#   air_current = air_current,
+#   dose_1_dates = dates_670K,
+#   n_extra_pfizer = remaining_bolus,
+#   target_ages_air = c("15-29", "30-39", "40-49"),
+#   target_lgas = lgas_of_concern,
+#   previous_days_average = previous_days_average,
+#   dose_interval = 8 * 7
+# )
 
 # compute the number of 12-15 year olds in the LGAs of concern, and the fraction
 # of them in each of the two AIR age bins
@@ -1001,13 +1012,22 @@ extra_670K_16_39 %>%
     )
   )
 
-extra_670K_16_49 %>%
+
+extra_670K_16_39_extra_lgas %>%
   summarise(
     across(
       starts_with("dose"),
       sum
     )
   )
+
+# extra_670K_16_49 %>%
+#   summarise(
+#     across(
+#       starts_with("dose"),
+#       sum
+#     )
+#   )
 
 # check totals
 extra_670K_12_39 %>%
@@ -1039,8 +1059,8 @@ air <- bind_rows(
   # forecast with additional dose 1s to 16-49s in LGAs of concern over 4 weeks
   forecast_vaccination(
     air_current,
-    extra_doses = extra_670K_16_49,
-    scenario_name = "670K extra 16-49",
+    extra_doses = extra_670K_16_39_extra_lgas,
+    scenario_name = "670K extra 16-39 extra LGAs",
     previous_days_average = previous_days_average,
     vaccinating_12_15 = FALSE
   ),
@@ -1051,15 +1071,7 @@ air <- bind_rows(
     scenario_name = "670K extra 12-39",
     previous_days_average = previous_days_average,
     vaccinating_12_15 = TRUE
-  ),
-  # # forecast with additional dose 1s to 12-39s in LGAs of concern over 4 weeks
-  # forecast_vaccination(
-  #   air_current,
-  #   extra_doses = extra_670K_12_49,
-  #   scenario_name = "670K extra 12-49",
-  #   previous_days_average = previous_days_average,
-  #   vaccinating_12_15 = TRUE
-  # )
+  )
 ) %>%
   # tidy up labels for printing
   mutate(
@@ -1082,12 +1094,20 @@ extra_670K_16_39_dose_1_excess <- extra_670K_16_39 %>%
     scenario = "670K extra 16-39"
   )
 
-extra_670K_16_49_dose_1_excess <- extra_670K_16_49 %>%
+# extra_670K_16_49_dose_1_excess <- extra_670K_16_49 %>%
+#   extra_pfizer_dose_1_excess(
+#     air %>% filter(scenario == "670K extra 16-49")
+#   ) %>%
+#   mutate(
+#     scenario = "670K extra 16-49"
+#   )
+
+extra_670K_16_39_extra_lgas_dose_1_excess <- extra_670K_16_39_extra_lgas %>%
   extra_pfizer_dose_1_excess(
-    air %>% filter(scenario == "670K extra 16-49")
+    air %>% filter(scenario == "670K extra 16-39 extra LGAs")
   ) %>%
   mutate(
-    scenario = "670K extra 16-49"
+    scenario = "670K extra 16-39 extra LGAs"
   )
 
 extra_670K_12_39_dose_1_excess <- extra_670K_12_39 %>%
@@ -1098,19 +1118,10 @@ extra_670K_12_39_dose_1_excess <- extra_670K_12_39 %>%
     scenario = "670K extra 12-39"
   )
 
-# extra_670K_12_49_dose_1_excess <- extra_670K_12_49 %>%
-#   extra_pfizer_dose_1_excess(
-#     air %>% filter(scenario == "670K extra 12-49")
-#   ) %>%
-#   mutate(
-#     scenario = "670K extra 12-49"
-#   )
-
 extra_670K_dose_1_excess <- bind_rows(
   extra_670K_16_39_dose_1_excess,
-  extra_670K_16_49_dose_1_excess,
+  extra_670K_16_39_extra_lgas_dose_1_excess,
   extra_670K_12_39_dose_1_excess
-  # extra_670K_12_49_dose_1_excess
 )
 
 # compute the number of AZ dose 1s given out to target group during this period
@@ -1624,6 +1635,7 @@ vaccination_effect <- coverage %>%
   filter(
     date > as.Date("2021-06-16")
   ) %>%
+  arrange(scenario, coverage_scenario, lga) %>%
   group_by(
     lga, date, forecast, scenario, coverage_scenario
   ) %>%
