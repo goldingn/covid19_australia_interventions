@@ -5606,7 +5606,7 @@ reff_plotting <- function(
   sims <- do.call(calculate, args)
   
   # vaccine effect only
-  plot_trend(sims$R_eff_loc_1_vaccine_only, # clunky fix
+  plot_trend(sims$R_eff_loc_1_vaccine_only, 
              data = fitted_model_extended$data,
              min_date = min_date,
              max_date = max_date,
@@ -9483,7 +9483,7 @@ read_vax_data <- function(
 }
 
 load_vax_data <- function(){
-  filesdates  <- vaccine_files_dates()
+  filesdates  <- vax_files_dates()
   
   mapply(
     FUN = read_vax_data,
@@ -9690,5 +9690,47 @@ get_age_distribution_by_state <- function(
     dplyr::select(-state_pop)
   
   return(age_class_fractions)
+  
+}
+
+
+vax_files_dates <- function(
+  dir = "~/not_synced/vaccination/vaccination_data/"
+) {
+  
+  files <- list.files(
+    path = dir,
+    pattern = ".xl",
+    full.names = TRUE
+  )
+  
+  filenames <- list.files(
+    path = dir,
+    pattern = ".xl",
+    full.names = FALSE
+  )
+  
+  dates <- sapply(
+    X = filenames,
+    FUN = function(x){
+      # this deals with the variable naming and format of files
+      # but may need to be tweaked further if file names change again
+      if (is.na(anytime::anydate(x))) {
+        xsplit <- strsplit(x, split = "_")[[1]] %>%
+          anytime::anydate(.)
+        
+        xsplit[!is.na(xsplit)]
+      } else {
+        anytime::anydate(x)
+      }
+      
+    },
+    USE.NAMES = FALSE
+  ) %>% as.Date(origin = as.Date("1970-01-01"))
+  
+  tibble::tibble(
+    file = files,
+    date = dates
+  )
   
 }
