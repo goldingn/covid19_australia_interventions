@@ -5141,10 +5141,9 @@ reff_model <- function(data) {
   # stochastic transmission dynamics in the community, such as outbreaks in
   # communities with higher or lower tranmission rates
   # fixing the kernel variance at 1, and introducing the variance in v
-  kernel_L <- rational_quadratic(
+  kernel_L <- mat52(
     lengthscales = lognormal(3, 1),
-    variance = 1,
-    alpha = lognormal(3, 1)
+    variance = 1
   )
   
   # de-centred temporally-correlated log Reff12 GP prior
