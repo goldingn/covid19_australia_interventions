@@ -1537,7 +1537,8 @@ plot_trend <- function(
   keep_only_rows = NULL,
   max_date = data$dates$latest_mobility,
   min_date = as.Date("2020-03-01"),
-  plot_voc = FALSE
+  plot_voc = FALSE,
+  plot_vax = FALSE
 ) {
   
   if(is.na(min_date)){
@@ -1649,12 +1650,21 @@ plot_trend <- function(
   if(plot_voc){
     p <- p + 
       geom_vline(
-        #data = prop_voc_date_state(),
         data = prop_variant_dates(),
         aes(xintercept = date),
         colour = "firebrick1",
         linetype = 5
-      ) # this may caus problems if plot_voc is TRUE but multistate is FALSE
+      )
+  }
+  
+  if(plot_vax){
+    p <- p + 
+      geom_vline(
+        data = vaccination_dates(),
+        aes(xintercept = date),
+        colour = "steelblue3",
+        linetype = 5
+      ) 
   }
   
   if (multistate) {
@@ -5613,8 +5623,9 @@ reff_plotting <- function(
              base_colour = fifo,
              projection_at = projection_date,
              ylim = c(0, 8),
-             intervention_at = vaccination_dates(),
-             plot_voc = TRUE
+             intervention_at = interventions(),
+             plot_voc = TRUE,
+             plot_vax = TRUE
   ) + 
     ggtitle(label = "Impact of vaccination",
             subtitle = expression(R["eff"]~"if"~only~vaccination~had~occurred)) +
@@ -5623,16 +5634,19 @@ reff_plotting <- function(
   save_ggplot("R_eff_1_vaccine_only.png", dir, subdir, multi = TRUE)
   
     # vaccine effect in C1
-  plot_trend(sims$R_eff_loc_1_with_vaccine,
-             data = fitted_model_extended$data,
-             min_date = min_date,
-             max_date = max_date,
-             multistate = TRUE,
-             #ylim = c(0, 6),
-             intervention_at = vaccination_dates(),
-             base_colour = green,
-             projection_at = projection_date,
-             plot_voc = TRUE) + 
+  plot_trend(
+    sims$R_eff_loc_1_with_vaccine,
+    data = fitted_model_extended$data,
+    min_date = min_date,
+    max_date = max_date,
+    multistate = TRUE,
+    #ylim = c(0, 6),
+    intervention_at = interventions(),
+    base_colour = green,
+    projection_at = projection_date,
+    plot_voc = TRUE,
+    plot_vax = TRUE
+  ) + 
     ggtitle(label = "Impact of social distancing & vaccination",
             subtitle = expression(Component~of~R["eff"]~due~to~social~distancing~and~vaccination)) +
     ylab(expression(R["eff"]~component))
