@@ -473,7 +473,8 @@ interventions <- function(
   
   nt_interventions <- tibble::tribble(
     ~date, ~state,
-    "2021-06-27", "NT" # https://coronavirus.nt.gov.au/updates/items/2021-06-27-covid-19-update-lockdown-restrictions-in-place
+    "2021-06-27", "NT", # https://coronavirus.nt.gov.au/updates/items/2021-06-27-covid-19-update-lockdown-restrictions-in-place
+    "2021-08-16", "NT" # in place from midday the 16th https://coronavirus.nt.gov.au/updates/items/2021-08-16-lockdown-restrictions-in-place
   )
   
   qld_interventions <- tibble::tribble(
@@ -542,7 +543,8 @@ interventions <- function(
       bind_rows(
         tibble::tribble(
           ~date, ~state,
-          "2021-07-02", "NT" # https://coronavirus.nt.gov.au/updates/items/2021-06-28-covid-19-update-nt
+          "2021-07-02", "NT", # https://coronavirus.nt.gov.au/updates/items/2021-06-28-covid-19-update-nt
+          "2021-08-20", "NT" # lifted from 2021/08/19 1200 https://coronavirus.nt.gov.au/updates/items/2021-08-19-lockdown,-restrictions-and-border-entry-requirements
         )
       )
     
@@ -1537,7 +1539,8 @@ plot_trend <- function(
   keep_only_rows = NULL,
   max_date = data$dates$latest_mobility,
   min_date = as.Date("2020-03-01"),
-  plot_voc = FALSE
+  plot_voc = FALSE,
+  plot_vax = FALSE
 ) {
   
   if(is.na(min_date)){
@@ -1649,12 +1652,21 @@ plot_trend <- function(
   if(plot_voc){
     p <- p + 
       geom_vline(
-        #data = prop_voc_date_state(),
         data = prop_variant_dates(),
         aes(xintercept = date),
         colour = "firebrick1",
         linetype = 5
-      ) # this may caus problems if plot_voc is TRUE but multistate is FALSE
+      )
+  }
+  
+  if(plot_vax){
+    p <- p + 
+      geom_vline(
+        data = vaccination_dates(),
+        aes(xintercept = date),
+        colour = "steelblue3",
+        linetype = 5
+      ) 
   }
   
   if (multistate) {
@@ -5141,10 +5153,9 @@ reff_model <- function(data) {
   # stochastic transmission dynamics in the community, such as outbreaks in
   # communities with higher or lower tranmission rates
   # fixing the kernel variance at 1, and introducing the variance in v
-  kernel_L <- rational_quadratic(
+  kernel_L <- mat52(
     lengthscales = lognormal(3, 1),
-    variance = 1,
-    alpha = lognormal(3, 1)
+    variance = 1
   )
   
   # de-centred temporally-correlated log Reff12 GP prior
@@ -5326,22 +5337,33 @@ reff_1_only_micro <- function(fitted_model) {
 
 
 # reff component 1 if only vaccination
-reff_1_vaccine_effect <- function(fitted_model, timeseries){
+reff_1_vaccine_only <- function(fitted_model, vaccine_effect){
   
   ga <- fitted_model$greta_arrays
   
   dates <- fitted_model$data$dates$infection_project
   
   df <- full_join(
-    tibble(date = dates),
-    timeseries
+    expand_grid(
+      date = dates,
+      state = unique(vaccine_effect$state)
+    ),
+    vaccine_effect
   ) %>%
+    arrange(state, date) %>% 
+    group_by(state) %>%
     tidyr::fill(
-      overall_transmission_effect,
+      effect,
       .direction = "updown"
+    ) %>%
+    pivot_wider(
+      names_from = state,
+      values_from = effect
     )
   
-  ote <- df$overall_transmission_effect
+  ote <- df %>%
+    dplyr::select(-date) %>%
+    as.matrix
   
   
   baseline_surveillance_effect <- ga$surveillance_reff_local_reduction[1]
@@ -5359,7 +5381,45 @@ reff_1_vaccine_effect <- function(fitted_model, timeseries){
   
   reff_non_vac <- hourly_infections_vacc_extended * baseline_surveillance_effect 
   
-  sweep(reff_non_vac, 1, ote, "*")
+  #sweep(reff_non_vac, 1, ote, "*")
+  
+  reff_non_vac*ote
+  
+}
+
+# reff component 1 incorporating vaccine
+reff_1_with_vaccine <- function(fitted_model, vaccine_effect){
+  
+  ga <- fitted_model$greta_arrays
+  
+  dates <- fitted_model$data$dates$infection_project
+  
+  df <- full_join(
+    expand_grid(
+      date = dates,
+      state = unique(vaccine_effect$state)
+    ),
+    vaccine_effect
+  ) %>%
+    arrange(state, date) %>% 
+    group_by(state) %>%
+    tidyr::fill(
+      effect,
+      .direction = "updown"
+    ) %>%
+    pivot_wider(
+      names_from = state,
+      values_from = effect
+    )
+  
+  ote <- df %>%
+    dplyr::select(-date) %>%
+    as.matrix
+  
+  
+  reff1 <- ga$R_eff_loc_1 
+  
+  reff1*ote
   
 }
 
@@ -5440,7 +5500,7 @@ reff_plotting <- function(
   mobility_extrapolation_rectangle = TRUE,
   projection_date = NA,
   washout_cutoff = 0,
-  vaccine_timeseries = timeseries
+  vaccine_timeseries = vaccine_effect_timeseries
 ) {
   
   if(is.na(min_date)){
@@ -5532,7 +5592,8 @@ reff_plotting <- function(
       R_eff_loc_1_macro = reff_1_only_macro(fitted_model_extended),
       R_eff_loc_1_micro = reff_1_only_micro(fitted_model_extended),
       R_eff_loc_1_surv = reff_1_only_surveillance(fitted_model_extended),
-      R_eff_loc_1_vaccine_effect = reff_1_vaccine_effect(fitted_model_extended, vaccine_timeseries)
+      R_eff_loc_1_vaccine_only = reff_1_vaccine_only(fitted_model_extended, vaccine_timeseries),
+      R_eff_loc_1_with_vaccine = reff_1_with_vaccine(fitted_model_extended, vaccine_timeseries)
     ) 
   )
   
@@ -5546,7 +5607,8 @@ reff_plotting <- function(
     "R_eff_loc_1_micro",
     "R_eff_loc_1_macro",
     "R_eff_loc_1_surv",
-    "R_eff_loc_1_vaccine_effect"
+    "R_eff_loc_1_vaccine_only",
+    "R_eff_loc_1_with_vaccine"
   )
   vector_list <- lapply(fitted_model_extended$greta_arrays[trajectory_types], c)
   
@@ -5555,23 +5617,43 @@ reff_plotting <- function(
   sims <- do.call(calculate, args)
   
   # vaccine effect only
-  plot_trend(sims$R_eff_loc_1_vaccine_effect[,1:fitted_model_extended$data$n_date_nums,], # clunky fix
+  plot_trend(sims$R_eff_loc_1_vaccine_only, 
              data = fitted_model_extended$data,
              min_date = min_date,
              max_date = max_date,
-             multistate = FALSE,
+             multistate = TRUE,
              base_colour = fifo,
              projection_at = projection_date,
-             ylim = c(0, 6),
-             intervention_at = vaccination_dates(),
-             plot_voc = TRUE
+             ylim = c(0, 8),
+             intervention_at = interventions(),
+             plot_voc = TRUE,
+             plot_vax = TRUE
   ) + 
     ggtitle(label = "Impact of vaccination",
             subtitle = expression(R["eff"]~"if"~only~vaccination~had~occurred)) +
     ylab(expression(R["eff"]~component))
   
-  save_ggplot("R_eff_1_local_vaccine_effect.png", dir, subdir, multi = FALSE)
+  save_ggplot("R_eff_1_vaccine_only.png", dir, subdir, multi = TRUE)
   
+    # vaccine effect in C1
+  plot_trend(
+    sims$R_eff_loc_1_with_vaccine,
+    data = fitted_model_extended$data,
+    min_date = min_date,
+    max_date = max_date,
+    multistate = TRUE,
+    #ylim = c(0, 6),
+    intervention_at = interventions(),
+    base_colour = green,
+    projection_at = projection_date,
+    plot_voc = TRUE,
+    plot_vax = TRUE
+  ) + 
+    ggtitle(label = "Impact of social distancing & vaccination",
+            subtitle = expression(Component~of~R["eff"]~due~to~social~distancing~and~vaccination)) +
+    ylab(expression(R["eff"]~component))
+  
+  save_ggplot("R_eff_1_local_with_vaccine.png", dir, subdir, multi = TRUE)
   
   # microdistancing only
   plot_trend(sims$R_eff_loc_1_micro,
@@ -8824,15 +8906,24 @@ doses_by_age <- function(n_doses, age_populations) {
 }
 
 
+combine_efficacy <- function(infection, transmission) {
+  1 - ((1 - infection) * (1 - transmission)) 
+}
+
+
+# proportion_pf and proportion_2_dose are only used if the other proportion
+# arguments are not specified
 average_efficacy <- function(
   efficacy_pf_2_dose = 0.9685,
   efficacy_az_2_dose = 0.93,
-  #efficacy_pf_1_dose = efficacy_pf_2_dose/2,
-  #efficacy_az_1_dose = efficacy_az_2_dose/2,
   efficacy_pf_1_dose = 0.8317,
   efficacy_az_1_dose = 0.892,
   proportion_pf = 0.5,
-  proportion_2_dose = 0
+  proportion_2_dose = 0.2,
+  proportion_pf_2_dose = proportion_pf * proportion_2_dose,
+  proportion_az_2_dose = (1 - proportion_pf) * proportion_2_dose,
+  proportion_pf_1_dose = proportion_pf * (1 - proportion_2_dose),
+  proportion_az_1_dose = (1 - proportion_pf) * (1 - proportion_2_dose)
 ) {
   
   # based on Pritchard MedRXiv / Harris via ATAGI advice paper
@@ -8853,10 +8944,10 @@ average_efficacy <- function(
   # proportion fully dosed
   proportion_1_dose <- 1 - proportion_2_dose # may need edit when 
   
-  efficacy_mean <- proportion_2_dose * proportion_pf * efficacy_pf_2_dose +
-    proportion_1_dose * proportion_pf * efficacy_pf_1_dose +
-    proportion_2_dose * proportion_az * efficacy_az_2_dose +
-    proportion_1_dose * proportion_az * efficacy_az_1_dose 
+  efficacy_mean <- proportion_pf_2_dose * efficacy_pf_2_dose +
+    proportion_pf_1_dose * efficacy_pf_1_dose +
+    proportion_az_2_dose * efficacy_az_2_dose +
+    proportion_az_1_dose * efficacy_az_1_dose 
   
   efficacy_mean 
   
@@ -9280,4 +9371,416 @@ write_mobility_dates <- function(mobility, dir = "outputs/"){
     write_csv(
       file = file.path(dir, 'mobility_dates.csv')
     )
+}
+
+
+states <- c(
+  "ACT",
+  "NT",
+  "NSW",
+  "QLD",
+  "SA",
+  "TAS",
+  "VIC",
+  "WA"
+)
+
+read_vax_data <- function(
+  file,
+  date
+){
+  
+  header <- readxl::read_excel(
+    path = file,
+    n_max = 2,
+    col_names = FALSE,
+    sheet = "Vaccine Brand Split"
+  ) %>%
+    t %>%
+    as_tibble %>%
+    tidyr::fill(V1, .direction = "down") %>%
+    mutate(name = paste(V1, V2, sep = "_")) %>%
+    pull(name)
+  
+  over_80 <- c(
+    "80+",
+    "80-84",
+    "85+",
+    "85-89",
+    "90+",
+    "90-94",
+    "95+",
+    "95-99",
+    "100+"
+  )
+  
+  n_max <- ifelse(date < "2021-08-17", 38, 40)
+  
+  readxl::read_excel(
+    path = file,
+    skip = 2,
+    col_names = header,
+    sheet = "Vaccine Brand Split",
+    n_max = n_max,
+    col_types = "text"
+  ) %>%
+    tidyr::fill(
+      `NA_Vaccine Name`,
+      .direction = "down"
+    ) %>%
+    dplyr::rename(
+      vaccine = `NA_Vaccine Name`,
+      age_class = 2 # need to fix this so works with either naming convention
+    ) %>%
+    pivot_longer(
+      cols = -vaccine:-age_class,
+      names_to = "name",
+      values_to = "doses"
+    ) %>%
+    mutate(
+      state = sub(
+        pattern = "_.*",
+        replacement = "",
+        x = name
+      ),
+      dose_number = sub(
+        pattern = ".* ", # splits in trailing space - could get caught if format changes
+        replacement = "",
+        x = name
+      ) %>%
+        as.integer
+    ) %>%
+    dplyr::select(state, age_class, vaccine, dose_number, doses) %>%
+    filter(age_class != "Totals", state != "Totals") %>%
+    mutate(
+      vaccine = case_when(
+        vaccine == "COVID-19 Vaccine AstraZeneca" ~ "az",
+        TRUE ~ "pf"
+      )
+    ) %>%
+    mutate(
+      doses = ifelse(
+        doses == "-",
+        0,
+        doses
+      ) %>%
+        as.integer
+    ) %>%
+    pivot_wider(
+      names_from = dose_number,
+      values_from = doses
+    ) %>%
+    mutate(
+      `1` = `1` - `2`
+    ) %>%
+    pivot_longer(
+      cols = `1`:`2`,
+      names_to = "dose_number",
+      values_to = "doses"
+    ) %>%
+    rowwise %>%
+    mutate(
+      age_class = case_when(
+        any(age_class == over_80) ~ "80+",
+        TRUE ~ age_class
+      )
+    ) %>%
+    group_by(state, age_class, vaccine, dose_number) %>%
+    summarise(
+      doses = sum(doses)
+    ) %>%
+    ungroup %>%
+    mutate(
+      dose_number = as.integer(dose_number),
+      date = date,
+    )
+  
+}
+
+load_vax_data <- function(){
+  filesdates  <- vax_files_dates()
+  
+  mapply(
+    FUN = read_vax_data,
+    file = filesdates$file,
+    date = filesdates$date,
+    SIMPLIFY = FALSE,
+    USE.NAMES = FALSE
+  ) %>%
+    bind_rows
+  
+}
+
+
+
+immunity_lag_correction <- function(
+  date,
+  doses,
+  dose_number
+) {
+  
+  if (dose_number[1] == 1) {
+    weeks_increase <- 2
+    weeks_wait <- 1
+  } else if (dose_number[1] == 2) {
+    weeks_increase <- 2
+    weeks_wait <- 0
+  }
+  
+  # compute the current doses (by dose/vaccine)
+  max_date <- which.max(date)
+  latest_doses <- doses[max_date]
+  
+  # compute the diff of dosess for all dates to get the proportion of the
+  # population added on/by that date
+  new_doses <- diff(c(0, doses))
+  
+  # compute the ratio of the proportion added on each previous date to the
+  # current doses (should sum to 1)
+  date_weights <- new_doses / latest_doses
+  
+  # multiply each of those ratios by the relative effect based on the date difference¿
+  week_diff <- as.numeric(date[max_date] - date) / 7
+  relative_effect <- pmax(0, pmin(1, (week_diff - weeks_wait) / weeks_increase))
+  
+  # sum the ratios to get the correction multiplier
+  correction <- sum(relative_effect * date_weights)
+  
+  if (is.na(correction)) {
+    correction <- 0
+  }
+  
+  correction
+  
+  
+}
+
+
+
+# lookup to disaggregate coverages to 5y age groups
+age_lookup <- tibble::tribble(
+  ~age_5y, ~age, ~proportion_of_group,
+  "0-4", "0-14", 5/15,
+  "5-9", "0-14", 5/15,   
+  "10-14", "0-14", 5/15,
+  "15-19", "15-29", 5/15,
+  "20-24", "15-29", 5/15,
+  "25-29", "15-29", 5/15,
+  "30-34", "30-39", 5/10,
+  "35-39", "30-39", 5/10,
+  "40-44", "40-49", 5/10,
+  "45-49", "40-49", 5/10,
+  "50-54", "50-59", 5/10,
+  "55-59", "50-59", 5/10,
+  "60-64", "60-69", 5/10,
+  "65-69", "60-69", 5/10,
+  "70-74", "70-79", 5/10,
+  "75-79", "70-79", 5/10,
+  "80+", "80+", 1/1
+)
+
+get_age_distribution_by_state <- function(
+  final_age_bin = 80,
+  by = 5,
+  population_total = 25693000
+) {
+  
+  # check the final age bin in sensible
+  if (final_age_bin > 85) {
+    stop(
+      "No age-specific population data for ages greater than 85",
+      call. = TRUE
+    )
+  }
+  
+  ages <- age_classes(
+    final_age_bin = final_age_bin,
+    by = by
+  )
+  
+  # Age structure of the Australian population by year of age, up to 100+
+  # This is a "standard" distribution data frame but old population size data
+  # from 2001 hence is adjusted later
+  # aust_population_standard <- readxl::read_xls(
+  #   path = "data/vaccinatinon/abs_standard_age_31010DO003_200106.xls",
+  #   sheet = "Table_1",
+  #   skip = 6,
+  #   col_names = c(
+  #     "age",
+  #     "pop"
+  #   )
+  # ) %>%
+  #   filter(age != "Total", !is.na(age), age != "© Commonwealth of Australia 2013") %>%
+  #   mutate(
+  #     age = case_when(
+  #       age == "100 and over" ~ "100",
+  #       TRUE ~ age
+  #     ) %>%
+  #       as.integer,
+  #   )
+  
+  # use 2020 population, as this better matches proportion 80+
+  aust_population_2020 <- readxl::read_xls(
+    path = "data/vaccinatinon/abs_population_2020.xls",
+    sheet = "Table_8",
+    range = cell_rows(c(223:328)),
+    col_names = c(
+      "age",
+      "NSW",
+      "VIC",
+      "QLD",
+      "SA",
+      "WA",
+      "TAS",
+      "NT",
+      "ACT",
+      "Aus"
+    )
+  ) %>%
+    dplyr::select(-Aus) %>%
+    mutate(
+      age = case_when(
+        age == "85-89" ~ "85",
+        age == "90-94" ~ "85",
+        age == "95-99" ~ "85",
+        age == "100 and over" ~ "85",
+        TRUE ~ age
+      )
+    ) %>%
+    filter(
+      !grepl("-", age)
+    ) %>%
+    pivot_longer(
+      cols = -age,
+      names_to = "state",
+      values_to = "pop"
+    ) %>%
+    group_by(
+      state,
+      age
+    ) %>%
+    summarise(
+      pop = sum(pop),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      age = as.integer(age)
+    ) %>%
+    arrange(age)
+  
+  
+  state_pops <- aust_population_2020 %>%
+    group_by(state) %>%
+    summarise(pop = sum(pop)) %>%
+    mutate(state_pop = pop*population_total/sum(pop)) %>%
+    dplyr::select(-pop)
+  
+  # aggregate into age classes and return
+  age_class_fractions <- aust_population_2020 %>%
+    mutate(
+      age_class = cut(
+        age,
+        breaks = c(ages$lower - 1, Inf),
+        labels = ages$classes
+      ),
+      age_class = as.character(age_class),
+      age_class = factor(age_class, levels= unique(age_class))
+    ) %>%
+    group_by(
+      state,
+      age_class
+    ) %>%
+    summarise(
+      pop = sum(pop)
+    ) %>%
+    left_join(
+      y = state_pops,
+      by = "state"
+    ) %>%
+    group_by(state) %>%
+    mutate(
+      fraction = pop / sum(pop),
+      pop = fraction * state_pop
+    ) %>%
+    dplyr::select(-state_pop)
+  
+  return(age_class_fractions)
+  
+}
+
+
+vax_files_dates <- function(
+  dir = "~/not_synced/vaccination/vaccination_data/"
+) {
+  
+  files <- list.files(
+    path = dir,
+    pattern = ".xl",
+    full.names = TRUE
+  )
+  
+  filenames <- list.files(
+    path = dir,
+    pattern = ".xl",
+    full.names = FALSE
+  )
+  
+  dates <- sapply(
+    X = filenames,
+    FUN = function(x){
+      # this deals with the variable naming and format of files
+      # but may need to be tweaked further if file names change again
+      if (is.na(anytime::anydate(x))) {
+        xsplit <- strsplit(x, split = "_")[[1]] %>%
+          anytime::anydate(.)
+        
+        xsplit[!is.na(xsplit)]
+      } else {
+        anytime::anydate(x)
+      }
+      
+    },
+    USE.NAMES = FALSE
+  ) %>% as.Date(origin = as.Date("1970-01-01"))
+  
+  tibble::tibble(
+    file = files,
+    date = dates
+  )
+  
+}
+
+
+write_reff_sims_vax <- function(
+  fitted_model,
+  vaccine_timeseries
+){
+  
+  fitted_model_extended <- fitted_model
+  
+  fitted_model_extended$greta_arrays <- c(
+    fitted_model$greta_arrays,
+    list(
+      R_eff_loc_1_with_vaccine = reff_1_with_vaccine(fitted_model_extended, vaccine_timeseries)
+    ) 
+  )
+  
+  ga <- fitted_model_extended$greta_arrays[["R_eff_loc_1_with_vaccine"]]
+  ga_vec <- c(ga)
+  sim <- calculate(ga_vec, values = fitted_model$draws, nsim = 2000)
+  
+  samples <- t(sim[[1]][1:2000, , 1])
+  colnames(samples) <- paste0("sim", 1:2000)
+  
+  tibble(
+    date = rep(fitted_model$data$dates$infection_project, fitted_model$data$n_states),
+    state = rep(fitted_model$data$states, each = fitted_model$data$n_dates_project),
+  ) %>%
+    mutate(date_onset = date + 5) %>%
+    cbind(samples) %>%
+    write_csv(
+      file.path("outputs/projection/", "r_eff_1_local_with_vaccine_samples.csv")
+    )
+  
+  
 }
