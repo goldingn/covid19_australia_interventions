@@ -60,7 +60,7 @@ average_daily_doses <- function (
     summarise(
       across(
         starts_with("dose"),
-        ~ (max(.) - min(.)) / n()
+        ~ (max(.x) - min(.x)) / n()
       ),
       .groups = "drop"
     )
@@ -375,7 +375,7 @@ extra_pfizer <- function (
     mutate(
       across(
         c(starts_with("dose_2"), ends_with("AstraZeneca")),
-        ~ . * 0
+        ~ .x * 0
       )
     ) %>%
     # add on range of dates on which to overload doses
@@ -684,7 +684,7 @@ pop_disagg <- pop_detailed %>%
   summarise(
     across(
       starts_with("is_"),
-      .fns = list(pop = ~ sum(population * .))
+      .fns = list(pop = ~ sum(population * .x))
     )
   ) %>%
   mutate(
@@ -890,7 +890,7 @@ air_current <- expand_grid(
   summarise(
     across(
       starts_with("dose_"),
-      ~sum(.)
+      ~sum(.x)
     ),
     population = sum(population),
     .groups = "drop"
@@ -916,7 +916,7 @@ average_doses <- air_current %>%
   summarise(
     across(
       ends_with("Pfizer"),
-      ~ (max(.) - min(.)) / n()
+      ~ (max(.x) - min(.x)) / n()
     ),
     .groups = "drop"
   ) %>%
@@ -946,7 +946,7 @@ recent_doses <- air_current %>%
   summarise(
     across(
       ends_with("Pfizer"),
-      ~ (max(.) - min(.)) / n()
+      ~ (max(.x) - min(.x)) / n()
     ),
     .groups = "drop"
   ) %>%
@@ -1215,7 +1215,7 @@ air %>%
   mutate(
     across(
       starts_with("dose"),
-      ~ . - min(.)
+      ~ .x - min(.x)
     )
   ) %>%
   group_by(scenario, coverage_scenario, date) %>%
@@ -1341,7 +1341,7 @@ extra_670K_dose_1_excess %>% filter(
 #   summarise(
 #     across(
 #       starts_with("dose"),
-#       ~ sum(., na.rm = TRUE)
+#       ~ sum(.x, na.rm = TRUE)
 #     )
 #   )
 
@@ -1463,7 +1463,7 @@ coverage_air_80 <- air %>%
       c(dose_1_AstraZeneca, dose_1_Pfizer),
       .fns = list(
         correction = ~slider::slide2_dbl(
-          date, .,
+          date, .x,
           .f = immunity_lag_correction,
           weeks_increase = 2,
           weeks_wait = 1,
@@ -1475,7 +1475,7 @@ coverage_air_80 <- air %>%
       c(dose_2_AstraZeneca, dose_2_Pfizer),
       .fns = list(
         correction = ~slider::slide2_dbl(
-          date, .,
+          date, .x,
           .f = immunity_lag_correction,
           weeks_increase = 2,
           weeks_wait = 0,
@@ -1499,7 +1499,7 @@ coverage_air_80 <- air %>%
         dose_2_Pfizer
       ),
       .fns = c(
-        fraction = ~ replace_na(. / any_vaccine, 0.25)
+        fraction = ~ replace_na(.x / any_vaccine, 0.25)
       ),
       .names = "{.fn}_{.col}"
     )
@@ -1997,7 +1997,7 @@ relative_vaccination_effect_plot <- vaccination_effect_plot %>%
   mutate(
     across(
       starts_with("670K"),
-      ~ . / baseline
+      ~ .x / baseline
     )
   ) %>%
   pivot_longer(
