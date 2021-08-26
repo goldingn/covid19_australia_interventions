@@ -57,16 +57,10 @@ average_daily_doses <- function (
     group_by(
       lga, age_air_80,
     ) %>%
-    mutate(
-      across(
-        starts_with("dose"),
-        ~diff(c(0, .))
-      )
-    ) %>%
     summarise(
       across(
         starts_with("dose"),
-        mean
+        ~ (max(.) - min(.)) / n()
       ),
       .groups = "drop"
     )
@@ -1002,20 +996,30 @@ extra_670K_16_39 <- extra_pfizer(
   dose_interval = 8 * 7
 )
 
+extra_670K_16_39_extra_lgas <- extra_pfizer(
+  air_current = air_current,
+  dose_1_dates = dates_670K,
+  n_extra_pfizer = remaining_bolus,
+  target_ages_air = c("15-29", "30-39"),
+  target_lgas = c(lgas_of_concern, extra_lgas),
+  previous_days_average = previous_days_average,
+  dose_interval = 8 * 7
+)
+
 # scenario 2: 670K doses to 16-49 year olds
-# 
-# # give out 670K dose 1s to 16-49 year olds in LGAs of concern. Note that this
-# # yields broadly the same results as allocating 370K dose 1s to 16-39 year olds
-# # and 300K dose 1s to 40-49 year olds in LGAs of concern.
-# extra_670K_16_49 <- extra_pfizer(
-#   air_current = air_current,
-#   dose_1_dates = dates_670K,
-#   n_extra_pfizer = remaining_bolus,
-#   target_ages_air = c("15-29", "30-39", "40-49"),
-#   target_lgas = lgas_of_concern,
-#   previous_days_average = previous_days_average,
-#   dose_interval = 8 * 7
-# )
+
+# give out 670K dose 1s to 16-49 year olds in LGAs of concern. Note that this
+# yields broadly the same results as allocating 370K dose 1s to 16-39 year olds
+# and 300K dose 1s to 40-49 year olds in LGAs of concern.
+extra_670K_16_49 <- extra_pfizer(
+  air_current = air_current,
+  dose_1_dates = dates_670K,
+  n_extra_pfizer = remaining_bolus,
+  target_ages_air = c("15-29", "30-39", "40-49"),
+  target_lgas = lgas_of_concern,
+  previous_days_average = previous_days_average,
+  dose_interval = 8 * 7
+)
 
 # scenario 3: 530K doses to 16-39, 140K doses to 12-15 (by age)
 extra_670K_12_39 <- extra_pfizer_child(
@@ -1059,13 +1063,13 @@ extra_670K_16_39_extra_lgas %>%
     )
   )
 
-# extra_670K_16_49 %>%
-#   summarise(
-#     across(
-#       starts_with("dose"),
-#       sum
-#     )
-#   )
+extra_670K_16_49 %>%
+  summarise(
+    across(
+      starts_with("dose"),
+      sum
+    )
+  )
 
 # check totals
 extra_670K_12_39 %>%
@@ -1095,7 +1099,7 @@ air <- bind_rows(
     previous_days_average = previous_days_average,
     vaccinating_12_15 = FALSE
   ),
-  # forecast with additional dose 1s to 16-39s in LGAs of concern over 4 weeks
+  # forecast with additional dose 1s to 16-39s in LGAs of concern
   forecast_vaccination(
     air_current,
     extra_doses = extra_670K_16_39,
@@ -1103,7 +1107,15 @@ air <- bind_rows(
     previous_days_average = previous_days_average,
     vaccinating_12_15 = FALSE
   ),
-  # forecast with additional dose 1s to 16-49s in LGAs of concern over 4 weeks
+  # forecast with additional dose 1s to 16-49s in LGAs of concern
+  forecast_vaccination(
+    air_current,
+    extra_doses = extra_670K_16_49,
+    scenario_name = "670K extra 16-49",
+    previous_days_average = previous_days_average,
+    vaccinating_12_15 = FALSE
+  ),
+  # forecast with additional dose 1s to 16-39s in LGAs of concern plus others
   forecast_vaccination(
     air_current,
     extra_doses = extra_670K_16_39_extra_lgas,
@@ -1111,7 +1123,7 @@ air <- bind_rows(
     previous_days_average = previous_days_average,
     vaccinating_12_15 = FALSE
   ),
-  # forecast with additional dose 1s to 12-39s in LGAs of concern over 4 weeks
+  # forecast with additional dose 1s to 12-39s in LGAs of concern
   forecast_vaccination(
     air_current,
     extra_doses = extra_670K_12_39,
@@ -1119,7 +1131,7 @@ air <- bind_rows(
     previous_days_average = previous_days_average,
     vaccinating_12_15 = TRUE
   ),
-  # forecast with additional dose 1s to 12-39s in LGAs of concern over 4 weeks
+  # forecast with additional dose 1s to 12-39s in LGAs of concern plus others
   forecast_vaccination(
     air_current,
     extra_doses = extra_670K_12_39_extra_lgas,
@@ -1149,13 +1161,13 @@ extra_670K_16_39_dose_1_excess <- extra_670K_16_39 %>%
     scenario = "670K extra 16-39"
   )
 
-# extra_670K_16_49_dose_1_excess <- extra_670K_16_49 %>%
-#   extra_pfizer_dose_1_excess(
-#     air %>% filter(scenario == "670K extra 16-49")
-#   ) %>%
-#   mutate(
-#     scenario = "670K extra 16-49"
-#   )
+extra_670K_16_49_dose_1_excess <- extra_670K_16_49 %>%
+  extra_pfizer_dose_1_excess(
+    air %>% filter(scenario == "670K extra 16-49")
+  ) %>%
+  mutate(
+    scenario = "670K extra 16-49"
+  )
 
 extra_670K_16_39_extra_lgas_dose_1_excess <- extra_670K_16_39_extra_lgas %>%
   extra_pfizer_dose_1_excess(
@@ -1183,6 +1195,7 @@ extra_670K_12_39_extra_lgas_dose_1_excess <- extra_670K_12_39_extra_lgas %>%
 
 extra_670K_dose_1_excess <- bind_rows(
   extra_670K_16_39_dose_1_excess,
+  extra_670K_16_49_dose_1_excess,
   extra_670K_16_39_extra_lgas_dose_1_excess,
   extra_670K_12_39_dose_1_excess,
   extra_670K_12_39_extra_lgas_dose_1_excess
@@ -1900,7 +1913,7 @@ for (this_max_coverage in unique(vaccination_effect_plot$coverage_scenario)) {
     ggplot(
       aes(
         x = date,
-        y = vaccination_transmission_multiplier,
+        y = vaccination_transmission_reduction_percent / 100,
         group = paste(lga, scenario),
         color = scenario,
         linetype = scenario != "baseline"
@@ -1909,7 +1922,7 @@ for (this_max_coverage in unique(vaccination_effect_plot$coverage_scenario)) {
     geom_text(
       aes(
         x  = date,
-        y = vaccination_transmission_multiplier,
+        y = vaccination_transmission_reduction_percent / 100,
         label = lga
       ),
       data = vaccination_effect_plot %>%
@@ -1932,6 +1945,9 @@ for (this_max_coverage in unique(vaccination_effect_plot$coverage_scenario)) {
     coord_cartesian(
       clip = "off"
     ) +
+    scale_y_continuous(
+      labels = scales::percent_format(accuracy = 1)
+    ) +
     geom_line(
       size = 1
     ) +
@@ -1947,7 +1963,7 @@ for (this_max_coverage in unique(vaccination_effect_plot$coverage_scenario)) {
     ) +
     theme_cowplot() +
     theme(
-      legend.position = c(0.6, 0.8),
+      legend.position = c(0.6, 0.2),
       plot.margin = unit(c(1, 4, 0, 1), "cm")
     )
   
@@ -1998,11 +2014,13 @@ gg_color_hue <- function(n) {
   hcl(h = hues, l = 65, c = 100)[1:n]
 }
 
+all_scenarios <- rev(unique(relative_vaccination_effect_plot$scenario))
+
 for (this_max_coverage in unique(relative_vaccination_effect_plot$coverage_scenario)) {
-  for(this_scenario in unique(relative_vaccination_effect_plot$scenario)) {
+  for(this_scenario in all_scenarios) {
     
-    this_colour_index <- match(this_scenario, rev(unique(vaccination_effect_plot$scenario)))
-    this_colour <- gg_color_hue(4)[this_colour_index]
+    this_colour_index <- match(this_scenario, all_scenarios)
+    this_colour <- gg_color_hue(length(all_scenarios))[this_colour_index]
     relative_vaccination_effect_plot %>%
       filter(
         lga %in% lgas_plot,
