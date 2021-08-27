@@ -267,13 +267,16 @@ location_change_trends <- google_change_trends_lga %>%
 # load fitted macrodistancing model
 macro_model <- readRDS("outputs/fitted_macro_model.RDS")
 
-
 # replace location_change_trends with the new data
 macro_model$data$location_change_trends <- location_change_trends
 
 macro_predictions <- macrodistancing_model(macro_model$data, macro_model$params)
 OC_t_state <- macro_predictions$mean_daily_contacts
-pred_sim <- calculate(c(OC_t_state), values = macro_model$draws, nsim = 1000)[[1]][, , 1]
+
+sdlog <- macro_model$out$sdlog
+
+sim <- calculate(c(OC_t_state), sdlog, values = macro_model$draws, nsim = 1000)
+pred_sim <- sim[[1]][, , 1]
 quants <- t(apply(pred_sim, 2, quantile, c(0.05, 0.25, 0.75, 0.95)))
 colnames(quants) <- c("ci_90_lo", "ci_50_lo", "ci_50_hi", "ci_90_hi")
 
@@ -287,8 +290,55 @@ pred_trend <- macro_model$data$location_change_trends %>%
 saveRDS(pred_trend,
         file = "outputs/macrodistancing_trends_lga.RDS")
 
-# write this out for Nic R
-write.csv(pred_trend, file = "outputs/nsw/nonhousehold_contacts_lga_modelled.csv")
+# write the meanlog, sdlog, and predicted contacts out for Nic R
+sdlog_sim <- sim$sdlog[, , 1]
+meanlog_sim <- log(pred_sim) - (sdlog_sim ^ 2) / 2
+
+macro_model$data$location_change_trends %>%
+  select(date, state) %>%
+  # add predictions
+  mutate(
+    mean_contacts = colMeans(pred_sim),
+    meanlog_contacts = colMeans(meanlog_sim),
+    sdlog_contacts = mean(sdlog_sim),
+    meanlog_contacts_sd = apply(meanlog_sim, 2,sd),
+    sdlog_contacts_sd = sd(sdlog_sim)
+  ) %>%
+  write_csv(
+    file = "outputs/nsw/nonhousehold_contacts_lga_modelled.csv"
+  )
+
+# Nic can simulate these like this:
+nhhc <- read_csv(
+  "outputs/nsw/nonhousehold_contacts_lga_modelled.csv",
+  col_types = cols(
+    date = col_date(format = ""),
+    state = col_character(),
+    mean_contacts = col_double(),
+    meanlog_contacts = col_double(),
+    sdlog_contacts = col_double(),
+    meanlog_contacts_sd = col_double(),
+    sdlog_contacts_sd = col_double()
+  )
+)
+
+sim_contacts <- function (n_samples, this_date, this_lga, nhhc) {
+  params <- nhhc %>%
+    filter(
+      date == this_date,
+      state == this_lga
+    )
+  
+  params
+  meanlog <- rnorm(n_samples, params$meanlog_contacts, params$meanlog_contacts_sd)
+  sdlog <- params$sdlog_contacts
+  log_contacts <- rnorm(n_samples, meanlog, sdlog)
+  contacts <- floor(exp(log_contacts))
+  
+}
+
+contacts <- sim_contacts(100, Sys.Date(), "Canterbury", nhhc)
+hist(contacts, breaks = 30)
 
 # combine these with NSW data for other components to get TP for each LGA
 
