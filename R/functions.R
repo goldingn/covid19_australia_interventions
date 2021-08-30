@@ -4265,7 +4265,7 @@ get_nndss_linelist <- function(
     col_types_1 <- c(
       STATE = "text",
       POSTCODE = "numeric",
-      CONFIRMATION_STATUS = "numeric",
+      CONFIRMATION_STATUS = "text",
       TRUE_ONSET_DATE = "date",
       SPECIMEN_DATE = "date",
       NOTIFICATION_DATE = "date",
@@ -4294,7 +4294,7 @@ get_nndss_linelist <- function(
     col_types_2 <- c(
       STATE = "text",
       POSTCODE = "numeric",
-      CONFIRMATION_STATUS = "numeric",
+      CONFIRMATION_STATUS = "text",
       TRUE_ONSET_DATE = "date",
       SPECIMEN_DATE = "date",
       NOTIFICATION_DATE = "date",
@@ -4519,6 +4519,10 @@ get_vic_linelist <- function(file) {
       date_linelist = linelist_date
     ) %>%
     mutate(
+      date_confirmation = case_when(
+        is.na(date_confirmation) ~ date_detection + 1,
+        TRUE ~ date_confirmation
+      ),
       date_detection = case_when(
         is.na(date_detection) ~ date_confirmation - 1,
         TRUE ~ date_detection
@@ -6222,7 +6226,7 @@ load_vic <- function (file) {
 } # possibly deprecated?
 
 load_linelist <- function(date = NULL,
-                          use_vic = FALSE,
+                          use_vic = TRUE,
                           use_sa = FALSE,
                           use_nsw = TRUE) {
   
