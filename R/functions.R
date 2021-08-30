@@ -5049,6 +5049,26 @@ reff_model_data <- function(
   hotel_quarantine_start_date <- max(quarantine_dates()$date)
   n_hotel_cases <- sum(imported_cases[dates >= hotel_quarantine_start_date, ])
   
+  vaccine_effect_timeseries <- readRDS("outputs/vaccine_effect_timeseries.RDS")
+  
+  vaccine_effect_matrix <- vaccine_effect_timeseries %>%
+    pivot_wider(
+      names_from = state,
+      values_from = effect
+    ) %>%
+    full_join(
+      y = tibble(date = dates_project)
+    ) %>%
+    arrange(date) %>%
+    tidyr::fill(
+      everything(),
+      .direction = "updown"
+    ) %>%
+    dplyr::select(-date) %>%
+    as.matrix
+  
+  vaccine_dates <- unique(vaccine_effect_timeseries$date)
+  
   # return a named, nested list of these objects
   list(
     local = list(
@@ -5077,13 +5097,15 @@ reff_model_data <- function(
       latest_mobility = latest_mobility_date,
       latest_infection = latest_infection_date,
       latest_project = max(dates_project),
-      linelist = linelist_date
+      linelist = linelist_date,
+      vaccine_dates = vaccine_dates
     ),
     n_dates = n_dates,
     n_states = n_states,
     n_date_nums = n_date_nums,
     n_dates_project = n_dates_project,
-    n_inducing =  n_inducing
+    n_inducing =  n_inducing,
+    vaccine_effect_matrix = vaccine_effect_matrix
   )
   
 }
@@ -5131,8 +5153,12 @@ reff_model <- function(data) {
   # extend to correct length
   R_eff_loc_1_no_surv <- extend(distancing_effect$R_t, data$n_dates_project)
   
-  # multiply by the surveillance effect
-  R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_reff_local_reduction
+  
+  # pull out vaccination effect
+  vax_effect <- data$vaccine_effect_matrix
+  
+  # multiply by the surveillance and vaccination effects
+  R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_reff_local_reduction * vax_effect
   log_R_eff_loc_1 <- log(R_eff_loc_1)
   
   # extract R0 from this model and estimate R_t component due to quarantine for
