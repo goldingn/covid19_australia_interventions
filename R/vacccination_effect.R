@@ -192,29 +192,57 @@ vaccine_effect_timeseries <- bind_rows(
   interpolated_effect
 )
 
+# 
+# ggplot(vaccine_effect_timeseries) +
+#   geom_line(
+#     aes(
+#       x = date,
+#       y = effect,
+#       colour = state
+#     )
+#   )
 
-ggplot(vaccine_effect_timeseries) +
-  geom_line(
-    aes(
-      x = date,
-      y = effect,
-      colour = state
+
+
+effective_dose_data <- dose_data %>%
+  dplyr::select(
+    state,
+    age_class,
+    vaccine,
+    dose_number,
+    doses,
+    effective_doses,
+    date
+  ) %>%
+  mutate(
+    dubious = (date - min(date)) < 21,
+    across(
+      starts_with("effective_"),
+      ~ ifelse(dubious, NA, .)
     )
+  ) %>%
+  dplyr::select(
+    -dubious
   )
 
-saveRDS(
-  vaccine_effect_timeseries,
-  file = "outputs/vaccine_effect_timeseries.RDS"
-)
+data_date <- max(effective_dose_data$date)
 
 write_csv(
   vaccine_effect_timeseries,
-  file = "outputs/vaccine_effect_timeseries.csv"
+  file = sprintf(
+    "outputs/vaccine_effect_timeseries_%s.csv",
+    data_date
+  )
 )
 
-saveRDS(vax_data, "outputs/vax_data.RDS")
 
-saveRDS(dose_data, "outputs/dose_data.RDS")
+write_csv(
+  effective_dose_data,
+  file = sprintf(
+    "outputs/effective_dose_data_%s.csv",
+    data_date
+  )
+)
 
 
 #############
