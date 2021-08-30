@@ -5862,10 +5862,13 @@ hard_clamp <- function(local_samples, target_date) {
 }
 
 # output simulations
-write_reff_sims <- function(fitted_model,
-                            dir = "outputs/projection",
-                            write_reff_1 = TRUE,
-                            write_reff_12 = TRUE) {
+write_reff_sims <- function(
+  fitted_model,
+  dir = "outputs/projection",
+  write_reff_1 = TRUE,
+  write_reff_12 = TRUE,
+  write_reff_2 = FALSE
+) {
   
   if (write_reff_1) {
     
@@ -5874,6 +5877,17 @@ write_reff_sims <- function(fitted_model,
     reff_1 %>%
       write_csv(
         file.path(dir, "r_eff_1_local_samples.csv")
+      )
+    
+  }
+  
+  if (write_reff_2) {
+    
+    reff_2 <- reff_sims(fitted_model, which = "epsilon_L")
+    
+    reff_2 %>%
+      write_csv(
+        file.path(dir, "r_eff_2_samples.csv")
       )
     
   }
