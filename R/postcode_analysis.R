@@ -586,12 +586,17 @@ vaccination_effect %>%
     value = `Reduction in\ntransmission potential`
   ) +
   scale_fill_steps(
-    low = grey(0.9),
-    high = map_cols[2],
+    low = "pink",
+    high = "blue",
     n.breaks = 10,
     show.limits = TRUE,
     labels = scales::percent_format(accuracy = 1)
   )
+
+ggsave("outputs/nsw/postcode_vaccination_effect.png",
+       bg = "white",
+       width = 10,
+       height = 10)
 
 seifa <- read_csv(
   "data/spatial/seifa/SEIFA_POA_18082020161751202.csv",
@@ -689,21 +694,20 @@ vaccination_reduction %>%
 # case counts
 # week-on-week case growth rates
 
-cases <- read_csv(
-  "~/not_synced/vaccination/nsw/CASES_2021-08-29_UNSW.csv",
-  col_types = cols(
-    POSTCODE = col_double(),
-    LGA_CODE19 = col_logical(),
-    LGA_NAME19 = col_character(),
-    NOTIFICATION_DATE = col_date(format = ""),
-    CALCULATED_ONSET_DATE = col_date(format = ""),
-    INFECTIOUS_STATUS = col_character(),
-    LIKELY_SOURCE_OF_INFECTION_LOCAL = col_character(),
-    number_cases = col_double(),
-    snapshot_date = col_date(format = "")
-  )
-)
+# cases <- read_csv(
+#   "~/not_synced/vaccination/nsw/CASES_2021-08-29_UNSW.csv",
+#   col_types = cols(
+#     POSTCODE = col_double(),
+#     LGA_CODE19 = col_logical(),
+#     LGA_NAME19 = col_character(),
+#     NOTIFICATION_DATE = col_date(format = ""),
+#     CALCULATED_ONSET_DATE = col_date(format = ""),
+#     INFECTIOUS_STATUS = col_character(),
+#     LIKELY_SOURCE_OF_INFECTION_LOCAL = col_character(),
+#     number_cases = col_double(),
+#     snapshot_date = col_date(format = "")
+#   )
+# )
 
-cases_
 
 
