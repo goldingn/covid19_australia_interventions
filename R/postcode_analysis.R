@@ -74,7 +74,8 @@ extra_lgas <- c(
   "Inner West (A)",
   "Blue Mountains (C)",
   "The Hills Shire (A)",
-  "Sydney (C)"
+  "Sydney (C)",
+  "Randwick (C)"
 )
 
 
@@ -570,6 +571,164 @@ write_csv(
   vaccination_effect,
   "outputs/nsw/nsw_postcode_lgas_concern_vaccination_effect.csv"
 )  
+
+# compute a case-weighted vaccination effect on transmission
+
+# this is an enormous file padded with 0s, remove them first
+cases <- read_csv(
+  "~/not_synced/vaccination/nsw/CASES_2021-09-01_UNSW.csv",
+  col_types = cols(
+    POSTCODE = col_character(),
+    LGA_CODE19 = col_character(),
+    LGA_NAME19 = col_character(),
+    NOTIFICATION_DATE = col_date(format = ""),
+    CALCULATED_ONSET_DATE = col_date(format = ""),
+    INFECTIOUS_STATUS = col_character(),
+    LIKELY_SOURCE_OF_INFECTION_LOCAL = col_character(),
+    number_cases = col_double(),
+    snapshot_date = col_date(format = "")
+  )) %>%
+  filter(
+    number_cases > 0
+  )
+
+# summarise case counts by postcode (total in previous week)
+postcode_case_weights <- cases %>%
+  filter(
+    # filter to last week
+    NOTIFICATION_DATE > (Sys.Date() - 7),
+    # remove po-box postcodes
+    LGA_NAME19 != "Not Mapped"
+  ) %>%
+  select(
+    postcode = POSTCODE,
+    lga = LGA_NAME19,
+    cases = number_cases
+  ) %>%
+  group_by(
+    postcode,
+    lga
+  ) %>%
+  summarise(
+    across(
+      cases,
+      sum
+    ),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    case_weight_nsw = cases / sum(cases)
+  ) %>%
+  group_by(
+    lga
+  ) %>%
+  mutate(
+    case_weight_lga = cases / sum(cases)
+  ) %>%
+  ungroup()
+  
+postcode_populations_concern <- coverage_concern %>%
+  filter(
+    date == max(date)
+  ) %>%
+  group_by(
+    postcode
+  ) %>%
+  summarise(
+    across(
+      population,
+      sum
+    )
+  )
+
+# join them to the vaccination effect estimates and populations
+vaccination_effect_with_weights <- vaccination_effect %>%
+  filter(
+    date == max(date)
+  ) %>%
+  left_join(
+    postcode_populations_concern,
+    by = "postcode"
+  ) %>%
+  mutate(
+    population_weight_nsw = population / sum(population)
+  ) %>%
+  group_by(
+    lga
+  ) %>%
+  mutate(
+    population_weight_lga = population / sum(population)
+  ) %>%
+  ungroup() %>%
+  left_join(
+    postcode_case_weights,
+    by = c("postcode", "lga")
+  ) %>%
+  mutate(
+    across(
+      c("cases", starts_with("case_weight")),
+      ~ replace_na(.x, replace = 0)
+    )
+  )
+
+# LGAS of concern population-weighted and case-weighted vaccination effect
+vaccination_effect_with_weights %>%
+  filter(
+    lga %in% lgas_of_concern
+  ) %>%
+  summarise(
+    population_weighted_reduction = weighted.mean(
+      vaccination_transmission_reduction_percent,
+      population_weight_nsw
+    ),
+    case_weighted_reduction = weighted.mean(
+      vaccination_transmission_reduction_percent,
+      case_weight_nsw
+    )
+  ) %>%
+  mutate(
+    ratio = case_weighted_reduction / population_weighted_reduction
+  )
+
+
+vaccination_effect_with_weights %>%
+  filter(
+    lga %in% c(lgas_of_concern, "Camden (A)", "Randwick (C)")
+  ) %>%
+  group_by(
+    lga
+  ) %>%
+  summarise(
+    population_weighted_reduction = weighted.mean(
+      vaccination_transmission_reduction_percent,
+      population_weight_nsw
+    ),
+    case_weighted_reduction = weighted.mean(
+      vaccination_transmission_reduction_percent,
+      case_weight_nsw
+    )
+  ) %>%
+  mutate(
+    ratio = case_weighted_reduction / population_weighted_reduction
+  )
+
+
+# compute a postcode-case-weighted average vaccination effect in each LGA
+vaccination_effect_with_weights %>%
+  filter(lga %in% lgas_with_cases) %>%
+  summarise(
+    overall_reduction = mean(vaccination_transmission_reduction_percent),
+    case_weighted_reduction = weighted.mean(
+      vaccination_transmission_reduction_percent,
+      weight_nsw
+    )
+  )
+
+
+
+
+
+
 
 # plot the latest vaccination effects
 
