@@ -22,6 +22,52 @@ assign_age <- function(age, grouping = "age_5y") {
   
 }
 
+# compute the expected fraction of cases unvaccinated at each time point, given
+# the age-specific coverage with any vaccine, and average efficacies on
+# susceptibility and on onward transmission
+fraction_cases_unvaccinated <- function(
+  efficacy_susceptibility,
+  efficacy_onward,
+  coverage_any_vaccine
+) {
+  
+  # transmission between unvaccinated people, no effect of vaccines and scale down
+  # to vaccinated population
+  unvax_unvax <- baseline_matrix() %>%
+    sweep(1, 1 - coverage_any_vaccine, FUN = "*")
+  
+  # transmission between vaccinated people, susceptibility and onward transmission
+  # effects and scale down to vaccinated population
+  vax_vax <- baseline_matrix() %>%
+    sweep(1, 1 - efficacy_susceptibility, FUN = "*") %>%
+    sweep(2, 1 - efficacy_onward, FUN = "*") %>%
+    sweep(1, coverage_any_vaccine, FUN = "*")
+  
+  # transmission from unvaccinated to vaccinated people (account for
+  # susceptibility effects on rows) and scale down to vaccinated population
+  # fraction
+  unvax_vax <- baseline_matrix() %>%
+    sweep(1, 1 - efficacy_susceptibility, FUN = "*") %>%
+    sweep(1, coverage_any_vaccine, FUN = "*")
+  
+  # transmission from vaccinated to unvaccinated people (account for transmission
+  # effects) and scale down to unvaccinated population
+  vax_unvax <- baseline_matrix() %>%
+    sweep(2, 1 - efficacy_onward, FUN = "*") %>%
+    sweep(1, 1 - coverage_any_vaccine, FUN = "*")
+  
+  vax_structured_matrix <- rbind(
+    cbind(unvax_unvax, vax_unvax),
+    cbind(unvax_vax, vax_vax)
+  )
+  
+  stable_state <- Re(eigen(vax_structured_matrix)$vectors[, 1])
+  fraction_cases_unvaccinated <- stable_state[1:17] / (stable_state[1:17] + stable_state[18:34])
+  
+  fraction_cases_unvaccinated
+  
+}
+
 # get expected rate of vaccination among cases (if they were a random sample of
 # their LGA population within each age group), by computing the age distribution
 # of cases in each LGA, then computing the case-age-weighted coverage of first
@@ -108,11 +154,15 @@ lga_coverage <- read_csv(
     lga,
     age,
     coverage_dose_1,
-    coverage_dose_2
+    coverage_dose_2,
+    coverage_any_vaccine,
+    average_efficacy_transmission,
+    starts_with("fraction")
   )
 
-# add on LGA concordance; and summarise by period, lga, and age
-period_coverages <- cases %>%
+# compute the population vaccination coverage (by 1/2 doses) for the age, lga,
+# and date of each case
+case_coverage_pop <- cases %>%
   select(
     date = EARLIEST_CONFIRMED_OR_PROBABLE,
     age = AGE_AT_EVENT_YEARS,
@@ -133,7 +183,101 @@ period_coverages <- cases %>%
   left_join(
     lga_coverage,
     by = c("date", "lga", "age")
+  )
+
+
+# get the expected fraction of cases vaccinated under an assumption of random
+# mixing between vaccinated and unvaccinated people
+
+efficacy_az_1_dose_susceptibility <- 0.18
+efficacy_pf_1_dose_susceptibility <- 0.30
+efficacy_az_2_dose_susceptibility <- 0.60
+efficacy_pf_2_dose_susceptibility <- 0.79
+
+efficacy_az_1_dose_onward <- 0.48
+efficacy_pf_1_dose_onward <- 0.46
+efficacy_az_2_dose_onward <- 0.65
+efficacy_pf_2_dose_onward <- 0.65
+
+expected_case_coverage <- lga_coverage %>%
+  filter(
+    date %in% case_coverage_pop$date,
+    lga %in% case_coverage_pop$lga
   ) %>%
+  mutate(
+    age = factor(
+      age,
+      levels = colnames(
+        baseline_matrix()
+      )
+    )
+  ) %>%
+  arrange(age) %>%
+  mutate(
+    susceptibility = average_efficacy(
+      efficacy_az_1_dose = efficacy_az_1_dose_susceptibility,    
+      efficacy_pf_1_dose = efficacy_pf_1_dose_susceptibility,
+      efficacy_az_2_dose = efficacy_az_2_dose_susceptibility,
+      efficacy_pf_2_dose = efficacy_pf_2_dose_susceptibility,
+      proportion_pf_2_dose = fraction_dose_2_Pfizer,
+      proportion_az_2_dose = fraction_dose_2_AstraZeneca,
+      proportion_pf_1_dose = fraction_dose_1_Pfizer,
+      proportion_az_1_dose = fraction_dose_1_AstraZeneca
+    ),
+    onward = average_efficacy(
+      efficacy_az_1_dose = efficacy_az_1_dose_onward,    
+      efficacy_pf_1_dose = efficacy_pf_1_dose_onward,
+      efficacy_az_2_dose = efficacy_az_2_dose_onward,
+      efficacy_pf_2_dose = efficacy_pf_2_dose_onward,
+      proportion_pf_2_dose = fraction_dose_2_Pfizer,
+      proportion_az_2_dose = fraction_dose_2_AstraZeneca,
+      proportion_pf_1_dose = fraction_dose_1_Pfizer,
+      proportion_az_1_dose = fraction_dose_1_AstraZeneca
+    )
+  ) %>%
+  group_by(lga, date) %>%
+  mutate(
+    fraction_unvaccinated = fraction_cases_unvaccinated(
+      efficacy_susceptibility = susceptibility,
+      efficacy_onward = onward,
+      coverage_any_vaccine = coverage_any_vaccine)
+  )
+
+# compute the expected vaccination coverage among all cases in the date and time
+case_expected_coverages <- case_coverage_pop %>%
+  select(
+    date,
+    age,
+    lga,
+    weight
+  ) %>%
+  left_join(
+    expected_case_coverage,
+    by = c("date", "age", "lga")
+  ) %>%
+  mutate(
+    # assign the time period
+    period = case_when(
+      date > as_date("2021-08-06") ~ "week ending August 14",
+      date > as_date("2021-07-31") ~ "week ending August 7",
+      date > as_date("2021-07-24") ~ "week ending July 31",
+      date > as_date("2021-07-17") ~ "week ending July 24",
+      TRUE ~ NA_character_
+    ),
+  ) %>%
+  # within each period, compute the LGA/age case weights, fo computing expected coverages
+  group_by(period) %>%
+  summarise(
+    across(
+      "fraction_unvaccinated",
+      ~ weighted.mean(.x, weight)
+    )
+  ) %>%
+  ungroup()
+
+# get the population vaccination coverages in the periods for which we have
+# vaccination coverage data
+period_coverages <- case_coverage_pop %>%
   mutate(
     # assign the time period
     period = case_when(
@@ -168,35 +312,37 @@ case_coverages <- tibble::tribble(
 
 # get the ratio between the observed coverages and what we would have expected
 # given given the LGA/age group coverages
-ratios <- case_coverages %>%
+fractions_vaccinated <- case_coverages %>%
   mutate(
     cases_known_status = cases_no_dose + cases_dose_1 + cases_dose_2,
     fraction_no_dose = cases_no_dose / cases_known_status,
     fraction_dose_1 = cases_dose_1 / cases_known_status,
     fraction_dose_2 = cases_dose_2 / cases_known_status,
   ) %>%
-  select(
-    period,
-    starts_with("fraction")
-  ) %>%
   left_join(
     period_coverages,
     by = "period"
   ) %>%
+  left_join(
+    case_expected_coverages
+  ) %>%
   mutate(
-    ratio_any_doses = (1 - fraction_no_dose) / (1 - no_dose),
-    ratio_dose_1 = fraction_dose_1 / coverage_dose_1,
-    ratio_dose_2 = fraction_dose_2 / coverage_dose_2,
+    case_fraction_vaccinated = 1 - fraction_no_dose,
+    matched_population_fraction_vaccinated = 1 - no_dose,
+    expected_case_fraction_vaccinated = 1 - fraction_unvaccinated
   ) %>%
   select(
     period,
-    starts_with("ratio")
+    ends_with("_vaccinated")
   )
 
 
-ratios 
+fractions_vaccinated
+
+
+
 
 # Stretch goal: consider a model structured by vaccinated, partially vaccinated,
-# unvaccinated, and age, to see whether the neutrall dynamics explain this, or
+# unvaccinated, and age, to see whether the neutral dynamics explain this, or
 # whether there's a demographic effect as well (stratify the Prem matrix by
 # vaccination type, and weight contacts accordingly)
