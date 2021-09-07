@@ -1534,6 +1534,7 @@ plot_trend <- function(
   multistate = FALSE,
   hline_at = 1,
   ylim = c(0, 6),
+  ybreaks = NULL,
   intervention_at = interventions(),
   projection_at = NA,
   keep_only_rows = NULL,
@@ -1600,11 +1601,16 @@ plot_trend <- function(
     ylim <- c(min(df$ci_90_lo), max(df$ci_90_hi)) 
   }
   
-  if(range(ylim)[2] - range(ylim)[1] >= 4 & range(ylim)[2] - range(ylim)[1] <= 10){
-    y_scale <- scale_y_continuous(position = "right", breaks = seq(from = ylim[1], to = ylim[2], by = 1))
-  } else(
-    y_scale <- scale_y_continuous(position = "right")
-  )
+  if (is.null(ybreaks)){
+    if(range(ylim)[2] - range(ylim)[1] >= 4 & range(ylim)[2] - range(ylim)[1] <= 10){
+      y_scale <- scale_y_continuous(position = "right", breaks = seq(from = ylim[1], to = ylim[2], by = 1))
+      
+    } else(
+      y_scale <- scale_y_continuous(position = "right")
+    )
+  } else {
+    y_scale <- scale_y_continuous(position = "right", breaks = seq(from = ybreaks[1], to = ybreaks[2], by = 1))
+  }
   
   p <- ggplot(df) + 
     
@@ -4490,11 +4496,14 @@ get_vic_linelist <- function(file) {
       read_csv(
         col_types = cols(
           CaseNumber = col_double(),
-          DiagnosisDate = col_date(format = ""),
-          SymptomsOnsetDate = col_date(format = ""),
+          #DiagnosisDate = col_date(format = ""),
+          DiagnosisDate = col_date(format = "%d/%m/%Y"),
+          #SymptomsOnsetDate = col_date(format = ""),
+          SymptomsOnsetDate = col_date(format = "%d/%m/%Y"),
           LGA = col_character(),
           Acquired = col_character(),
-          FirstSpecimenPositiveDate = col_date(format = "")
+          #FirstSpecimenPositiveDate = col_date(format = "")
+          FirstSpecimenPositiveDate = col_date(format = "%d/%m/%Y")
         ),
         na = "NA"
       ) %>%
@@ -5774,6 +5783,7 @@ reff_plotting <- function(
                   hline_at = 0,
                   projection_at = projection_date,
                   ylim = NULL,
+                  ybreaks = c(-2, 1),
                   plot_voc = TRUE) + 
     ggtitle(label = "Short-term variation in local to local transmission rates",
             subtitle = expression(Deviation~from~log(R["eff"])~of~"local-local"~transmission)) +
