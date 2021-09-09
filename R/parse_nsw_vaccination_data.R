@@ -94,39 +94,56 @@ pop_disagg <- pop_detailed %>%
     fraction_0_14_are_10_14 = is_10_14_pop / is_0_14_pop
   ) %>%
   select(starts_with("fraction"))
-  
-# get populations with all the age aggregations
-pop <- lga_age_population() %>%
-  filter(
-    state == "New South Wales"
-  ) %>%
-  select(
-    -state
-  ) %>%
+   
+# # get populations with all the age aggregations
+# pop <- lga_age_population() %>%
+#   filter(
+#     state == "New South Wales"
+#   ) %>%
+#   select(
+#     -state
+#   ) %>%
+#   left_join(
+#     age_lookup(),
+#     by = c("age" = "age_abs"),
+#   ) %>%
+#   # for some reason this name is borked
+#   mutate(
+#     LGA_NAME19 = case_when(
+#       LGA_NAME19 == "Nambucca Valley (A)" ~ "Nambucca (A)",
+#       TRUE ~ LGA_NAME19
+#     )
+#   )
+
+pop <- lga_age_population_nsw() %>%
   left_join(
     age_lookup(),
     by = c("age" = "age_abs"),
   )
 
+pop %>%
+  group_by(age_air_80) %>%
+  summarise(
+    across(
+      population,
+      sum
+    )
+  )
+
+# add on other age aggregations and join together
+
 # collapse populations down to AIR age bins
 pop_air <- pop %>%
-  group_by(LGA_CODE19, LGA_NAME19, age_air) %>%
+  group_by(lga, age_air) %>%
   summarise(
     population = sum(population),
     .groups = "drop"
-  ) %>%
-  # for some reason this name is borked
-  mutate(
-    LGA_NAME19 = case_when(
-      LGA_NAME19 == "Nambucca Valley (A)" ~ "Nambucca (A)",
-      TRUE ~ LGA_NAME19
-    )
   )
 
 # and to 5y age bins
 pop_5y <- pop %>%
   select(
-    lga = LGA_NAME19,
+    lga,
     age_5y,
     population
   ) %>%
@@ -286,7 +303,7 @@ air_current <- expand_grid(
   left_join(
     pop_air,
     by = c(
-      "lga" = "LGA_NAME19",
+      "lga",
       "age_air"
     )
   ) %>%
@@ -301,8 +318,7 @@ air_current <- expand_grid(
     by = "age_air"
   ) %>%
   select(
-    -age_air,
-    -LGA_CODE19
+    -age_air
   ) %>%
   group_by(
     date,

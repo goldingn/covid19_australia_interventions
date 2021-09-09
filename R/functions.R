@@ -10332,3 +10332,38 @@ get_poa_lga_correspondence <- function() {
     )
   
 }
+
+lga_age_population_nsw <- function() {
+  read_excel(
+    "data/population/2019 NSW Population Projections ASGS 2019 LGA.xlsx",
+    sheet = "LGA Sex Age projections",
+    skip = 5
+  ) %>%
+    select(
+      lga = `ASGS 2019 LGA`,
+      sex = Sex,
+      age = `Age 2 digit (85+)`,
+      population = `2021`
+    ) %>%
+    filter(
+      lga != "NSW Total",
+      !is.na(population)
+    ) %>%
+    mutate(
+      age = case_when(
+        age == "00-04" ~ "0-4",
+        age == "05-09" ~ "5-9",
+        TRUE ~ age
+      )
+    ) %>%
+    group_by(
+      lga, age
+    ) %>%
+    summarise(
+      across(
+        population,
+        sum
+      ),
+      .groups = "drop"
+    )
+}
