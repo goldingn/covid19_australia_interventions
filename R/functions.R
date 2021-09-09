@@ -9473,7 +9473,7 @@ write_mobility_dates <- function(mobility, dir = "outputs/"){
 
 
 lga_age_population <- function() {
-  file <- "data/population/32350ds0003_2019.xls"
+  file <- "data/population/32350ds0003_2020.xls"
   names_1 <- file %>%
     read_excel(
       sheet = "Table 3",
@@ -9498,7 +9498,7 @@ lga_age_population <- function() {
     ) %>%
     select(
       -`S/T code`,
-      -`Total Persons`
+      -`Total persons`
     ) %>%
     rename(
       `85+` = `85 and over`,
@@ -10247,5 +10247,88 @@ postcode_age_pop <- function() {
     )
   
   postcode_age_pop
+  
+}
+
+get_poa_lga_correspondence <- function() {
+  
+  # meshblock populations
+  mb_pop <- read_csv(
+    "data/spatial/abs/2016 census mesh block counts.csv",
+    col_types = cols(
+      MB_CODE_2016 = col_double(),
+      MB_CATEGORY_NAME_2016 = col_character(),
+      AREA_ALBERS_SQKM = col_double(),
+      Dwelling = col_double(),
+      Person = col_double(),
+      State = col_double()
+    )
+  )
+  
+  # meshblock - postal area relationships
+  mb_poa <- read_csv(
+    "data/spatial/abs/POA_2016_AUST.csv",
+    col_types = cols(
+      MB_CODE_2016 = col_double(),
+      POA_CODE_2016 = col_character(),
+      POA_NAME_2016 = col_character(),
+      AREA_ALBERS_SQKM = col_double()
+    )
+  )
+  
+  # meshblock - LGA relationships
+  mb_lga <- read_csv(
+    "data/spatial/abs/LGA_2019_NSW.csv",
+    col_types = cols(
+      MB_CODE_2016 = col_double(),
+      LGA_CODE_2019 = col_double(),
+      LGA_NAME_2019 = col_character(),
+      STATE_CODE_2016 = col_double(),
+      STATE_NAME_2016 = col_character(),
+      AREA_ALBERS_SQKM = col_double()
+    )
+  )
+  
+  # join the meshblock files to get LGA, POA, and population, and compute
+  # population weight to map from postcode to LGA
+  poa_lga_correspondence <- mb_lga %>%
+    left_join(
+      mb_poa,
+      by = "MB_CODE_2016"
+    ) %>%
+    left_join(
+      mb_pop,
+      by = "MB_CODE_2016"
+    ) %>%
+    select(
+      MB_CODE_2016,
+      POA_CODE_2016,
+      LGA_NAME_2019,
+      POPULATION = Person
+    ) %>%
+    group_by(
+      POA_CODE_2016, LGA_NAME_2019
+    ) %>%
+    summarise(
+      POPULATION = sum(POPULATION),
+      .groups = "drop"
+    ) %>%
+    arrange(
+      POA_CODE_2016,
+      LGA_NAME_2019
+    ) %>%
+    group_by(
+      POA_CODE_2016
+    ) %>%
+    mutate(
+      weight = POPULATION / sum(POPULATION),
+      weight = replace_na(weight, 1)
+    ) %>%
+    ungroup() %>%
+    select(
+      POSTCODE = POA_CODE_2016,
+      LGA_NAME_2019,
+      weight
+    )
   
 }

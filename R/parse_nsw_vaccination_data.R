@@ -114,6 +114,13 @@ pop_air <- pop %>%
   summarise(
     population = sum(population),
     .groups = "drop"
+  ) %>%
+  # for some reason this name is borked
+  mutate(
+    LGA_NAME19 = case_when(
+      LGA_NAME19 == "Nambucca Valley (A)" ~ "Nambucca (A)",
+      TRUE ~ LGA_NAME19
+    )
   )
 
 # and to 5y age bins
@@ -130,6 +137,9 @@ pop_5y <- pop %>%
     across(population, sum),
     .groups = "drop"
   )
+
+# load ABS postcode to LGA concordance
+postcode_lga_lookup <- get_poa_lga_correspondence()
 
 # load air data, remove provider type, add populations, and tidy
 air_raw_postcode <- list.files(
@@ -171,6 +181,15 @@ air_raw_postcode <- list.files(
 
 # aggregate to LGA level
 air_raw <- air_raw_postcode %>%
+  left_join(
+    postcode_lga_lookup,
+    by = "POSTCODE"
+  ) %>%
+  # where the postcode is not in the lookup, assign all weight to the NSW Health allocated LGA
+  mutate(
+    LGA_NAME19 = coalesce(LGA_NAME19, LGA_NAME_2019),
+    weight = replace_na(weight, 1)
+  ) %>%
   group_by(
     LGA_NAME19,
     DOSE_NUMBER,
@@ -180,11 +199,20 @@ air_raw <- air_raw_postcode %>%
     ENCOUNTER_DATE
   ) %>%
   summarise(
-    across(
-      CUMULATIVE_DAILY_COUNT,
-      sum
-    ),
+    CUMULATIVE_DAILY_COUNT = sum(CUMULATIVE_DAILY_COUNT * weight),
     .groups = "drop"
+  )
+
+# check sums
+air_raw_postcode %>%
+  filter(ENCOUNTER_DATE == max(ENCOUNTER_DATE)) %>%
+  summarise(
+    sum(CUMULATIVE_DAILY_COUNT)
+  )
+air_raw %>%
+  filter(ENCOUNTER_DATE == max(ENCOUNTER_DATE)) %>%
+  summarise(
+    sum(CUMULATIVE_DAILY_COUNT)
   )
 
 latest_data_date <- max(air_raw$ENCOUNTER_DATE)
