@@ -9641,7 +9641,7 @@ forecast_vaccination <- function(
     previous_days_average = previous_days_average
   )
   
-  # cumulative number of doses as a the most recent time point
+  # cumulative number of doses as the most recent time point
   starting <- air_current %>%
     filter(
       date == latest_data_date
@@ -9690,7 +9690,7 @@ forecast_vaccination <- function(
   
   # extrapolate the number of cumulative doses into the future, without capping coverage
   
-  # future dates for each LGA and age
+  # future dates for each LGA and age, based on recent rate of vaccination
   future_doses <- expand_grid(
     lga = unique(air_current$lga),
     age_air_80 = unique(air_current$age_air_80),
@@ -9701,7 +9701,7 @@ forecast_vaccination <- function(
       dailies,
       by = c("lga", "age_air_80")
     )
-  
+
   # optionally add on some extra doses to represent an alternate vaccination
   # scenario
   if (!is.null(extra_doses)) {
@@ -9738,10 +9738,6 @@ forecast_vaccination <- function(
       across(
         starts_with("dose"),
         cumsum
-      ),
-      across(
-        starts_with("dose"),
-        round
       )
     ) %>%
     # add on current observed total number of doses
@@ -9764,14 +9760,55 @@ forecast_vaccination <- function(
     )
   
   # add the forecast to the current air data to get the full time series
-  air_saturated <- air_current %>%
+  # compute the weighted number of cumulative dose 2s (interpolating linearly
+  # between that expected under the current dose 2 vaccination rate and the
+  # lagged dose 1 cumulative count)
+  air_current_future <- air_current %>%
     mutate(
       forecast = FALSE
     ) %>%
     bind_rows(
       air_forecast
     ) %>%
-    # add on the max coverages (with different thresholds)
+    # compute the daily doses
+    group_by(
+      lga,
+      age_air_80
+    ) %>%
+    arrange(
+      date
+    ) %>%
+    mutate(
+      # compute lagged dose 1s to get more mechanistic forecast of dose 2s
+      dose_2_AstraZeneca_lag = lag(dose_1_AstraZeneca, 12 * 7),
+      dose_2_Pfizer_lag = lag(dose_1_Pfizer, 4 * 7),
+      # and weight them with the ones based on the current rates, to get a
+      # smoother transition over 28 days
+      dose_2_recent_weight = pmax(0, 1 - pmin(1, as.numeric(date - latest_data_date) / 28)),
+      dose_2_AstraZeneca = if_else(
+        forecast,
+        dose_2_AstraZeneca * dose_2_recent_weight + dose_2_AstraZeneca_lag * (1 - dose_2_recent_weight),
+        dose_2_AstraZeneca
+      ),
+      dose_2_Pfizer = if_else(
+        forecast,
+        dose_2_Pfizer * dose_2_recent_weight + dose_2_Pfizer_lag * (1 - dose_2_recent_weight),
+        dose_2_Pfizer
+      )
+    ) %>%
+    select(
+      -ends_with("lag"),
+      -dose_2_recent_weight
+    ) %>%
+    mutate(
+      across(
+        starts_with("dose"),
+        round
+      )
+    )
+    
+  # add on the max coverages (with different thresholds)
+  air_saturated <- air_current_future %>%
     full_join(
       max_coverage,
       by = c("lga", "age_air_80")

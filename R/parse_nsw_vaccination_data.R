@@ -376,6 +376,7 @@ for (coverage in unique(air$coverage_scenario)) {
         sum
       ),
       population = sum(population),
+      eligible_population = sum(eligible_population),
       .groups = "drop"
     ) %>%
     pivot_longer(
@@ -384,7 +385,7 @@ for (coverage in unique(air$coverage_scenario)) {
       values_to = "vaccinated" 
     ) %>%
     mutate(
-      coverage = vaccinated / population,
+      coverage = vaccinated / eligible_population,
       doses = case_when(
         doses == "any_vaccinated" ~ "either dose",
         doses == "fully_vaccinated" ~ "both doses"
@@ -413,7 +414,7 @@ for (coverage in unique(air$coverage_scenario)) {
       size = 0.2
     ) +
     geom_line() +
-    ylab("Vaccination coverage (whole population)") +
+    ylab("Vaccination coverage (eligible population)") +
     xlab("") +
     ggtitle(
       "Scenario forecast vaccination coverage in LGAs of concern",
@@ -533,7 +534,7 @@ coverage_air_80 <- air %>%
 
 correction_10_14 <- pop %>%
   select(
-    lga = LGA_NAME19,
+    lga,
     age_5y,
     age_air_80,
     population
@@ -813,7 +814,7 @@ vaccination_effect_plot %>%
   ylab("") +
   xlab("") +
   ggtitle(
-    "Reduction in transmission potential for each NSW LGA",
+    "Reduction in transmission potential for LGAs",
     "LGAs of concern in bold"
   ) +
   theme_cowplot() +
