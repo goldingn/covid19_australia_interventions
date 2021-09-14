@@ -219,7 +219,7 @@ apple_mobility <- function() {
 }
 
 # try a bunch of previous days to find the most recent citymapper dataset
-citymapper_url <- function(min_delay = 0, max_delay = 14) {
+citymapper_url <- function(min_delay = 0, max_delay = 28) {
   date <- Sys.Date()
   delay <- min_delay
   while(delay < max_delay) {
@@ -308,17 +308,18 @@ all_mobility <- function() {
   #     -metric
   #   )
   
-  citymapper <- citymapper_mobility() %>%
-    mutate(
-      datastream = str_c("Citymapper: directions")
-    )
+  # citymapper ended https://citymapper.com/news/2393/citymapper-mobility-index-comes-to-an-end
+  # citymapper <- citymapper_mobility() %>%
+  #   mutate(
+  #     datastream = str_c("Citymapper: directions")
+  #   )
   
   # combine the datasets
   bind_rows(
     google,
-    apple,
+    apple#,
     # facebook,
-    citymapper
+    #citymapper
   )
   
 }
