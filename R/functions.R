@@ -5464,6 +5464,41 @@ reff_1_with_vaccine <- function(fitted_model, vaccine_effect){
 }
 
 
+reff_1_without_vaccine <- function(fitted_model, vaccine_effect){
+  
+  ga <- fitted_model$greta_arrays
+  
+  dates <- fitted_model$data$dates$infection_project
+  
+  df <- full_join(
+    expand_grid(
+      date = dates,
+      state = unique(vaccine_effect$state)
+    ),
+    vaccine_effect
+  ) %>%
+    arrange(state, date) %>% 
+    group_by(state) %>%
+    tidyr::fill(
+      effect,
+      .direction = "updown"
+    ) %>%
+    pivot_wider(
+      names_from = state,
+      values_from = effect
+    )
+  
+  ote <- df %>%
+    dplyr::select(-date) %>%
+    as.matrix
+  
+  
+  reff1 <- ga$R_eff_loc_1 
+  
+  reff1/ote
+  
+}
+
 vaccination_dates <- function() {
   expand_grid(
     date = c("2021-02-22"),
@@ -5633,7 +5668,7 @@ reff_plotting <- function(
       R_eff_loc_1_micro = reff_1_only_micro(fitted_model_extended),
       R_eff_loc_1_surv = reff_1_only_surveillance(fitted_model_extended),
       R_eff_loc_1_vaccine_only = reff_1_vaccine_only(fitted_model_extended, vaccine_timeseries),
-      R_eff_loc_1_with_vaccine = reff_1_with_vaccine(fitted_model_extended, vaccine_timeseries)
+      R_eff_loc_1_without_vaccine = reff_1_without_vaccine(fitted_model_extended, vaccine_timeseries)
     ) 
   )
   
@@ -5648,7 +5683,7 @@ reff_plotting <- function(
     "R_eff_loc_1_macro",
     "R_eff_loc_1_surv",
     "R_eff_loc_1_vaccine_only",
-    "R_eff_loc_1_with_vaccine"
+    "R_eff_loc_1_without_vaccine"
   )
   vector_list <- lapply(fitted_model_extended$greta_arrays[trajectory_types], c)
   
@@ -5675,9 +5710,9 @@ reff_plotting <- function(
   
   save_ggplot("R_eff_1_vaccine_only.png", dir, subdir, multi = TRUE)
   
-    # vaccine effect in C1
+    # vaccine effect out of C1
   plot_trend(
-    sims$R_eff_loc_1_with_vaccine,
+    sims$R_eff_loc_1_without_vaccine,
     data = fitted_model_extended$data,
     min_date = min_date,
     max_date = max_date,
@@ -5689,11 +5724,11 @@ reff_plotting <- function(
     plot_voc = TRUE,
     plot_vax = TRUE
   ) + 
-    ggtitle(label = "Impact of social distancing & vaccination",
-            subtitle = expression(Component~of~R["eff"]~due~to~social~distancing~and~vaccination)) +
+    ggtitle(label = "Impact of social distancing only",
+            subtitle = expression(Component~of~R["eff"]~due~to~social~distancing~only)) +
     ylab(expression(R["eff"]~component))
   
-  save_ggplot("R_eff_1_local_with_vaccine.png", dir, subdir, multi = TRUE)
+  save_ggplot("R_eff_1_local_without_vaccine.png", dir, subdir, multi = TRUE)
   
   # microdistancing only
   plot_trend(sims$R_eff_loc_1_micro,
