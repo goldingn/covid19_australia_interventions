@@ -8055,7 +8055,7 @@ plot_delays <- function(
       xlim = c(as.Date("2020-03-01"), max(delay_distributions$date))
     ) +
     scale_y_continuous(position = "right") +
-    scale_x_date(date_breaks = "1 month", date_labels = "%e/%m") +
+    scale_x_date(date_breaks = "2 month", date_labels = "%e/%m") +
     scale_alpha(range = c(0, 0.5)) +
     scale_fill_manual(values = c("Nowcast" = base_colour)) +
     

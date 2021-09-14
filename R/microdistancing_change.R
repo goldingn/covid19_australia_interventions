@@ -230,7 +230,7 @@ p <- ggplot(line_df) +
   
   coord_cartesian(ylim = c(0, 100)) +
   scale_y_continuous(position = "right") +
-  scale_x_date(date_breaks = "1 month", date_labels = "%e/%m") +
+  scale_x_date(date_breaks = "2 month", date_labels = "%e/%m") +
   scale_alpha(range = c(0, 0.5)) +
   scale_fill_manual(values = c("Nowcast" = base_colour)) +
   
@@ -291,6 +291,153 @@ p
 
 
 save_ggplot("microdistancing_effect.png")
+
+p <- ggplot(line_df) +
+  
+  aes(date, mean, fill = type) +
+  
+  xlab(element_blank()) +
+  
+  coord_cartesian(ylim = c(0, 100)) +
+  scale_y_continuous(position = "right") +
+  scale_x_date(date_breaks = "2 month", date_labels = "%e/%m") +
+  scale_alpha(range = c(0, 0.5)) +
+  scale_fill_manual(values = c("Nowcast" = base_colour)) +
+  
+  geom_vline(
+    aes(xintercept = date),
+    data = interventions(),
+    colour = "grey80"
+  ) +
+  
+  geom_ribbon(aes(ymin = ci_90_lo,
+                  ymax = ci_90_hi),
+              alpha = 0.2) +
+  geom_ribbon(aes(ymin = ci_50_lo,
+                  ymax = ci_50_hi),
+              alpha = 0.5) +
+  geom_line(aes(y = ci_90_lo),
+            colour = base_colour,
+            alpha = 0.8) + 
+  geom_line(aes(y = ci_90_hi),
+            colour = base_colour,
+            alpha = 0.8) + 
+  
+  facet_wrap(~state, ncol = 2, scales = "free") +
+  
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  theme(legend.position = "none",
+        strip.background = element_blank(),
+        strip.text = element_text(hjust = 0, face = "bold"),
+        axis.title.y.right = element_text(vjust = 0.5, angle = 90),
+        panel.spacing = unit(1.2, "lines"),
+        axis.text.x = element_text(size = 8)) +
+  
+  # add empirical percentages
+  geom_point(
+    aes(date, percentage),
+    data = point_df,
+    size = 2,
+    pch = "_"
+  ) +
+  
+  geom_errorbar(
+    aes(date, percentage, ymin = lower, ymax = upper),
+    data = point_df,
+    size = 1,
+    alpha = 0.2,
+    width = 0
+  ) +
+  
+  # and titles  
+  ggtitle(
+    label = "Micro-distancing trend",
+    subtitle = "Calibrated against self-reported adherence to physical distancing"
+  ) +
+  ylab("Estimate of percentage 'always' keeping 1.5m distance")
+
+p
+
+
+save_ggplot("microdistancing_effect.png")
+
+micro_date_six_month <- max(line_df$date) - months(6)
+
+p <- ggplot(line_df %>%
+              filter(date >= micro_date_six_month)) +
+  
+  aes(date, mean, fill = type) +
+  
+  xlab(element_blank()) +
+  
+  coord_cartesian(ylim = c(0, 100)) +
+  scale_y_continuous(position = "right") +
+  scale_x_date(date_breaks = "1 month", date_labels = "%e/%m") +
+  scale_alpha(range = c(0, 0.5)) +
+  scale_fill_manual(values = c("Nowcast" = base_colour)) +
+  
+  geom_vline(
+    aes(xintercept = date),
+    data = interventions(),
+    colour = "grey80"
+  ) +
+  
+  geom_ribbon(aes(ymin = ci_90_lo,
+                  ymax = ci_90_hi),
+              alpha = 0.2) +
+  geom_ribbon(aes(ymin = ci_50_lo,
+                  ymax = ci_50_hi),
+              alpha = 0.5) +
+  geom_line(aes(y = ci_90_lo),
+            colour = base_colour,
+            alpha = 0.8) + 
+  geom_line(aes(y = ci_90_hi),
+            colour = base_colour,
+            alpha = 0.8) + 
+  
+  facet_wrap(~state, ncol = 2, scales = "free") +
+  
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  theme(legend.position = "none",
+        strip.background = element_blank(),
+        strip.text = element_text(hjust = 0, face = "bold"),
+        axis.title.y.right = element_text(vjust = 0.5, angle = 90),
+        panel.spacing = unit(1.2, "lines"),
+        axis.text.x = element_text(size = 12)) +
+  
+  # add empirical percentages
+  geom_point(
+    aes(date, percentage),
+    data = point_df %>%
+      filter(date >= micro_date_six_month),
+    size = 2,
+    pch = "_"
+  ) +
+  
+  geom_errorbar(
+    aes(date, percentage, ymin = lower, ymax = upper),
+    data = point_df %>%
+      filter(date >= micro_date_six_month),
+    size = 1,
+    alpha = 0.2,
+    width = 0
+  ) +
+  
+  # and titles  
+  ggtitle(
+    label = "Micro-distancing trend",
+    subtitle = "Calibrated against self-reported adherence to physical distancing"
+  ) +
+  ylab("Estimate of percentage 'always' keeping 1.5m distance")
+
+p
+
+
+save_ggplot("microdistancing_effect_six_month.png")
+
+
 
 # save the model fit
 saveRDS(pred_plot, file = "outputs/microdistancing_trends.RDS")
