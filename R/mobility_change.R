@@ -227,10 +227,10 @@ mobility_fitted %>%
   cowplot::panel_border(remove = TRUE) +
   theme(legend.position = "none",
         strip.background = element_blank(),
-        axis.text.y = element_text(size = 8),
-        strip.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
         strip.text.y = element_text(size = 18),
-        #strip.text.x = element_text(size = 12),
+        strip.text.x = element_text(size = 12),
         plot.title = element_text(size = 20, face = "plain"),
         panel.border = element_rect(colour = grey(0.4), fill = NA),
         panel.spacing = unit(1.2, "lines")) 
@@ -239,6 +239,105 @@ dpi <- 300
 ggsave(
   filename = sprintf(
     "outputs/figures/multistate_model_fit_%s.png",
+    last_date
+  ),
+  width = 2481 / dpi,
+  height = 3507 / dpi,
+  dpi = dpi,
+  scale = 1.2
+)
+
+
+mobility_date_six_month <- last_date - months(6)
+
+mobility_fitted %>%
+  filter(
+    datastream %in% target_datastreams,
+    date >= mobility_date_six_month
+  ) %>%
+  mutate(
+    datastream = factor(datastream, levels = target_datastreams)
+  ) %>%
+  ggplot() +
+  aes(date, fitted_trend) +
+  geom_hline(
+    yintercept = 0,
+    colour = "grey80",
+    linetype = 3
+  ) +
+  geom_vline(
+    aes(xintercept = last_date),
+    colour = "grey80",
+    linetype = 2
+  ) +
+  facet_grid(
+    rows = vars(state),
+    cols = vars(datastream),
+    switch = "y",
+    scales = "free"
+  ) +
+  geom_vline(
+    aes(xintercept = date),
+    data = interventions(),
+    colour = "grey80"
+  ) +
+  geom_ribbon(
+    aes(
+      ymin = fitted_trend_lower,
+      ymax = fitted_trend_upper
+    ),
+    fill = grey(0.9),
+    colour = grey(0.8),
+    size = 0.1
+  ) +
+  # fitted trend
+  geom_line(
+    aes(date, fitted_trend),
+    colour = "gray40",
+    size = 0.25
+  ) +
+  geom_point(
+    aes(date, trend),
+    size = 0.2,
+    col = "purple"
+  ) +
+  coord_cartesian(
+    xlim = c(mobility_date_six_month, last_date)
+  ) +
+  scale_y_continuous(
+    position = "right",
+    breaks = seq(-100, 500, by = 25)
+  ) +
+  scale_x_date(
+    date_breaks = "1 months",
+    date_labels = "%b",
+    limits = range(mobility_fitted$date)
+  ) +
+  xlab("") +
+  ylab("") +
+  ggtitle(
+    sprintf(
+      "Percentage change in selected mobility datastreams up to %s, %s",
+      format(last_date, format = "%B %d"),
+      format(last_date, format = "%Y")
+    )
+  ) +
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  theme(legend.position = "none",
+        strip.background = element_blank(),
+        axis.text.y = element_text(size = 8),
+        #strip.text.x = element_text(size = 10),
+        strip.text.y = element_text(size = 18),
+        strip.text.x = element_text(size = 12),
+        plot.title = element_text(size = 20, face = "plain"),
+        panel.border = element_rect(colour = grey(0.4), fill = NA),
+        panel.spacing = unit(1.2, "lines")) 
+
+dpi <- 300
+ggsave(
+  filename = sprintf(
+    "outputs/figures/multistate_model_fit_six_month_%s.png",
     last_date
   ),
   width = 2481 / dpi,

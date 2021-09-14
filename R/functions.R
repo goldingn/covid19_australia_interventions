@@ -219,7 +219,7 @@ apple_mobility <- function() {
 }
 
 # try a bunch of previous days to find the most recent citymapper dataset
-citymapper_url <- function(min_delay = 0, max_delay = 14) {
+citymapper_url <- function(min_delay = 0, max_delay = 28) {
   date <- Sys.Date()
   delay <- min_delay
   while(delay < max_delay) {
@@ -308,17 +308,18 @@ all_mobility <- function() {
   #     -metric
   #   )
   
-  citymapper <- citymapper_mobility() %>%
-    mutate(
-      datastream = str_c("Citymapper: directions")
-    )
+  # citymapper ended https://citymapper.com/news/2393/citymapper-mobility-index-comes-to-an-end
+  # citymapper <- citymapper_mobility() %>%
+  #   mutate(
+  #     datastream = str_c("Citymapper: directions")
+  #   )
   
   # combine the datasets
   bind_rows(
     google,
-    apple,
+    apple#,
     # facebook,
-    citymapper
+    #citymapper
   )
   
 }
@@ -1534,6 +1535,7 @@ plot_trend <- function(
   multistate = FALSE,
   hline_at = 1,
   ylim = c(0, 6),
+  ybreaks = NULL,
   intervention_at = interventions(),
   projection_at = NA,
   keep_only_rows = NULL,
@@ -1600,11 +1602,16 @@ plot_trend <- function(
     ylim <- c(min(df$ci_90_lo), max(df$ci_90_hi)) 
   }
   
-  if(range(ylim)[2] - range(ylim)[1] >= 4 & range(ylim)[2] - range(ylim)[1] <= 10){
-    y_scale <- scale_y_continuous(position = "right", breaks = seq(from = ylim[1], to = ylim[2], by = 1))
-  } else(
-    y_scale <- scale_y_continuous(position = "right")
-  )
+  if (is.null(ybreaks)){
+    if(range(ylim)[2] - range(ylim)[1] >= 4 & range(ylim)[2] - range(ylim)[1] <= 10){
+      y_scale <- scale_y_continuous(position = "right", breaks = seq(from = ylim[1], to = ylim[2], by = 1))
+      
+    } else(
+      y_scale <- scale_y_continuous(position = "right")
+    )
+  } else {
+    y_scale <- scale_y_continuous(position = "right", breaks = seq(from = ybreaks[1], to = ybreaks[2], by = 1))
+  }
   
   p <- ggplot(df) + 
     
@@ -4265,7 +4272,7 @@ get_nndss_linelist <- function(
     col_types_1 <- c(
       STATE = "text",
       POSTCODE = "numeric",
-      CONFIRMATION_STATUS = "numeric",
+      CONFIRMATION_STATUS = "text",
       TRUE_ONSET_DATE = "date",
       SPECIMEN_DATE = "date",
       NOTIFICATION_DATE = "date",
@@ -4294,7 +4301,7 @@ get_nndss_linelist <- function(
     col_types_2 <- c(
       STATE = "text",
       POSTCODE = "numeric",
-      CONFIRMATION_STATUS = "numeric",
+      CONFIRMATION_STATUS = "text",
       TRUE_ONSET_DATE = "date",
       SPECIMEN_DATE = "date",
       NOTIFICATION_DATE = "date",
@@ -4490,11 +4497,14 @@ get_vic_linelist <- function(file) {
       read_csv(
         col_types = cols(
           CaseNumber = col_double(),
-          DiagnosisDate = col_date(format = ""),
-          SymptomsOnsetDate = col_date(format = ""),
+          #DiagnosisDate = col_date(format = ""),
+          DiagnosisDate = col_date(format = "%d/%m/%Y"),
+          #SymptomsOnsetDate = col_date(format = ""),
+          SymptomsOnsetDate = col_date(format = "%d/%m/%Y"),
           LGA = col_character(),
           Acquired = col_character(),
-          FirstSpecimenPositiveDate = col_date(format = "")
+          #FirstSpecimenPositiveDate = col_date(format = "")
+          FirstSpecimenPositiveDate = col_date(format = "%d/%m/%Y")
         ),
         na = "NA"
       ) %>%
@@ -4519,6 +4529,10 @@ get_vic_linelist <- function(file) {
       date_linelist = linelist_date
     ) %>%
     mutate(
+      date_confirmation = case_when(
+        is.na(date_confirmation) ~ date_detection + 1,
+        TRUE ~ date_confirmation
+      ),
       date_detection = case_when(
         is.na(date_detection) ~ date_confirmation - 1,
         TRUE ~ date_detection
@@ -5796,6 +5810,7 @@ reff_plotting <- function(
                   hline_at = 0,
                   projection_at = projection_date,
                   ylim = NULL,
+                  ybreaks = c(-2, 1),
                   plot_voc = TRUE) + 
     ggtitle(label = "Short-term variation in local to local transmission rates",
             subtitle = expression(Deviation~from~log(R["eff"])~of~"local-local"~transmission)) +
@@ -5884,10 +5899,13 @@ hard_clamp <- function(local_samples, target_date) {
 }
 
 # output simulations
-write_reff_sims <- function(fitted_model,
-                            dir = "outputs/projection",
-                            write_reff_1 = TRUE,
-                            write_reff_12 = TRUE) {
+write_reff_sims <- function(
+  fitted_model,
+  dir = "outputs/projection",
+  write_reff_1 = TRUE,
+  write_reff_12 = TRUE,
+  write_reff_2 = FALSE
+) {
   
   if (write_reff_1) {
     
@@ -5896,6 +5914,17 @@ write_reff_sims <- function(fitted_model,
     reff_1 %>%
       write_csv(
         file.path(dir, "r_eff_1_local_samples.csv")
+      )
+    
+  }
+  
+  if (write_reff_2) {
+    
+    reff_2 <- reff_sims(fitted_model, which = "epsilon_L")
+    
+    reff_2 %>%
+      write_csv(
+        file.path(dir, "r_eff_2_samples.csv")
       )
     
   }
@@ -6248,7 +6277,7 @@ load_vic <- function (file) {
 } # possibly deprecated?
 
 load_linelist <- function(date = NULL,
-                          use_vic = FALSE,
+                          use_vic = TRUE,
                           use_sa = FALSE,
                           use_nsw = TRUE) {
   
@@ -8053,7 +8082,7 @@ plot_delays <- function(
       xlim = c(as.Date("2020-03-01"), max(delay_distributions$date))
     ) +
     scale_y_continuous(position = "right") +
-    scale_x_date(date_breaks = "1 month", date_labels = "%e/%m") +
+    scale_x_date(date_breaks = "2 month", date_labels = "%e/%m") +
     scale_alpha(range = c(0, 0.5)) +
     scale_fill_manual(values = c("Nowcast" = base_colour)) +
     
