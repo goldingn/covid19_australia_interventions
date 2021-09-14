@@ -9,12 +9,18 @@ proj_samples <- read.csv("outputs/projection/r_eff_12_local_samples.csv") %>%
 
 
 today_samples <- proj_samples %>%
-  filter(state == "VIC", date == "2021-05-31")
+  filter(state == "VIC", date == "2021-08-23")
 
 mean(today_samples$value)
 
 
 quantile(today_samples$value, probs = c(0.05, 0.25, 0.5, 0.75, 0.95))
+
+proj_samples %>%
+  filter(state == "VIC", date == "2021-08-09") %>%
+  pull(value) %>%
+  quantile(probs = c(0.05, 0.25, 0.5, 0.75, 0.95))
+
 
 
 vic_samples <- proj_samples %>%
@@ -175,6 +181,14 @@ ggplot(c12) +
   geom_line(aes(x = date, y = med, linetype = variant), alpha = 0.5) +
   facet_wrap(~state) 
 
+c12_samples <- read_reff_samples("outputs/projection/r_eff_12_local_samples.csv")
+
+ggplot(c12) +
+  geom_ribbon(aes(x = date, ymin = lw5, ymax = up95), alpha = 0) +
+  geom_ribbon(aes(x = date, ymin = lw25, ymax = up75), alpha = 0.5) +
+  geom_line(aes(x = date, y = med), alpha = 0.5) +
+  facet_wrap(~state) 
+
 
 
 vax_samples <- read_reff_samples("outputs/projection/r_eff_1_local_with_vaccine_samples.csv")
@@ -196,4 +210,15 @@ ggplot(c1) +
   geom_ribbon(aes(x = date, ymin = lw25, ymax = up75, fill = vaccination), alpha = 0.25) +
   geom_line(aes(x = date, y = med, linetype = vaccination), alpha = 0.25) +
   facet_wrap(~state) 
+
+
+
+c2_samples <- read_reff_samples("outputs/projection/r_eff_2_samples.csv")
+
+ggplot(c2_samples) +
+  geom_ribbon(aes(x = date, ymin = lw5, ymax = up95), alpha = 0) +
+  geom_ribbon(aes(x = date, ymin = lw25, ymax = up75), alpha = 0.25) +
+  geom_line(aes(x = date, y = med), alpha = 0.25) +
+  facet_wrap(~state) 
+
 
