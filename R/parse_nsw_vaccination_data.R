@@ -341,7 +341,7 @@ air <- bind_rows(
     air_current,
     previous_days_average = 0:6,
     max_date = Sys.Date() + 7 * 8,
-    vaccinating_12_15 = FALSE
+    vaccinating_12_15 = TRUE
   )
 ) %>%
   # tidy up labels for printing
@@ -602,6 +602,15 @@ coverage <- coverage_air_80 %>%
   rename(
     age = age_5y
   ) %>%
+  mutate(
+    age = factor(
+      age,
+      levels = str_sort(
+        unique(age),
+        numeric = TRUE
+      )
+    )
+  ) %>%
   arrange(
     scenario, coverage_scenario, date, lga, age
   ) %>%
@@ -723,11 +732,7 @@ baseline_ngm <- baseline_matrix(1)
 
 # estimate effects of vaccination on transmission
 vaccination_effect <- coverage %>%
-  # subset to recent weeks to speed up computation
-  filter(
-    date > as.Date("2021-06-16")
-  ) %>%
-  arrange(scenario, coverage_scenario, lga) %>%
+  arrange(scenario, coverage_scenario, lga, date, age) %>%
   group_by(
     lga, date, forecast, scenario, coverage_scenario
   ) %>%
@@ -744,23 +749,6 @@ vaccination_effect <- coverage %>%
     vaccination_transmission_reduction_percent =
       100 * (1 - vaccination_transmission_multiplier)
   )
-
-# # percentage reduction in transmission due to vaccination
-# vaccination_effect %>%
-#   filter(date == latest_data_date) %>%
-#   select(
-#     vaccination_transmission_reduction_percent,
-#     lga
-#   ) %>%
-#   pull(vaccination_transmission_reduction_percent) %>%
-#   hist(breaks = 100)
-# 
-# vaccination_effect %>%
-#   filter(date == latest_data_date - 14) %>%
-#   select(
-#     vaccination_transmission_reduction_percent,
-#     lga
-#   )
 
 write_csv(vaccination_effect, "outputs/nsw/nsw_lgas_vaccination_effect.csv")  
 
