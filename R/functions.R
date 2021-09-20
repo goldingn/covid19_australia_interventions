@@ -5819,8 +5819,8 @@ reff_plotting <- function(
              base_colour = green,
              projection_at = projection_date,
              plot_voc = TRUE) + 
-    ggtitle(label = "Impact of social distancing",
-            subtitle = expression(Component~of~R["eff"]~due~to~social~distancing)) +
+    ggtitle(label = "Impact of social distancing & vaccination",
+            subtitle = expression(Component~of~R["eff"]~due~to~social~distancing~and~vaccination)) +
     ylab(expression(R["eff"]~component))
   
   save_ggplot("R_eff_1_local.png", dir, subdir)
