@@ -8,7 +8,7 @@ read_vax_data <- function(
   date
 ){
   
-  if(date >= "2021-09-06"){
+  if(date >= "2021-08-30"){
     header <- readxl::read_excel(
       path = file,
       n_max = 2,
@@ -454,15 +454,6 @@ vaccine_effect_timeseries <- bind_rows(
 )
 
 
-ggplot(vaccine_effect_timeseries) +
-  geom_line(
-    aes(
-      x = date,
-      y = effect,
-      colour = state
-    )
-  )
-
 
 
 effective_dose_data <- dose_data %>%
@@ -510,6 +501,46 @@ write_csv(
   )
 )
 
+dpi <- 150
+
+ggplot(vaccine_effect_timeseries) +
+  geom_line(
+    aes(
+      x = date,
+      y = effect,
+      colour = state
+    )
+  ) +
+  theme_classic() +
+  labs(
+    x = NULL,
+    y = expression(Change~"in"~R["eff"]),
+    col = "State"
+  ) +
+  scale_x_date(
+    breaks = "1 month",
+    date_labels = "%b %Y"
+  ) +
+  ggtitle(
+    label = "Vaccination effect",
+    subtitle = expression(Change~"in"~R["eff"]~due~to~vaccination)
+  ) +
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  theme(legend.position = "none",
+        strip.background = element_blank(),
+        strip.text = element_text(hjust = 0, face = "bold"),
+        axis.title.y.right = element_text(vjust = 0.5, angle = 90),
+        panel.spacing = unit(1.2, "lines"))
+  
+
+ggsave(
+  filename = "outputs/figures/vaccination_effect.png",
+  dpi = dpi,
+  width = 1500 / dpi,
+  height = 1250 / dpi,
+  scale = 1.2
+)
 
 ggplot(
   effective_dose_data
@@ -594,6 +625,27 @@ effective_dose_data %>%
     scales = "free_y"
   )
 
+
+vaccine_effect_timeseries %>%
+  group_by(state) %>%
+  mutate(
+    delta_week = slider::slide(
+      .x = effect,
+      .f = function(x){
+        x[1] - x[7]
+      },
+      .before = 7
+    ) %>%
+      unlist
+  ) %>%
+  ggplot() +
+  geom_line(
+    aes(
+      x = date,
+      y = delta_week,
+      col = state
+    )
+  )
 
 #############
 # code to read in Tierney processed data of wide timeseries
