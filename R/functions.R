@@ -4497,14 +4497,14 @@ get_vic_linelist <- function(file) {
       read_csv(
         col_types = cols(
           CaseNumber = col_double(),
-          #DiagnosisDate = col_date(format = ""),
-          DiagnosisDate = col_date(format = "%d/%m/%Y"),
-          #SymptomsOnsetDate = col_date(format = ""),
-          SymptomsOnsetDate = col_date(format = "%d/%m/%Y"),
+          DiagnosisDate = col_date(format = ""),
+          #DiagnosisDate = col_date(format = "%d/%m/%Y"),
+          SymptomsOnsetDate = col_date(format = ""),
+          #SymptomsOnsetDate = col_date(format = "%d/%m/%Y"),
           LGA = col_character(),
           Acquired = col_character(),
-          #FirstSpecimenPositiveDate = col_date(format = "")
-          FirstSpecimenPositiveDate = col_date(format = "%d/%m/%Y")
+          FirstSpecimenPositiveDate = col_date(format = "")
+          #FirstSpecimenPositiveDate = col_date(format = "%d/%m/%Y")
         ),
         na = "NA"
       ) %>%
@@ -4775,7 +4775,8 @@ get_nsw_linelist <- function () {
     mutate(
       date_onset = case_when(
         !is.na(SETTING_OF_TRANSMISSION_DATE) ~ SETTING_OF_TRANSMISSION_DATE + 5,
-        TRUE ~ CALCULATED_ONSET_DATE
+        #TRUE ~ CALCULATED_ONSET_DATE
+        TRUE ~ SYMPTOM_ONSET_DATE
       ),
       date_detection = NA,
       date_confirmation = EARLIEST_CONFIRMED_OR_PROBABLE,
