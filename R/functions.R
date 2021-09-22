@@ -9684,6 +9684,8 @@ write_reff_sims_vax <- function(
   vaccine_timeseries
 ){
   
+  # adds vaccination effect to C1 if fitted without it
+  
   fitted_model_extended <- fitted_model
   
   fitted_model_extended$greta_arrays <- c(
@@ -9695,7 +9697,7 @@ write_reff_sims_vax <- function(
   
   ga <- fitted_model_extended$greta_arrays[["R_eff_loc_1_with_vaccine"]]
   ga_vec <- c(ga)
-  sim <- calculate(ga_vec, values = fitted_model$draws, nsim = 2000)
+  sim <- calculate(ga_vec, values = fitted_model_extended$draws, nsim = 2000)
   
   samples <- t(sim[[1]][1:2000, , 1])
   colnames(samples) <- paste0("sim", 1:2000)
@@ -9708,6 +9710,43 @@ write_reff_sims_vax <- function(
     cbind(samples) %>%
     write_csv(
       file.path("outputs/projection/", "r_eff_1_local_with_vaccine_samples.csv")
+    )
+  
+  
+}
+
+
+write_reff_sims_novax <- function(
+  fitted_model,
+  vaccine_timeseries
+){
+  
+  # removes vaccination effect from C1 if fitted with it
+  
+  fitted_model_extended <- fitted_model
+  
+  fitted_model_extended$greta_arrays <- c(
+    fitted_model$greta_arrays,
+    list(
+      R_eff_loc_1_without_vaccine = reff_1_without_vaccine(fitted_model_extended, vaccine_timeseries)
+    ) 
+  )
+  
+  ga <- fitted_model_extended$greta_arrays[["R_eff_loc_1_without_vaccine"]]
+  ga_vec <- c(ga)
+  sim <- calculate(ga_vec, values = fitted_model_extended$draws, nsim = 2000)
+  
+  samples <- t(sim[[1]][1:2000, , 1])
+  colnames(samples) <- paste0("sim", 1:2000)
+  
+  tibble(
+    date = rep(fitted_model$data$dates$infection_project, fitted_model$data$n_states),
+    state = rep(fitted_model$data$states, each = fitted_model$data$n_dates_project),
+  ) %>%
+    mutate(date_onset = date + 5) %>%
+    cbind(samples) %>%
+    write_csv(
+      file.path("outputs/projection/", "r_eff_1_local_without_vaccine_samples.csv")
     )
   
   
