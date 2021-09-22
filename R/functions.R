@@ -4168,7 +4168,9 @@ lengthen <- function(matrix, dates, region_name, value_name) {
 postcode_to_state <- function(postcode) {
   
   state <- case_when(
-    grepl("^26", postcode) ~ "ACT",
+    #grepl("^26", postcode) ~ "ACT",
+    # For ACT postcodes see https://en.wikipedia.org/wiki/Postcodes_in_Australia
+    is_act_postcode(postcode) ~ "ACT",
     grepl("^2", postcode) ~ "NSW",
     grepl("^3", postcode) ~ "VIC",
     grepl("^4", postcode) ~ "QLD",
@@ -4185,6 +4187,17 @@ postcode_to_state <- function(postcode) {
   state[state == "NA"] <- NA
   state
   
+}
+
+
+is_act_postcode <- function(x){
+  any(as.numeric(x) == c(
+    200:299,
+    2600:2618,
+    2620,
+    2699,#this seems to be used as ACT unknown
+    2900:2920
+  ))
 }
 
 lga_to_state <- function (lga) {
@@ -4424,8 +4437,20 @@ get_nndss_linelist <- function(
     mutate(
       postcode_of_acquisition = substr(PLACE_OF_ACQUISITION, 5, 8),
       postcode_of_residence = replace_na(POSTCODE, "8888"),
-      state_of_acquisition = postcode_to_state(postcode_of_acquisition),
       state_of_residence = postcode_to_state(postcode_of_residence)
+    ) %>%
+    rowwise %>%
+    mutate(
+      state_of_acquisition = postcode_to_state(postcode_of_acquisition),
+      .after = postcode_of_residence
+    ) %>% 
+    ungroup %>%
+    mutate(
+      interstate_import_cvsi = case_when(
+        CV_SOURCE_INFECTION == 4 ~ TRUE,
+        CV_SOURCE_INFECTION == 7 ~ TRUE,
+        TRUE ~ FALSE
+      )
     )
   
 
@@ -4448,7 +4473,8 @@ get_nndss_linelist <- function(
       postcode_of_acquisition,
       postcode_of_residence,
       state_of_acquisition,
-      state_of_residence
+      state_of_residence,
+      interstate_import_cvsi
     ) %>%
     mutate(
       report_delay = as.numeric(date_confirmation - date_onset),
@@ -4965,7 +4991,6 @@ reff_model_data <- function(
   # impute onset dates and infection dates using this
   linelist <- linelist_raw %>%
     impute_linelist(notification_delay_cdf = notification_delay_cdf)
-  
   # truncate mobility data to no later than the day before the linelist (needed
   # for modelling on historic linelists) and then get the most recent date
   latest_mobility_date <- mobility_data %>%
@@ -6592,10 +6617,15 @@ load_linelist <- function(date = NULL,
   linelist <- linelist %>%
     mutate(
       interstate_import = case_when(
+        state == "ACT" ~ interstate_import_cvsi,
+        # ACT have indicated that CV_SOURCE_INFECTION is a reliable indicator for their territory
+        # whereas postcodes in ACT may also cover NSW so postcodes are less reliable
         state != state_of_acquisition ~ TRUE,
         TRUE ~ FALSE
       )
-    )
+    ) %>% 
+    select(-interstate_import_cvsi)
+  
   
   linelist
   
