@@ -158,6 +158,15 @@ pop_5y <- pop %>%
 # load ABS postcode to LGA concordance
 postcode_lga_lookup <- get_poa_lga_correspondence()
 
+# lookup to rename the LGAs
+lga_rename <- read_csv(
+  "data/vaccinatinon/map_lga_name_20210916.csv",
+  col_types = cols(
+    LGA_CODE19 = col_character(),
+    LGA_NAME19_OLD = col_character(),
+    LGA_NAME19_new = col_character()
+  ))
+
 # load air data, remove provider type, add populations, and tidy
 air_raw_postcode <- list.files(
   "~/not_synced/vaccination/nsw/",
@@ -198,6 +207,22 @@ air_raw_postcode <- list.files(
 
 # aggregate to LGA level
 air_raw <- air_raw_postcode %>%
+  # rename the LGAs to the old version
+  left_join(
+    lga_rename,
+    by = c(LGA_NAME19 = "LGA_NAME19_new")
+  ) %>%
+  select(
+    -LGA_NAME19,
+    -LGA_CODE19
+  ) %>%
+  rename(
+    LGA_NAME19 = LGA_NAME19_OLD
+  ) %>%
+  relocate(
+    LGA_NAME19,
+    .after = POSTCODE
+  ) %>%
   left_join(
     postcode_lga_lookup,
     by = "POSTCODE"
