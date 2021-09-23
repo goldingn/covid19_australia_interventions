@@ -4191,13 +4191,13 @@ postcode_to_state <- function(postcode) {
 
 
 is_act_postcode <- function(x){
-  any(as.numeric(x) == c(
+  as.numeric(x) %in% c(
     200:299,
     2600:2618,
     2620,
     2699,#this seems to be used as ACT unknown
     2900:2920
-  ))
+  )
 }
 
 lga_to_state <- function (lga) {
@@ -4437,14 +4437,9 @@ get_nndss_linelist <- function(
     mutate(
       postcode_of_acquisition = substr(PLACE_OF_ACQUISITION, 5, 8),
       postcode_of_residence = replace_na(POSTCODE, "8888"),
+      state_of_acquisition = postcode_to_state(postcode_of_acquisition),
       state_of_residence = postcode_to_state(postcode_of_residence)
     ) %>%
-    rowwise %>%
-    mutate(
-      state_of_acquisition = postcode_to_state(postcode_of_acquisition),
-      .after = postcode_of_residence
-    ) %>% 
-    ungroup %>%
     mutate(
       interstate_import_cvsi = case_when(
         CV_SOURCE_INFECTION == 4 ~ TRUE,
