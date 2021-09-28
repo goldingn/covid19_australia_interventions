@@ -4191,13 +4191,13 @@ postcode_to_state <- function(postcode) {
 
 
 is_act_postcode <- function(x){
-  as.numeric(x) %in% c(
+  any(as.numeric(x) == c(
     200:299,
     2600:2618,
     2620,
     2699,#this seems to be used as ACT unknown
     2900:2920
-  )
+  ))
 }
 
 lga_to_state <- function (lga) {
@@ -4437,9 +4437,14 @@ get_nndss_linelist <- function(
     mutate(
       postcode_of_acquisition = substr(PLACE_OF_ACQUISITION, 5, 8),
       postcode_of_residence = replace_na(POSTCODE, "8888"),
-      state_of_acquisition = postcode_to_state(postcode_of_acquisition),
       state_of_residence = postcode_to_state(postcode_of_residence)
     ) %>%
+    rowwise %>%
+    mutate(
+      state_of_acquisition = postcode_to_state(postcode_of_acquisition),
+      .after = postcode_of_residence
+    ) %>% 
+    ungroup %>%
     mutate(
       interstate_import_cvsi = case_when(
         CV_SOURCE_INFECTION == 4 ~ TRUE,
@@ -9308,22 +9313,33 @@ states <- c(
   "WA"
 )
 
-read_vax_data <- function(
-  file,
-  date
-){
+vax_files_dates <- function(dir){
+  list.files(path = dir) %>%
+    sub(
+      pattern = "DohertyTimeseriesExport_",
+      replacement = "",
+      x = .
+    ) %>%
+    sub(
+      pattern = "_.*",
+      replacement = "",
+      x = .
+    ) %>%
+    as.Date
+}
+
+load_cumulative_doses <- function(dir = "~/not_synced/vaccination/vaccination_timeseries_medicare_and_provider/"){
   
-  header <- readxl::read_excel(
-    path = file,
-    n_max = 2,
-    col_names = FALSE,
-    sheet = "Vaccine Brand Split"
-  ) %>%
-    t %>%
-    as_tibble %>%
-    tidyr::fill(V1, .direction = "down") %>%
-    mutate(name = paste(V1, V2, sep = "_")) %>%
-    pull(name)
+  file_index <- vax_files_dates(dir) %>%
+    which.max()
+  
+  extraction_date <- vax_files_dates(dir)[file_index]
+  
+  file <- list.files(
+    path = dir,
+    full.names = TRUE
+  )[file_index]
+  
   
   over_80 <- c(
     "80+",
@@ -9337,104 +9353,111 @@ read_vax_data <- function(
     "100+"
   )
   
-  n_max <- ifelse(date < "2021-08-17", 38, 40)
-  
-  readxl::read_excel(
-    path = file,
-    skip = 2,
-    col_names = header,
-    sheet = "Vaccine Brand Split",
-    n_max = n_max,
-    col_types = "text"
+  df <- read_csv(
+    file = file
   ) %>%
-    tidyr::fill(
-      `NA_Vaccine Name`,
-      .direction = "down"
-    ) %>%
-    dplyr::rename(
-      vaccine = `NA_Vaccine Name`,
-      age_class = 2 # need to fix this so works with either naming convention
-    ) %>%
-    pivot_longer(
-      cols = -vaccine:-age_class,
-      names_to = "name",
-      values_to = "doses"
+    rename(
+      "state_provider" = PROVIDER_STATE,
+      "state_medicare" = PATIENT_MEDICARE_STATE,
+      "vaccine" = VACCINE_CODE,
+      "dose_number" = DOSE_NUMBER,
+      "age_class" = CURRENT_AGE_GROUP,
+      "week" = AS_OF_ENCOUNTER_WEEK,
+      "date" = AS_OF_WEEK_COMMENCING,
+      "doses" = CUMULATIVE_UNIQUE_INDIVIDUALS_VACCINATED
     ) %>%
     mutate(
-      state = sub(
-        pattern = "_.*",
-        replacement = "",
-        x = name
+      date = as.Date(
+        date,
+        format = "%d/%m/%Y"
       ),
-      dose_number = sub(
-        pattern = ".* ", # splits in trailing space - could get caught if format changes
-        replacement = "",
-        x = name
-      ) %>%
-        as.integer
+      age_class = case_when(
+        age_class %in% over_80 ~ "80+",
+        TRUE ~ age_class
+      ),
+      state = case_when(
+        state_medicare == "Unknown" ~ state_provider,
+        TRUE ~ state_medicare
+      )
     ) %>%
-    dplyr::select(state, age_class, vaccine, dose_number, doses) %>%
-    filter(age_class != "Totals", state != "Totals") %>%
+    dplyr::select(-state_provider, -state_medicare) %>%
+    group_by(
+      state,
+      vaccine,
+      dose_number,
+      age_class,
+      date
+    ) %>%
+    summarise(
+      doses = sum(doses)
+    ) %>% 
+    ungroup
+  
+  df_1014 <- df %>%
+    filter(age_class == "12-15") %>%
+    mutate(
+      doses = 0.75 * doses,
+      age_class = "10-14"
+    )
+  
+  df_1519 <- df %>%
+    filter(age_class == "12-15" | age_class == "16-19") %>%
+    mutate(
+      doses = case_when(
+        age_class == "12-15" ~ 0.25 * doses,
+        TRUE ~ doses
+      ),
+      age_class = "15-19"
+    ) %>%
+    group_by(state, age_class, vaccine, dose_number, date) %>%
+    summarise(doses = sum(doses)) %>%
+    ungroup %>%
+    dplyr::select(state, vaccine, dose_number, age_class, date, doses)
+  
+  df2 <- bind_rows(
+    df_1014,
+    df_1519,
+    df %>%
+      filter(age_class != "12-15", age_class != "16-19")
+  ) %>%
     mutate(
       vaccine = case_when(
-        vaccine == "COVID-19 Vaccine AstraZeneca" ~ "az",
-        TRUE ~ "pf"
+        vaccine == "COMIRN" ~ "pf",
+        vaccine == "COVAST" ~ "az",
+        vaccine == "MODERN" ~ "mo",
       )
+    )
+  
+  
+  df2 %$%
+    expand_grid(
+      state = unique(state),
+      vaccine = unique(vaccine),
+      dose_number = unique(dose_number),
+      age_class = unique(age_class),
+      date = unique(date)
+    ) %>%
+    full_join(
+      df2,
+      by = c("state", "vaccine", "dose_number", "age_class", "date")
     ) %>%
     mutate(
       doses = ifelse(
-        doses == "-",
-        0,
-        doses
-      ) %>%
-        as.integer
-    ) %>%
-    pivot_wider(
-      names_from = dose_number,
-      values_from = doses
-    ) %>%
-    mutate(
-      `1` = `1` - `2`
-    ) %>%
-    pivot_longer(
-      cols = `1`:`2`,
-      names_to = "dose_number",
-      values_to = "doses"
-    ) %>%
-    rowwise %>%
-    mutate(
-      age_class = case_when(
-        any(age_class == over_80) ~ "80+",
-        TRUE ~ age_class
+        is.na(doses),
+        yes = 0,
+        no = doses
       )
     ) %>%
-    group_by(state, age_class, vaccine, dose_number) %>%
-    summarise(
-      doses = sum(doses)
-    ) %>%
-    ungroup %>%
-    mutate(
-      dose_number = as.integer(dose_number),
-      date = date,
+    arrange(
+      state,
+      vaccine,
+      age_class,
+      dose_number,
+      date
     )
   
-}
-
-load_vax_data <- function(){
-  filesdates  <- vax_files_dates()
-  
-  mapply(
-    FUN = read_vax_data,
-    file = filesdates$file,
-    date = filesdates$date,
-    SIMPLIFY = FALSE,
-    USE.NAMES = FALSE
-  ) %>%
-    bind_rows
   
 }
-
-
 
 immunity_lag_correction <- function(
   date,
@@ -9632,53 +9655,13 @@ get_age_distribution_by_state <- function(
 }
 
 
-vax_files_dates <- function(
-  dir = "~/not_synced/vaccination/vaccination_data/"
-) {
-  
-  files <- list.files(
-    path = dir,
-    pattern = ".xl",
-    full.names = TRUE
-  )
-  
-  filenames <- list.files(
-    path = dir,
-    pattern = ".xl",
-    full.names = FALSE
-  )
-  
-  dates <- sapply(
-    X = filenames,
-    FUN = function(x){
-      # this deals with the variable naming and format of files
-      # but may need to be tweaked further if file names change again
-      if (is.na(anytime::anydate(x))) {
-        xsplit <- strsplit(x, split = "_")[[1]] %>%
-          anytime::anydate(.)
-        
-        xsplit[!is.na(xsplit)]
-      } else {
-        anytime::anydate(x)
-      }
-      
-    },
-    USE.NAMES = FALSE
-  ) %>% as.Date(origin = as.Date("1970-01-01"))
-  
-  tibble::tibble(
-    file = files,
-    date = dates
-  )
-  
-}
-
 
 write_reff_sims_vax <- function(
   fitted_model,
   vaccine_timeseries
 ){
   
+  # ESSENTIALLY DEPRECATED
   # adds vaccination effect to C1 if fitted without it
   
   fitted_model_extended <- fitted_model

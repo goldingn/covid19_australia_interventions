@@ -2,275 +2,62 @@ source("R/lib.R")
 
 source("R/functions.R")
 
+# load data on number of individuals who have had first and second doses
+cumulative_doses <- load_cumulative_doses()
 
-read_vax_data <- function(
-  file,
-  date
-){
-  
-  if(date >= "2021-08-30"){
-    header <- readxl::read_excel(
-      path = file,
-      n_max = 2,
-      col_names = FALSE,
-      sheet = "Vaccine Brand x Age"
-    ) %>%
-      t %>%
-      as_tibble %>%
-      tidyr::fill(V1, .direction = "down") %>%
-      mutate(name = paste(V1, V2, sep = "_")) %>%
-      pull(name) %>%
-      sub(
-        pattern = "-_",
-        x = .,
-        replacement = "Unknown_"
-      )
-    
-    over_80 <- c(
-      "80+",
-      "80-84",
-      "85+",
-      "85-89",
-      "90+",
-      "90-94",
-      "95+",
-      "95-99",
-      "100+"
-    )
-    
-    n_max <- 41
-    
-    df <- readxl::read_excel(
-      path = file,
-      skip = 2,
-      col_names = header,
-      sheet = "Vaccine Brand x Age",
-      n_max = n_max,
-      col_types = "text"
-    ) %>%
-      tidyr::fill(
-        `NA_Vaccine Name`,
-        .direction = "down"
-      ) %>%
-      dplyr::rename(
-        vaccine = `NA_Vaccine Name`,
-        age_class = 2 # need to fix this so works with either naming convention
-      ) %>%
-      pivot_longer(
-        cols = -vaccine:-age_class,
-        names_to = "name",
-        values_to = "doses"
-      ) %>%
-      mutate(
-        state = sub(
-          pattern = "_.*",
-          replacement = "",
-          x = name
-        ),
-        dose_number = sub(
-          pattern = ".* ", # splits in trailing space - could get caught if format changes
-          replacement = "",
-          x = name
-        ) %>%
-          as.integer
-      ) %>%
-      dplyr::select(state, age_class, vaccine, dose_number, doses) %>%
-      filter(age_class != "Totals", state != "Totals", state != "Unknown", state != "Unknown State") %>%
-      mutate(
-        vaccine = case_when(
-          vaccine == "COVID-19 Vaccine AstraZeneca" ~ "az",
-          TRUE ~ "pf"
-        )
-      ) %>%
-      mutate(
-        doses = case_when(
-          doses == "-" ~ "0",
-          doses == "Suppressed" ~ "0",
-          TRUE ~ doses
-        ) %>%
-          as.numeric
-      ) %>%
-      pivot_wider(
-        names_from = dose_number,
-        values_from = doses
-      ) %>%
-      mutate(
-        `1` = `1` - `2`
-      ) %>%
-      pivot_longer(
-        cols = `1`:`2`,
-        names_to = "dose_number",
-        values_to = "doses"
-      ) %>%
-      rowwise %>%
-      mutate(
-        age_class = case_when(
-          any(age_class == over_80) ~ "80+",
-          TRUE ~ age_class
-        )
-      ) %>%
-      group_by(state, age_class, vaccine, dose_number) %>%
-      summarise(
-        doses = sum(doses)
-      ) %>%
-      ungroup %>%
-      mutate(
-        dose_number = as.integer(dose_number),
-        date = date,
-      )
-    
-    df_1014 <- df %>%
-      filter(age_class == "0-11" | age_class == "12-15") %>%
-      mutate(
-        doses = case_when(
-          age_class == "12-15" ~ 0.75 * doses,
-          TRUE ~ doses
-        ),
-        age_class = "10-14"
-      ) %>%
-      group_by(state, age_class, vaccine, dose_number, date) %>%
-      summarise(doses = sum(doses)) %>%
-      ungroup %>%
-      dplyr::select(state, age_class, vaccine, dose_number, doses, date)
-    
-    df_1519 <- df %>%
-      filter(age_class == "12-15" | age_class == "16-19") %>%
-      mutate(
-        doses = case_when(
-          age_class == "12-15" ~ 0.25 * doses,
-          TRUE ~ doses
-        ),
-        age_class = "15-19"
-      ) %>%
-      group_by(state, age_class, vaccine, dose_number, date) %>%
-      summarise(doses = sum(doses)) %>%
-      ungroup %>%
-      dplyr::select(state, age_class, vaccine, dose_number, doses, date)
-    
-    bind_rows(
-      df_1014,
-      df_1519,
-      df %>%
-        filter(age_class != "0-11", age_class != "12-15", age_class != "16-19")
-    )
-    
-  } else {
-    header <- readxl::read_excel(
-      path = file,
-      n_max = 2,
-      col_names = FALSE,
-      sheet = "Vaccine Brand Split"
-    ) %>%
-      t %>%
-      as_tibble %>%
-      tidyr::fill(V1, .direction = "down") %>%
-      mutate(name = paste(V1, V2, sep = "_")) %>%
-      pull(name)
-    
-    over_80 <- c(
-      "80+",
-      "80-84",
-      "85+",
-      "85-89",
-      "90+",
-      "90-94",
-      "95+",
-      "95-99",
-      "100+"
-    )
-    
-    n_max <- ifelse(date < "2021-08-17", 38, 40)
-    
-    readxl::read_excel(
-      path = file,
-      skip = 2,
-      col_names = header,
-      sheet = "Vaccine Brand Split",
-      n_max = n_max,
-      col_types = "text"
-    ) %>%
-      tidyr::fill(
-        `NA_Vaccine Name`,
-        .direction = "down"
-      ) %>%
-      dplyr::rename(
-        vaccine = `NA_Vaccine Name`,
-        age_class = 2 # need to fix this so works with either naming convention
-      ) %>%
-      pivot_longer(
-        cols = -vaccine:-age_class,
-        names_to = "name",
-        values_to = "doses"
-      ) %>%
-      mutate(
-        state = sub(
-          pattern = "_.*",
-          replacement = "",
-          x = name
-        ),
-        dose_number = sub(
-          pattern = ".* ", # splits in trailing space - could get caught if format changes
-          replacement = "",
-          x = name
-        ) %>%
-          as.integer
-      ) %>%
-      dplyr::select(state, age_class, vaccine, dose_number, doses) %>%
-      filter(age_class != "Totals", state != "Totals") %>%
-      mutate(
-        vaccine = case_when(
-          vaccine == "COVID-19 Vaccine AstraZeneca" ~ "az",
-          TRUE ~ "pf"
-        )
-      ) %>%
-      mutate(
-        doses = ifelse(
-          doses == "-",
-          0,
-          doses
-        ) %>%
-          as.integer
-      ) %>%
-      pivot_wider(
-        names_from = dose_number,
-        values_from = doses
-      ) %>%
-      mutate(
-        `1` = `1` - `2`
-      ) %>%
-      pivot_longer(
-        cols = `1`:`2`,
-        names_to = "dose_number",
-        values_to = "doses"
-      ) %>%
-      rowwise %>%
-      mutate(
-        age_class = case_when(
-          any(age_class == over_80) ~ "80+",
-          TRUE ~ age_class
-        )
-      ) %>%
-      group_by(state, age_class, vaccine, dose_number) %>%
-      summarise(
-        doses = sum(doses)
-      ) %>%
-      ungroup %>%
-      mutate(
-        dose_number = as.integer(dose_number),
-        date = date,
-      )
-  }
-  
-}
+
+ggplot(cumulative_doses) +
+  geom_bar(
+    aes(
+      x = date,
+      y = doses,
+      fill = age_class
+    ),
+    stat = "identity"
+  ) +
+  facet_grid(
+    state ~ vaccine + dose_number,
+    scales = "free_y"
+  )
+
+
+individuals_on_dose <- cumulative_doses %>%
+  pivot_wider(
+    names_from = dose_number,
+    values_from = doses
+  ) %>%
+  mutate(
+    `1` = unlist(`1`),
+    `2` = unlist(`2`),
+    `1` = `1` - `2`
+  ) %>%
+  pivot_longer(
+    cols = `1`:`2`,
+    names_to = "dose_number",
+    values_to = "doses"
+  ) %>%
+  mutate(
+    dose_number = as.integer(dose_number)
+  )
 
 
 age_distribution_state <- get_age_distribution_by_state()
 
-vax_data <- load_vax_data()
+dose_dates <- unique(individuals_on_dose$date)
 
-dose_dates <- unique(vax_data$date)
-
-dose_data <- vax_data %>%
+dose_data <- individuals_on_dose %>%
+  # hack to set all moderna doses to pfizer because
+  # assumed equal efficacy
+  # fix into pipeline properly but should give same result for now
+  mutate(
+    vaccine = case_when(
+      vaccine == "mo" ~ "pf",
+      TRUE ~ vaccine
+    )
+  ) %>%
+  group_by(state, vaccine, age_class, date, dose_number) %>%
+  summarise(doses = sum(doses)) %>%
+  # end hack
   full_join(
     y = expand_grid(
       date = dose_dates,
@@ -386,51 +173,32 @@ vaccination_effect <- efficacy_data %>%
   ) %>%
   select(
     -dubious
+  ) %>% 
+  mutate(
+    effective_vaccination_transmission_multiplier = ifelse(
+      is.na(effective_vaccination_transmission_multiplier),
+      1,
+      effective_vaccination_transmission_multiplier
+    ),
+    effective_vaccination_transmission_reduction_percent = ifelse(
+      is.na(effective_vaccination_transmission_reduction_percent),
+      0,
+      effective_vaccination_transmission_reduction_percent
+    )
   )
 
-
-earliest_effect_date <- min(vaccination_effect$date[which(!is.na(vaccination_effect$effective_vaccination_transmission_multiplier))])
-last_effect_date    <- max(vaccination_effect$date[which(!is.na(vaccination_effect$effective_vaccination_transmission_multiplier))])
-
-earliest_vaccination_effect <- vaccination_effect %>%
-  filter(date == earliest_effect_date) %>% 
-  dplyr::select(state, date, effective_vaccination_transmission_multiplier)
-
-
-public_timeseries <- readRDS("outputs/vaccine_timeseries.RDS")
-
-state_effect_ratios <- public_timeseries %>% 
-  dplyr::select(date, overall_transmission_effect) %>% 
-  inner_join(earliest_vaccination_effect) %>%
-  mutate(
-    multiplier = (1-effective_vaccination_transmission_multiplier)/(1-overall_transmission_effect)
+vaccine_effect_timeseries <- vaccination_effect %>%
+  dplyr::select(
+    state,
+    date,
+    effect = effective_vaccination_transmission_multiplier,
+    percent_reduction = effective_vaccination_transmission_reduction_percent
   ) %>%
-  dplyr::select(state, multiplier)
-
-scaled_public_timeseries <- public_timeseries %>%
-  dplyr::select(date, overall_transmission_effect) %>% 
-  expand_grid(state_effect_ratios) %>%
-  filter(date <= earliest_effect_date) %>%
-  group_by(state) %>%
-  mutate(
-    datenum = as.numeric(date - min(date)),
-    #scaled_effect = overall_transmission_effect - (overall_transmission_effect * (1-ratio)* datenum/  max(datenum))
-    scaled_effect = 1 - (1 - overall_transmission_effect)*datenum/max(datenum)*multiplier
-  ) %>% 
-  dplyr::select(state, date, effect = scaled_effect)
-
-
-
-
-interpolated_effect <- vaccination_effect %>%
-  rename(effect = effective_vaccination_transmission_multiplier) %>%
-  dplyr::select(state, date, effect) %>%
-  filter(!is.na(effect)) %>%
   full_join(
     y = expand_grid(
       date = seq.Date(
-        from = earliest_effect_date,
-        to = last_effect_date,
+        from = min(dose_dates),
+        to = max(dose_dates),
         by = 1
       ),
       state = states
@@ -444,18 +212,17 @@ interpolated_effect <- vaccination_effect %>%
       is.na(effect),
       approx(date, effect, date)$y,
       effect
+    ),
+    percent_reduction = ifelse(
+      is.na(percent_reduction),
+      approx(date, percent_reduction, date)$y,
+      percent_reduction
     )
-  )
-
-vaccine_effect_timeseries <- bind_rows(
-  scaled_public_timeseries %>%
-    filter(date < earliest_effect_date),
-  interpolated_effect
-)
-
-
-
-
+  ) %>%
+  ungroup
+    
+    
+    
 effective_dose_data <- dose_data %>%
   dplyr::select(
     state,
@@ -470,17 +237,25 @@ effective_dose_data <- dose_data %>%
     dubious = (date - min(date)) < 21,
     across(
       starts_with("effective_"),
-      ~ ifelse(dubious, NA, .)
+      ~ ifelse(dubious, 0, .)
     )
   ) %>%
   dplyr::select(
     -dubious
+  ) %>% 
+  arrange(
+    state,
+    age_class,
+    vaccine,
+    dose_number,
+    date
   )
 
 data_date <- max(effective_dose_data$date)
 
 saveRDS(
-  object = vaccine_effect_timeseries,
+  object = vaccine_effect_timeseries %>%
+    dplyr::select(-percent_reduction),
   file = "outputs/vaccine_effect_timeseries.RDS"
 )
 
@@ -509,7 +284,8 @@ ggplot(vaccine_effect_timeseries) +
       x = date,
       y = effect,
       colour = state
-    )
+    ),
+    size = 2
   ) +
   theme_classic() +
   labs(
@@ -527,12 +303,24 @@ ggplot(vaccine_effect_timeseries) +
   ) +
   cowplot::theme_cowplot() +
   cowplot::panel_border(remove = TRUE) +
-  theme(legend.position = "none",
-        strip.background = element_blank(),
-        strip.text = element_text(hjust = 0, face = "bold"),
-        axis.title.y.right = element_text(vjust = 0.5, angle = 90),
-        panel.spacing = unit(1.2, "lines"))
-  
+  theme(
+    strip.background = element_blank(),
+    strip.text = element_text(hjust = 0, face = "bold"),
+    axis.title.y.right = element_text(vjust = 0.5, angle = 90),
+    panel.spacing = unit(1.2, "lines")
+  ) +
+  scale_colour_manual(
+    values = c(
+      "darkgray",
+      "cornflowerblue",
+      "chocolate1",
+      "violetred4",
+      "red1",
+      "darkgreen",
+      "darkblue",
+      "gold1"
+    )
+  )
 
 ggsave(
   filename = "outputs/figures/vaccination_effect.png",
@@ -542,6 +330,75 @@ ggsave(
   scale = 1.2
 )
 
+
+vaccine_effect_timeseries %>%
+  group_by(state) %>%
+  mutate(
+    delta_week = slider::slide(
+      .x = -percent_reduction,
+      .f = function(x){
+        x[1] - x[7]
+      },
+      .before = 7
+    ) %>%
+      unlist
+  ) %>%
+  ggplot() +
+  geom_line(
+    aes(
+      x = date,
+      y = delta_week,
+      col = state
+    ),
+    size = 2
+  ) +
+  theme_classic() +
+  labs(
+    x = NULL,
+    y = expression(Change~"in"~pewrcentage~reduction~"in"~R["eff"]),
+    col = "State"
+  ) +
+  scale_x_date(
+    breaks = "1 month",
+    date_labels = "%b %Y"
+  ) +
+  ggtitle(
+    label = "Vaccination effect",
+    subtitle = expression(Change~"in"~weekly~average~percentage~reduction~"in"~R["eff"]~due~to~vaccination)
+  ) +
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  theme(
+    strip.background = element_blank(),
+    strip.text = element_text(hjust = 0, face = "bold"),
+    axis.title.y.right = element_text(vjust = 0.5, angle = 90),
+    panel.spacing = unit(1.2, "lines")
+  ) +
+  scale_colour_manual(
+    values = c(
+      "darkgray",
+      "cornflowerblue",
+      "chocolate1",
+      "violetred4",
+      "red1",
+      "darkgreen",
+      "darkblue",
+      "gold1"
+    )
+  )
+
+
+ggsave(
+  filename = "outputs/figures/vaccination_weekly_percent_change_in_reff.png",
+  dpi = dpi,
+  width = 1500 / dpi,
+  height = 1250 / dpi,
+  scale = 1.2
+)
+
+
+
+# fix this and need to split out moderna from pfizer
 ggplot(
   effective_dose_data
   ) +
@@ -558,94 +415,75 @@ ggplot(
     scales = "free_y"
   )
 
+# 
+# effective_dose_data %>%
+#   group_by(state, age_class, vaccine, date) %>%
+#   summarise(total_vaccinees = sum(doses)) %>%
+#   ggplot() +
+#   geom_bar(
+#     aes(
+#       x = date,
+#       y = total_vaccinees,
+#       fill = age_class
+#     ),
+#     stat = "identity"
+#   ) +
+#   facet_grid(
+#     state ~ vaccine,
+#     scales = "free_y"
+#   )
+# 
+# 
+# effective_dose_data %>%
+#   filter(state == "ACT", date >= "2021-08-30", vaccine == "pf") %>%
+#   ggplot() +
+#   geom_bar(
+#     aes(
+#       x = date,
+#       y = doses,
+#       fill = age_class
+#     ),
+#     stat = "identity"
+#   ) +
+#   facet_grid(
+#     age_class ~ dose_number,
+#     scales = "free_y"
+#   )
+# 
+# 
+# effective_dose_data %>%
+#   filter(state == "ACT", date >= "2021-08-30", vaccine == "pf", dose_number == "2") %>%
+#   ggplot() +
+#   geom_bar(
+#     aes(
+#       x = date,
+#       y = doses,
+#       fill = age_class
+#     ),
+#     stat = "identity"
+#   ) +
+#   facet_grid(
+#     age_class ~ state,
+#     scales = "free_y"
+#   )
+# 
+# effective_dose_data %>%
+#   filter((state == "ACT" | state == "NT"), date >= "2021-08-30", vaccine == "pf", dose_number == "2") %>%
+#   ggplot() +
+#   geom_line(
+#     aes(
+#       x = date,
+#       y = doses,
+#       col = age_class
+#     )
+#   ) +
+#   facet_wrap(
+#     ~state,
+#     scales = "free_y"
+#   )
 
-effective_dose_data %>%
-  group_by(state, age_class, vaccine, date) %>%
-  summarise(total_vaccinees = sum(doses)) %>%
-  ggplot() +
-  geom_bar(
-    aes(
-      x = date,
-      y = total_vaccinees,
-      fill = age_class
-    ),
-    stat = "identity"
-  ) +
-  facet_grid(
-    state ~ vaccine,
-    scales = "free_y"
-  )
 
 
-effective_dose_data %>%
-  filter(state == "ACT", date >= "2021-08-30", vaccine == "pf") %>%
-  ggplot() +
-  geom_bar(
-    aes(
-      x = date,
-      y = doses,
-      fill = age_class
-    ),
-    stat = "identity"
-  ) +
-  facet_grid(
-    age_class ~ dose_number,
-    scales = "free_y"
-  )
-
-
-effective_dose_data %>%
-  filter(state == "ACT", date >= "2021-08-30", vaccine == "pf", dose_number == "2") %>%
-  ggplot() +
-  geom_bar(
-    aes(
-      x = date,
-      y = doses,
-      fill = age_class
-    ),
-    stat = "identity"
-  ) +
-  facet_grid(
-    age_class ~ state,
-    scales = "free_y"
-  )
-
-effective_dose_data %>%
-  filter((state == "ACT" | state == "NT"), date >= "2021-08-30", vaccine == "pf", dose_number == "2") %>%
-  ggplot() +
-  geom_line(
-    aes(
-      x = date,
-      y = doses,
-      col = age_class
-    )
-  ) +
-  facet_wrap(
-    ~state,
-    scales = "free_y"
-  )
-
-
-vaccine_effect_timeseries %>%
-  group_by(state) %>%
-  mutate(
-    delta_week = slider::slide(
-      .x = effect,
-      .f = function(x){
-        x[1] - x[7]
-      },
-      .before = 7
-    ) %>%
-      unlist
-  ) %>%
-  ggplot() +
-  geom_line(
-    aes(
-      x = date,
-      y = delta_week,
-      col = state
-    )
-  )
 
 #############
 # code to read in Tierney processed data of wide timeseries
