@@ -142,6 +142,33 @@ efficacy_data
 efficacy_data %>% glimpse
 
 vaccination_effect <- efficacy_data %>%
+  mutate(
+    age_group = age %>%
+      factor(
+        levels = c(
+          "0-4",
+          "5-9",
+          "10-14",
+          "15-19",
+          "20-24",
+          "25-29",
+          "30-34",
+          "35-39",
+          "40-44",
+          "45-49",
+          "50-54",
+          "55-59",
+          "60-64",
+          "65-69",
+          "70-74",
+          "75-79",
+          "80+"
+        )
+      )
+  ) %>%
+  arrange(
+    state, date, age_group
+  ) %>%
   group_by(
     state, date
   ) %>%
@@ -290,7 +317,7 @@ ggplot(vaccine_effect_timeseries) +
   theme_classic() +
   labs(
     x = NULL,
-    y = expression(Change~"in"~R["eff"]),
+    y = "Change in transmission potential",
     col = "State"
   ) +
   scale_x_date(
@@ -299,7 +326,7 @@ ggplot(vaccine_effect_timeseries) +
   ) +
   ggtitle(
     label = "Vaccination effect",
-    subtitle = expression(Change~"in"~R["eff"]~due~to~vaccination)
+    subtitle = "Change in transmission potential due to vaccination"
   ) +
   cowplot::theme_cowplot() +
   cowplot::panel_border(remove = TRUE) +
@@ -355,7 +382,7 @@ vaccine_effect_timeseries %>%
   theme_classic() +
   labs(
     x = NULL,
-    y = expression(Change~"in"~pewrcentage~reduction~"in"~R["eff"]),
+    y = "Change in percentage reduction of transmission potential",
     col = "State"
   ) +
   scale_x_date(
@@ -364,7 +391,7 @@ vaccine_effect_timeseries %>%
   ) +
   ggtitle(
     label = "Vaccination effect",
-    subtitle = expression(Change~"in"~weekly~average~percentage~reduction~"in"~R["eff"]~due~to~vaccination)
+    subtitle = "Change in weekly average percentage reduction in transmission potential due to vaccination"
   ) +
   cowplot::theme_cowplot() +
   cowplot::panel_border(remove = TRUE) +
