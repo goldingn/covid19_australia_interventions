@@ -9595,42 +9595,25 @@ forecast_vaccination <- function(
   # end of simulations
   max_date = as.Date("2021-09-30"),
   # proportion of population accepting vaccines
-  max_coverages = c(0.7, 0.8, 0.9, 1),
+  max_coverages = c(0.85, 0.9, 0.95, 1),
   # optional file of additional doses
   extra_doses = NULL,
-  # whether or not under 15s are being vaccinated (affects maximum population
-  # for 10-14 and 15-19 age groups)
-  vaccinating_12_15 = TRUE,
   # the name of this scenario
   scenario_name = "baseline"
 ) {
   
   latest_data_date <- max(air_current$date)
   
-  # what fractions of the 0-14 and 15-29 age groups are eligible for vaccination?
-  if (vaccinating_12_15) {
-    fraction_0_14_eligible <- pop_disagg$fraction_0_14_eligible_child
-    fraction_15_29_eligible <- 1
-  } else {
-    fraction_0_14_eligible <- 0
-    fraction_15_29_eligible <- pop_disagg$fraction_15_29_eligible_adult
-  }
-  
   # correct the populations in air current to account for eligibility of different age groups
   air_current <- air_current %>%
     mutate(
       # correct age group populations for eligibility of ages within them, and
       # the rate of vaccine acceptance
-      eligibility_correction = case_when(
+      eligible_population = case_when(
         # if we are vaccinating
-        age_air_80 == "0-14" ~ fraction_0_14_eligible,
-        age_air_80 == "15-29" ~ fraction_15_29_eligible,
-        TRUE ~ 1
-      ),
-      eligible_population = population * eligibility_correction
-    ) %>%
-    select(
-      -eligibility_correction
+        age_air_80 %in% c("0-9", "10-11") ~ 0,
+        TRUE ~ population
+      )
     )
   
   # compute daily average numbers of doses in each age group and lga over the past weeks
