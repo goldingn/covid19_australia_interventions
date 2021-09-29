@@ -16,6 +16,7 @@ data$dates$linelist
 
 # save the key dates for Freya and David to read in, and tabulated local cases
 # data for the Robs
+
 write_reff_key_dates(data)
 write_local_cases(data)
 
@@ -78,8 +79,7 @@ reff_plotting(
 )
 
 
-# produce simulations where proportion VOC is zero throughout period for reporting
-# in common operating picture table
+# produce simulations where proportion of variant is constant
 simulate_variant(variant = "wt")
 simulate_variant(variant = "alpha")
 simulate_variant(variant = "delta")

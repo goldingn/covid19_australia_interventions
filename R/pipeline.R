@@ -18,6 +18,8 @@ source("R/mobility_change.R")
 # [~ 3 min]
 source("R/vacccination_effect.R")
 # -- Figs into dropbox / to Freya
+# -- vaccination_effect_timeseries_<date>.csv to dropbox and mediaflux
+# -- effective_dose_data_<date>.csv to mediaflux
 
 # Section B) Dependent on NNDSS data update:
 source("R/check_linelist.R")
@@ -54,7 +56,7 @@ load_linelist() %>%
 
 # write linelist format for UoAdelaide (Tobin/Josh) if necessary
 # usually unnecessary unless edits to raw linelist
-# write_linelist() 
+write_linelist()
 
 # Section C) Dependent on survey data update (the numbered file must be manually
 # copied to data/survey_raw):
