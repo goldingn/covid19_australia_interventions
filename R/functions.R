@@ -9595,12 +9595,20 @@ forecast_vaccination <- function(
   # end of simulations
   max_date = as.Date("2021-09-30"),
   # proportion of population accepting vaccines
-  max_coverages = c(0.85, 0.9, 0.95, 1),
+  max_coverages = NULL,
   # optional file of additional doses
   extra_doses = NULL,
   # the name of this scenario
   scenario_name = "baseline"
 ) {
+  
+  if (is.null(max_coverages)) {
+    max_coverages <- air_current %>%
+      distinct(age_air_80) %>%
+      mutate(
+        hypothetical_max_coverage = 1
+      )
+  }
   
   latest_data_date <- max(air_current$date)
   
@@ -9610,8 +9618,7 @@ forecast_vaccination <- function(
       # correct age group populations for eligibility of ages within them, and
       # the rate of vaccine acceptance
       eligible_population = case_when(
-        # if we are vaccinating
-        age_air_80 %in% c("0-9", "10-11") ~ 0,
+        age_air_80 %in% c("0-11") ~ 0,
         TRUE ~ population
       )
     )
@@ -9654,14 +9661,17 @@ forecast_vaccination <- function(
     select(
       lga, age_air_80, observed_max_coverage
     ) %>%
-    # add on the assumed maximum coverage (later, for one of a number of scenarios)
-    full_join(
-      expand_grid(
-        lga = unique(air_current$lga),
-        age_air_80 = unique(air_current$age_air_80),
-        hypothetical_max_coverage = max_coverages
-      ),
-      by = c("lga", "age_air_80")
+    # # add on the assumed maximum coverage (later, for one of a number of scenarios)
+    # full_join(
+    #   expand_grid(
+    #     lga = unique(air_current$lga),
+    #     age_air_80 = unique(air_current$age_air_80)
+    #   ),
+    #   by = c("lga", "age_air_80")
+    # ) %>%
+    left_join(
+      max_coverages,
+      by = c("age_air_80")
     ) %>%
     # compute the maximum of the two for capping vaccination
     mutate(
@@ -9882,7 +9892,8 @@ forecast_vaccination <- function(
     mutate(scenario = scenario_name) %>%
     select(
       -ends_with("maximum")
-    )
+    ) %>%
+    ungroup()
   
 }
 

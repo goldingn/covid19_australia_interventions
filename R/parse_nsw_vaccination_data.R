@@ -423,7 +423,7 @@ max_coverage <- air_12_age_lookup %>%
   ) %>%
   distinct() %>%
   mutate(
-    max_coverage = case_when(
+    hypothetical_max_coverage = case_when(
       age_air_80 %in% c("40-49", "50-59", "60-69", "70-79", "80+") ~ 0.95,
       TRUE ~ 0.85
     )
@@ -435,104 +435,88 @@ air <- bind_rows(
   forecast_vaccination(
     air_current,
     previous_days_average = 0:6,
-    max_date = Sys.Date() + 7 * 8
+    max_date = Sys.Date() + 7 * 8,
+    max_coverages = max_coverage
   )
 ) %>%
   # tidy up labels for printing
   mutate(
-    coverage_scenario = paste0(
-      "max ",
-      round(100 * hypothetical_max_coverage),
-      "% coverage"
-    ),
-    coverage_scenario = factor(
-      coverage_scenario,
-      levels = unique(coverage_scenario)
-    )
+    coverage_scenario = "95% / 85%"
   )
 
-for (coverage in unique(air$coverage_scenario)) {
-  
-  # plot coverage stats
-  air %>%
-    filter(
-      lga %in% lgas_of_concern,
-      coverage_scenario == coverage,
-    ) %>%
-    mutate(
-      any_vaccinated = dose_1_AstraZeneca + dose_1_Pfizer,
-      fully_vaccinated = dose_2_AstraZeneca + dose_2_Pfizer
-    ) %>%
-    group_by(lga, date, forecast, scenario) %>%
-    summarise(
-      across(
-        ends_with("vaccinated"),
-        sum
-      ),
-      population = sum(population),
-      eligible_population = sum(eligible_population),
-      .groups = "drop"
-    ) %>%
-    pivot_longer(
-      cols = ends_with("vaccinated"),
-      names_to = "doses",
-      values_to = "vaccinated" 
-    ) %>%
-    mutate(
-      coverage = vaccinated / eligible_population,
-      doses = case_when(
-        doses == "any_vaccinated" ~ "either dose",
-        doses == "fully_vaccinated" ~ "both doses"
-      )
-    ) %>%
-    ggplot(
-      aes(
-        x = date,
-        y = coverage,
-        color = lga,
-        linetype = forecast,
-      ),
-    ) +
-    facet_grid(
-      scenario ~ doses
-    ) +
-    scale_y_continuous(
-      limits = c(0, 1),
-      labels = scales::percent_format(
-        accuracy = 1
-      )
-    ) +
-    geom_hline(
-      yintercept = seq(0, 1, by = 0.25),
-      color = grey(0.7),
-      size = 0.2
-    ) +
-    geom_line() +
-    ylab("Vaccination coverage (eligible population)") +
-    xlab("") +
-    ggtitle(
-      "Scenario forecast vaccination coverage in LGAs of concern",
-      paste0("assuming ", coverage, " in each age group")
-    ) +
-    theme_cowplot() +
-    theme(
-      legend.position = "none",
-      strip.background = element_blank()
-    )
-  
-  ggsave(
-    paste0(
-      "outputs/nsw/scenario_",
-      gsub(" ", "_", gsub("%", "", coverage)),
-      ".png"
+# plot coverage stats
+air %>%
+  filter(
+    lga %in% lgas_of_concern
+  ) %>%
+  mutate(
+    any_vaccinated = dose_1_AstraZeneca + dose_1_Pfizer,
+    fully_vaccinated = dose_2_AstraZeneca + dose_2_Pfizer
+  ) %>%
+  group_by(lga, date, forecast, scenario) %>%
+  summarise(
+    across(
+      ends_with("vaccinated"),
+      sum
     ),
-    bg = "white",
-    width = 9,
-    height = 6
+    population = sum(population),
+    eligible_population = sum(eligible_population),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(
+    cols = ends_with("vaccinated"),
+    names_to = "doses",
+    values_to = "vaccinated" 
+  ) %>%
+  mutate(
+    coverage = vaccinated / eligible_population,
+    doses = case_when(
+      doses == "any_vaccinated" ~ "either dose",
+      doses == "fully_vaccinated" ~ "both doses"
+    )
+  ) %>%
+  ggplot(
+    aes(
+      x = date,
+      y = coverage,
+      color = lga,
+      linetype = forecast,
+    ),
+  ) +
+  facet_grid(
+    scenario ~ doses
+  ) +
+  scale_y_continuous(
+    limits = c(0, 1),
+    labels = scales::percent_format(
+      accuracy = 1
+    )
+  ) +
+  geom_hline(
+    yintercept = seq(0, 1, by = 0.25),
+    color = grey(0.7),
+    size = 0.2
+  ) +
+  geom_line() +
+  ylab("Vaccination coverage (eligible population)") +
+  xlab("") +
+  ggtitle(
+    "Scenario forecast vaccination coverage in LGAs of concern",
+    "assuming 95% / 85% coverage in the over/under 40s"
+  ) +
+  theme_cowplot() +
+  theme(
+    legend.position = "none",
+    strip.background = element_blank()
   )
-  
-}
 
+ggsave(
+  "outputs/nsw/scenario_95_85.png",
+  bg = "white",
+  width = 9,
+  height = 6
+)
+  
 # compute efficacies against transmission, based on type and number of doses
 efficacy_az_1_dose <- combine_efficacy(0.18, 0.48)
 efficacy_pf_1_dose <- combine_efficacy(0.30, 0.46)
