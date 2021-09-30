@@ -58,80 +58,14 @@ pop_detailed <- read_csv(
   )
 )
 
-# pop_disagg <- pop_detailed %>%
-#   filter(
-#     ste_name16 == "New South Wales"
-#   ) %>%
-#   select(
-#     -starts_with("is")
-#   ) %>%
-#   # indicators for belonging to population groups 
-#   mutate(
-#     # AIR age bins
-#     is_0_14 = age_lower >= 0 & age_upper <= 14,
-#     is_15_29 = age_lower >= 15 & age_upper <= 29,
-#     # 5y age bins
-#     is_10_14 = age_lower >= 10 & age_upper <= 14,
-#     is_15_19 = age_lower >= 15 & age_upper <= 19,
-#     # age bins needed to disaggregating these around the 16+ adult eligibility
-#     # and 12-15 child eligibility
-#     # children
-#     is_12_14 = age_lower >= 12 & age_upper <= 14,
-#     is_15 = age_lower >= 15 & age_upper <= 15,
-#     # adults
-#     is_16_19 = age_lower >= 16 & age_upper <= 19,
-#     is_16_29 = age_lower >= 16 & age_upper <= 29,
-#     is_any = TRUE
-#   ) %>%
-#   # populations in these groups in NSW
-#   summarise(
-#     across(
-#       starts_with("is_"),
-#       .fns = list(pop = ~ sum(population * .x))
-#     )
-#   ) %>%
-#   mutate(
-#     # AIR
-#     fraction_0_14_eligible_child = is_12_14_pop / is_0_14_pop,
-#     fraction_15_29_eligible_child = is_15_pop / is_15_29_pop,
-#     fraction_15_29_eligible_adult = is_16_29_pop / is_15_29_pop,
-#     # 5y
-#     fraction_10_14_eligible_child = is_12_14_pop / is_10_14_pop,
-#     fraction_15_19_eligible_adult = is_16_19_pop / is_15_19_pop,
-#     fraction_15_19_eligible_child = is_15_pop / is_15_19_pop,
-#     # AIR to 5y
-#     fraction_0_14_are_10_14 = is_10_14_pop / is_0_14_pop
-#   ) %>%
-#   select(starts_with("fraction"))
-   
-# # get populations with all the age aggregations
-# pop <- lga_age_population() %>%
-#   filter(
-#     state == "New South Wales"
-#   ) %>%
-#   select(
-#     -state
-#   ) %>%
-#   left_join(
-#     age_lookup(),
-#     by = c("age" = "age_abs"),
-#   ) %>%
-#   # for some reason this name is borked
-#   mutate(
-#     LGA_NAME19 = case_when(
-#       LGA_NAME19 == "Nambucca Valley (A)" ~ "Nambucca (A)",
-#       TRUE ~ LGA_NAME19
-#     )
-#   )
-
 # get a lookup between the detailed age fractions, air fractions (including
 # 12-15), and the age groups for modelling
 air_12_age_lookup <- tibble::tribble(
    ~age_lower, ~age_upper, ~age_air, ~age_air_80,       ~age_model,
-            0,          4,   "0-9",        "0-9",            "0-4",
-            5,          9,   "0-9",        "0-9",            "5-9", 
-           10,         10, "10-11",        "10-11",        "10-11",
-           11,         11, "10-11",        "10-11",        "10-11",
+            0,          4,  "0-11",         "0-11",          "0-4",
+            5,          9,  "0-11",         "0-11",          "5-9", 
+           10,         10,  "0-11",         "0-11",        "10-11",
+           11,         11,  "0-11",         "0-11",        "10-11",
            12,         12, "12-15",        "12-15",        "12-15",
            13,         13, "12-15",        "12-15",        "12-15",
            14,         14, "12-15",        "12-15",        "12-15",
@@ -253,6 +187,17 @@ pop_detailed_nsw <- pop_detailed %>%
 # get populations by lga (with old lga names) in each of the air age groups
 pop_air <- pop_detailed_nsw %>%
   group_by(lga, age_air) %>%
+  summarise(
+    across(
+      population,
+      sum
+    ),
+    .groups = "drop"
+  )
+
+# get populations by lga in the model age groups
+pop_model <- pop_detailed_nsw %>%
+  group_by(lga, age_model) %>%
   summarise(
     across(
       population,
@@ -458,12 +403,31 @@ air_current <- air_raw %>%
     .groups = "drop"
   )
 
-
+# today:
 stop("handle different maximum coverages by age")
 stop("use new dose intervals")
-stop("use new contact matrix with age breaks matching these")
-stop("plumb in age-specific transmission parammeters to match these age groups")
 stop("output an age lookup for Nic R")
+stop("use latest data and rerun")
+
+# today if possible
+stop("compare multiple population sources against the rate of over-vaccination, and the LGA population totals for each LGA")
+
+# for later:
+stop("plumb in age-specific transmission parammeters to match these age groups")
+stop("use new contact matrix with age breaks matching these")
+
+# assumed maximum coverages
+max_coverage <- air_12_age_lookup %>%
+  select(
+    age_air_80
+  ) %>%
+  distinct() %>%
+  mutate(
+    max_coverage = case_when(
+      age_air_80 %in% c("40-49", "50-59", "60-69", "70-79", "80+") ~ 0.95,
+      TRUE ~ 0.85
+    )
+  )
 
 air <- bind_rows(
   # forecast doses under current vaccination rate, assuming no under 16s are
@@ -662,21 +626,6 @@ coverage_air_80 <- air %>%
   ) %>%
   ungroup()
 
-correction_10_14 <- pop %>%
-  select(
-    lga,
-    age_5y,
-    age_air_80,
-    population
-  ) %>%
-  filter(
-    age_air_80 == "0-14"
-  ) %>%
-  group_by(lga) %>%
-  summarise(
-    fraction_0_14_are_10_14 = sum(population * (age_5y == "10-14")) / sum(population)
-  )
-
 # tidy up unnecessary columns and disaggregate from AIR (capped at 80) age bins
 # into 5y age bins, assuming the same coverage within the eligible population
 coverage <- coverage_air_80 %>%
@@ -690,47 +639,24 @@ coverage <- coverage_air_80 %>%
   ) %>%
   # join on the ages (duplicating some rows)
   left_join(
-    age_lookup() %>%
+    air_12_age_lookup %>%
       select(
-        age_5y,
+        age_model,
         age_air_80
       ) %>%
       distinct(),
     by = "age_air_80"
   ) %>%
   relocate(
-    age_5y, .after = age_air_80
+    age_model, .after = age_air_80
   ) %>%
-  # Correct the coverages for three 5y age brackets falling in the 0-14 AIR age
-  # bracket, since the first two (0-4 and 5-9) should have 0 coverage, and
-  # coverage for 10-14 should be higher, by the ratio of 0-14 population to
-  # 10-14 population. I.e.:
-  #   n_vaccinated = coverage * pop0_14
-  #   new_coverage = n_vaccinated / pop10_14
-  # so:
-  #   new_coverage = coverage * pop0_14 / pop10_14
-  #                = coverage * 1 / (pop10_14 / pop0_14)
+  # join on model populations for later use
   left_join(
-    correction_10_14,
-    by = "lga"
-  ) %>%
-  mutate(
-    coverage_any_vaccine = case_when(
-      age_5y %in% c("0-4", "5-9") ~ 0,
-      age_5y == "10-14" ~ coverage_any_vaccine / fraction_0_14_are_10_14,
-      TRUE ~ coverage_any_vaccine
-    )
-  ) %>%
-  select(
-    -fraction_0_14_are_10_14
-  ) %>%
-  # join on 5y populations for later use
-  left_join(
-    pop_5y,
-    by = c("lga", "age_5y")
+    pop_model,
+    by = c("lga", "age_model")
   ) %>%
   rename(
-    age = age_5y
+    age = age_model
   ) %>%
   mutate(
     age = factor(
