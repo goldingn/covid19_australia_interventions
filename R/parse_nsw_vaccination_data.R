@@ -404,7 +404,6 @@ air_current <- air_raw %>%
   )
 
 # today:
-stop("handle different maximum coverages by age")
 stop("use new dose intervals")
 stop("output an age lookup for Nic R")
 stop("use latest data and rerun")
@@ -436,6 +435,8 @@ air <- bind_rows(
     air_current,
     previous_days_average = 0:6,
     max_date = Sys.Date() + 7 * 8,
+    az_interval_weeks = 6,
+    pfizer_interval_weeks = 3,
     max_coverages = max_coverage
   )
 ) %>%

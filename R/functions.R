@@ -9594,6 +9594,9 @@ forecast_vaccination <- function(
   previous_days_average = 0:27,
   # end of simulations
   max_date = as.Date("2021-09-30"),
+  # inter-dose intervals - assumed the same everywhere
+  pfizer_interval_weeks = 3,
+  az_interval_weeks = 8,
   # proportion of population accepting vaccines
   max_coverages = NULL,
   # optional file of additional doses
@@ -9661,14 +9664,6 @@ forecast_vaccination <- function(
     select(
       lga, age_air_80, observed_max_coverage
     ) %>%
-    # # add on the assumed maximum coverage (later, for one of a number of scenarios)
-    # full_join(
-    #   expand_grid(
-    #     lga = unique(air_current$lga),
-    #     age_air_80 = unique(air_current$age_air_80)
-    #   ),
-    #   by = c("lga", "age_air_80")
-    # ) %>%
     left_join(
       max_coverages,
       by = c("age_air_80")
@@ -9680,8 +9675,6 @@ forecast_vaccination <- function(
     select(
       -observed_max_coverage
     )
-  
-  # extrapolate the number of cumulative doses into the future, without capping coverage
   
   # future dates for each LGA and age, based on recent rate of vaccination
   future_doses <- expand_grid(
@@ -9773,8 +9766,8 @@ forecast_vaccination <- function(
     ) %>%
     mutate(
       # compute lagged dose 1s to get more mechanistic forecast of dose 2s
-      dose_2_AstraZeneca_lag = lag(dose_1_AstraZeneca, 12 * 7),
-      dose_2_Pfizer_lag = lag(dose_1_Pfizer, 4 * 7),
+      dose_2_AstraZeneca_lag = lag(dose_1_AstraZeneca, az_interval_weeks * 7),
+      dose_2_Pfizer_lag = lag(dose_1_Pfizer, pfizer_interval_weeks * 7),
       # and weight them with the ones based on the current rates, to get a
       # smoother transition over 28 days
       dose_2_recent_weight = pmax(0, 1 - pmin(1, as.numeric(date - latest_data_date) / 28)),
