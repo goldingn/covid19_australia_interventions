@@ -158,21 +158,82 @@ air_12_age_lookup <- tibble::tribble(
           100,        999,   "85+",          "80+",          "80+"
 )
 
+lga18_lga19_lookup <- read_csv(
+  "data/spatial/abs/CG_LGA_2018_LGA_2019 - All.csv",
+  col_types = cols(
+    LGA_CODE_2018 = col_double(),
+    LGA_NAME_2018 = col_character(),
+    LGA_CODE_2019 = col_double(),
+    LGA_NAME_2019 = col_character(),
+    RATIO_FROM_TO = col_double(),
+    INDIV_TO_REGION_QLTY_INDICATOR = col_character(),
+    OVERALL_QUALITY_INDICATOR = col_character(),
+    BMOS_NULL_FLAG = col_double()
+  )
+) %>%
+  select(LGA_NAME_2018, LGA_NAME_2019)
+
+# all 100% correspondences
+lga17_lga18_lookup <- read_excel(
+  "data/spatial/abs/CG_LGA_2017_LGA_2018_Update.xls",
+  sheet = "Table 3",
+  skip = 4
+) %>%
+  filter(
+    row_number() > 1
+  ) %>%
+  select(LGA_NAME_2017, LGA_NAME_2018)
+
+sa3_lga17_lookup <- read_excel(
+  "data/spatial/abs/CG_SA3_2016_LGA_2017.xls",
+  sheet = "Table 3",
+  skip = 4
+) %>%
+  filter(
+    !(row_number() == 1)
+  ) %>%
+  select(
+    SA3_NAME_2016,
+    LGA_NAME_2017,
+    RATIO
+  )
+
+sa3_lga19_lookup <- sa3_lga17_lookup %>%
+  left_join(
+    lga17_lga18_lookup,
+    by = "LGA_NAME_2017"
+  ) %>%
+  left_join(
+    lga18_lga19_lookup,
+    by = "LGA_NAME_2018"
+  ) %>%
+  select(
+    SA3_NAME_2016,
+    LGA_NAME_2019,
+    RATIO
+  )
+
+
 # get detailed populations for NSW LGAs with old names and new age groups
 pop_detailed_nsw <- pop_detailed %>%
   filter(
     ste_name16 == "New South Wales"
   ) %>%
+  # convert 2016 sa3s to 2016 LGAs
   # join on the LGA names to get the old ones
   left_join(
-    lga_rename,
-    by = c("sa3_name16" = "LGA_NAME19_new")
+    sa3_lga19_lookup,
+    by = c("sa3_name16" = "SA3_NAME_2016")
   ) %>%
-  select(
-    lga = LGA_NAME19_OLD,
-    age_lower,
-    age_upper,
-    population
+  group_by(
+    LGA_NAME_2019, age_lower, age_upper
+  ) %>%
+  summarise(
+    population = sum(population * RATIO),
+    .groups = "drop"
+  ) %>%
+  rename(
+    lga = LGA_NAME_2019
   ) %>%
   left_join(
     air_12_age_lookup,
@@ -398,7 +459,6 @@ air_current <- air_raw %>%
   )
 
 
-stop("fix up LGAs missing from detailed data (in rename lookup) - need name lookup from LGA16 to LGA19")
 stop("handle different maximum coverages by age")
 stop("use new dose intervals")
 stop("use new contact matrix with age breaks matching these")
