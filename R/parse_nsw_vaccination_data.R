@@ -403,15 +403,30 @@ air_current <- air_raw %>%
     .groups = "drop"
   )
 
-# today:
-stop("use new dose intervals")
-stop("output an age lookup for Nic R")
-stop("use latest data and rerun")
 
-# today if possible
+# write out an age group lookup for Nic R
+expand_grid(
+  age = 0:100,
+  age_lower = unique(air_12_age_lookup$age_lower)
+) %>%
+  left_join(
+    air_12_age_lookup,
+    by = "age_lower"
+  ) %>%
+  filter(
+    age >= age_lower & age <= age_upper
+  ) %>%
+  select(
+    integer_age = age,
+    age =  age_model,
+    age_air_80
+  ) %>%
+  write_csv(
+    "outputs/nsw/age_group_lookup.csv"
+  )
+
+# to do:
 stop("compare multiple population sources against the rate of over-vaccination, and the LGA population totals for each LGA")
-
-# for later:
 stop("plumb in age-specific transmission parammeters to match these age groups")
 stop("use new contact matrix with age breaks matching these")
 
