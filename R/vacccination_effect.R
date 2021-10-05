@@ -214,7 +214,13 @@ vaccination_effect <- efficacy_data %>%
     )
   )
 
-vaccine_effect_timeseries <- vaccination_effect %>%
+vaccine_effect_timeseries <- bind_rows(
+  vaccination_effect[1,],
+  vaccination_effect %>%
+    mutate(
+      date = date + 6
+    )
+) %>%
   dplyr::select(
     state,
     date,
@@ -225,7 +231,7 @@ vaccine_effect_timeseries <- vaccination_effect %>%
     y = expand_grid(
       date = seq.Date(
         from = min(dose_dates),
-        to = max(dose_dates),
+        to = max(dose_dates) + 6,
         by = 1
       ),
       state = states
