@@ -431,7 +431,7 @@ stop("plumb in age-specific transmission parammeters to match these age groups")
 stop("use new contact matrix with age breaks matching these")
 
 # assumed maximum coverages
-max_coverage <- air_12_age_lookup %>%
+max_coverage_85_95 <- air_12_age_lookup %>%
   select(
     age_air_80
   ) %>%
@@ -443,22 +443,41 @@ max_coverage <- air_12_age_lookup %>%
     )
   )
 
+max_coverage_80_90_95 <- air_12_age_lookup %>%
+  select(
+    age_air_80
+  ) %>%
+  distinct() %>%
+  mutate(
+    hypothetical_max_coverage = case_when(
+      age_air_80 %in% c("60-69", "70-79", "80+") ~ 0.95,
+      age_air_80 %in% c("40-49", "50-59") ~ 0.90,
+      TRUE ~ 0.8
+    )
+  )
+
+
 air <- bind_rows(
   # forecast doses under current vaccination rate, assuming no under 16s are
   # being vaccinated (we cannot determine the rate of vaccination of 15 year olds from the data)
-  forecast_vaccination(
+  "85% / 95%" = forecast_vaccination(
     air_current,
     previous_days_average = 0:6,
     max_date = Sys.Date() + 7 * 8,
     az_interval_weeks = 6,
     pfizer_interval_weeks = 3,
-    max_coverages = max_coverage
-  )
-) %>%
-  # tidy up labels for printing
-  mutate(
-    coverage_scenario = "95% / 85%"
-  )
+    max_coverages = max_coverage_85_95
+  ),
+  "80% / 90% / 95%" = forecast_vaccination(
+    air_current,
+    previous_days_average = 0:6,
+    max_date = Sys.Date() + 7 * 8,
+    az_interval_weeks = 6,
+    pfizer_interval_weeks = 3,
+    max_coverages = max_coverage_80_90_95
+  ),
+  .id = "coverage_scenario"
+)
 
 # plot coverage stats
 air %>%
@@ -469,7 +488,7 @@ air %>%
     any_vaccinated = dose_1_AstraZeneca + dose_1_Pfizer,
     fully_vaccinated = dose_2_AstraZeneca + dose_2_Pfizer
   ) %>%
-  group_by(lga, date, forecast, scenario) %>%
+  group_by(lga, date, forecast, coverage_scenario) %>%
   summarise(
     across(
       ends_with("vaccinated"),
@@ -500,7 +519,7 @@ air %>%
     ),
   ) +
   facet_grid(
-    scenario ~ doses
+    coverage_scenario ~ doses
   ) +
   scale_y_continuous(
     limits = c(0, 1),
@@ -518,7 +537,7 @@ air %>%
   xlab("") +
   ggtitle(
     "Scenario forecast vaccination coverage in LGAs of concern",
-    "assuming 95% / 85% coverage in the over/under 40s"
+    "assuming different coverages in the over/under 40s"
   ) +
   theme_cowplot() +
   theme(
@@ -527,7 +546,7 @@ air %>%
   )
 
 ggsave(
-  "outputs/nsw/scenario_95_85.png",
+  "outputs/nsw/coverage_scenario.png",
   bg = "white",
   width = 9,
   height = 6
