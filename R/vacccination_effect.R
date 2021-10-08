@@ -105,20 +105,20 @@ efficacy_data <- dose_data %>%
   ) %>%
   mutate(
     average_efficacy_transmission = average_efficacy(
-      efficacy_az_2_dose = combine_efficacy(0.60, 0.65),
-      efficacy_pf_2_dose = combine_efficacy(0.79, 0.65),
-      efficacy_pf_1_dose = combine_efficacy(0.30, 0.46),
-      efficacy_az_1_dose = combine_efficacy(0.18, 0.48),    
+      efficacy_az_1_dose = combine_efficacy(0.46, 0.02),
+      efficacy_az_2_dose = combine_efficacy(0.67, 0.36),
+      efficacy_pf_1_dose = combine_efficacy(0.57, 0.13),
+      efficacy_pf_2_dose = combine_efficacy(0.80, 0.65),
       proportion_pf_2_dose = fraction_pf_2,
       proportion_az_2_dose = fraction_az_2,
       proportion_pf_1_dose = fraction_pf_1,
       proportion_az_1_dose = fraction_az_1
     ),
     effective_average_efficacy_transmission = average_efficacy(
-      efficacy_az_2_dose = combine_efficacy(0.60, 0.65),
-      efficacy_pf_2_dose = combine_efficacy(0.79, 0.65),
-      efficacy_pf_1_dose = combine_efficacy(0.30, 0.46),
-      efficacy_az_1_dose = combine_efficacy(0.18, 0.48),    
+      efficacy_az_1_dose = combine_efficacy(0.46, 0.02),
+      efficacy_az_2_dose = combine_efficacy(0.67, 0.36),
+      efficacy_pf_1_dose = combine_efficacy(0.57, 0.13),
+      efficacy_pf_2_dose = combine_efficacy(0.80, 0.65),
       proportion_pf_2_dose = effective_fraction_pf_2,
       proportion_az_2_dose = effective_fraction_az_2,
       proportion_pf_1_dose = effective_fraction_pf_1,
@@ -422,7 +422,7 @@ vaccine_effect_timeseries %>%
 
 
 ggsave(
-  filename = "outputs/figures/vaccination_weekly_percent_change_in_reff.png",
+  filename = "outputs/figures/vaccination_weekly_percent_change_in_tp.png",
   dpi = dpi,
   width = 1500 / dpi,
   height = 1250 / dpi,
