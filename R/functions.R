@@ -4723,7 +4723,8 @@ get_nsw_linelist <- function () {
         CALCULATED_ONSET_DATE = col_nsw_date(),
         AGE_AT_EVENT_YEARS = col_double(),
         DATE_ISOLATION_BEGAN = col_nsw_date(),
-        SETTING_OF_TRANSMISSION_DATE = col_nsw_date("long"),
+        #SETTING_OF_TRANSMISSION_DATE = col_nsw_date("long"),
+        SETTING_OF_TRANSMISSION_DATE = col_nsw_date(),
         INTERVIEWED_DATE = col_nsw_date()
       )
     ) %>%
