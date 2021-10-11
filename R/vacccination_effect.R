@@ -284,7 +284,7 @@ effective_dose_data <- dose_data %>%
     date
   )
 
-data_date <- max(effective_dose_data$date)
+data_date <- max(vaccine_effect_timeseries$date)
 
 saveRDS(
   object = vaccine_effect_timeseries %>%
