@@ -10391,3 +10391,86 @@ lga_age_population_nsw <- function() {
       .groups = "drop"
     )
 }
+
+get_nsw_baseline_matrix <- function(R = 3.6, asymp_rel_infectious = 0.5,
+                                    age_breaks = c(0, 5, 10, 12, 16, 20, 25,
+                                                   30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80,
+                                                   Inf)) {
+  
+  require(conmat)
+  
+  # fit contact models for each setting to polymod
+  contact_model <- fit_setting_contacts(
+    contact_data_list = get_polymod_setting_data(),
+    population = get_polymod_population()
+  )
+  
+  # predict to NSW
+  nsw_settings <- predict_setting_contacts(
+    population = abs_age_state("NSW"),
+    contact_model = contact_model,
+    per_capita_household_size = get_per_capita_household_size(state = "NSW"),
+    age_breaks = age_breaks
+  )
+  
+  # get transmission parameters from Davies et al.
+  age_data_davies <- read_csv(
+    "data/vaccinatinon/susceptibility_clinical_fraction_age_Davies.csv",
+    col_types = cols(
+      age_group = col_character(),
+      rel_susceptibility_mean = col_double(),
+      rel_susceptibility_median = col_double(),
+      clinical_fraction_mean = col_double(),
+      clinical_fraction_median = col_double()
+    )
+  )
+  
+  # format to correct age groups ancd compute infectiousness  
+  relative_age_contribution <- air_12_age_lookup %>%
+    distinct(age_model) %>%
+    mutate(
+      davies_age = case_when(
+        age_model %in% c("0-4", "5-9") ~ "0_9",
+        age_model %in% c("10-11", "12-15", "16-19") ~ "10_19",
+        age_model %in% c("20-24", "25-29") ~ "20_29",
+        age_model %in% c("30-34", "35-39") ~ "30_39",
+        age_model %in% c("40-44", "45-49") ~ "40_49",
+        age_model %in% c("50-54", "55-59") ~ "50_59",
+        age_model %in% c("60-64", "65-69") ~ "60_69",
+        age_model %in% c("70-74", "75-79", "80+") ~ "70+",
+      )
+    ) %>%
+    left_join(
+      age_data_davies,
+      by = c(davies_age = "age_group")
+    ) %>%
+    mutate(
+      relative_infectiousness = clinical_fraction_mean +
+        asymp_rel_infectious * (1 - clinical_fraction_mean),
+      relative_infectiousness = relative_infectiousness /
+        max(relative_infectiousness),
+      relative_susceptibility = rel_susceptibility_mean /
+        max(rel_susceptibility_mean)
+    ) %>%
+    select(
+      age = age_model,
+      relative_infectiousness,
+      relative_susceptibility
+    )
+  
+  # combine into matrix of relative transmission probabilities
+  transmission_scaling <- outer(
+    relative_age_contribution$relative_infectiousness,
+    relative_age_contribution$relative_susceptibility,
+    FUN = "*"
+  )
+  
+  # create and sclae the NGM
+  ngm_unscaled <- nsw_settings$all * transmission_scaling
+  m <- find_m(R, ngm_unscaled)
+  ngm <- ngm_unscaled * m
+  
+  ngm
+  
+}
+

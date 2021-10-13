@@ -37,26 +37,33 @@ lga_rename <- read_csv(
   )
 )
 
-# load population data from Cth Health (at SA2 level, not LGA) to compute
-# NSW-wide fractions of the 0-14 that are 12-14, and fractions of the 15-29 that
-# are 16-29 (for AIR age distributions), and fractions of the 10-14 that are
-# 12-14, and fractions of the 15-19 that are 16-19 (for 5y age distributions),
-# and any other interesting fractions
-pop_detailed <- read_csv(
-  file = "data/vaccinatinon/2021-07-13-census-populations.csv",
+# load lookup to Quantium population data
+pop_detailed_lookup <- read_csv(
+  "data/population/quantium_dim_sa2.csv",
   col_types = cols(
-    ste_name16 = col_character(),
-    sa3_name16 = col_character(),
-    sa2_name16 = col_character(),
-    mmm2019 = col_double(),
+    sa2_5dig16 = col_character(),
+    sa3_code16 = col_character(),
+    sa4_code16 = col_character(),
+    gcc_name16 = col_character(),
+  )
+)
+
+# load population data from Quantium/Cth Health (at SA2 level, not LGA) to
+# compute populations, with a 12-15 breakdown
+pop_detailed <- read_csv(
+  file = "data/population/quantium_populations_sa2.csv",
+  col_types = cols(
+    sa2_5dig16 = col_character(),
     age_lower = col_double(),
     age_upper = col_double(),
     is_indigenous = col_logical(),
-    is_comorbidity = col_logical(),
-    vaccine_segment = col_character(),
     population = col_double()
   )
-)
+) %>%
+  left_join(
+    pop_detailed_lookup,
+    by = "sa2_5dig16"
+  )
 
 # get a lookup between the detailed age fractions, air fractions (including
 # 12-15), and the age groups for modelling
@@ -64,14 +71,10 @@ air_12_age_lookup <- tibble::tribble(
    ~age_lower, ~age_upper, ~age_air, ~age_air_80,       ~age_model,
             0,          4,  "0-11",         "0-11",          "0-4",
             5,          9,  "0-11",         "0-11",          "5-9", 
-           10,         10,  "0-11",         "0-11",        "10-11",
-           11,         11,  "0-11",         "0-11",        "10-11",
-           12,         12, "12-15",        "12-15",        "12-15",
-           13,         13, "12-15",        "12-15",        "12-15",
-           14,         14, "12-15",        "12-15",        "12-15",
+           10,         11,  "0-11",         "0-11",        "10-11",
+           12,         14, "12-15",        "12-15",        "12-15",
            15,         15, "12-15",        "12-15",        "12-15",
-           16,         16, "16-29",        "16-29",        "16-19",
-           17,         17, "16-29",        "16-29",        "16-19",
+           16,         17, "16-29",        "16-29",        "16-19",
            18,         19, "16-29",        "16-29",        "16-19",
            20,         24, "16-29",        "16-29",        "20-24",
            25,         29, "16-29",        "16-29",        "25-29",
@@ -83,7 +86,7 @@ air_12_age_lookup <- tibble::tribble(
            55,         59, "50-59",        "50-59",        "55-59",
            60,         64, "60-69",        "60-69",        "60-64",
            65,         69, "60-69",        "60-69",        "65-69",
-           70,         74, "70-79",        "70-79",        "70-79",
+           70,         74, "70-79",        "70-79",        "70-74",
            75,         79, "70-79",        "70-79",        "75-79",
            80,         84, "80-84",          "80+",          "80+",
            85,         89,   "85+",          "80+",          "80+",
@@ -95,9 +98,9 @@ air_12_age_lookup <- tibble::tribble(
 lga18_lga19_lookup <- read_csv(
   "data/spatial/abs/CG_LGA_2018_LGA_2019 - All.csv",
   col_types = cols(
-    LGA_CODE_2018 = col_double(),
+    LGA_CODE_2018 = col_character(),
     LGA_NAME_2018 = col_character(),
-    LGA_CODE_2019 = col_double(),
+    LGA_CODE_2019 = col_character(),
     LGA_NAME_2019 = col_character(),
     RATIO_FROM_TO = col_double(),
     INDIV_TO_REGION_QLTY_INDICATOR = col_character(),
@@ -127,6 +130,7 @@ sa3_lga17_lookup <- read_excel(
     !(row_number() == 1)
   ) %>%
   select(
+    SA3_CODE_2016,
     SA3_NAME_2016,
     LGA_NAME_2017,
     RATIO
@@ -142,11 +146,10 @@ sa3_lga19_lookup <- sa3_lga17_lookup %>%
     by = "LGA_NAME_2018"
   ) %>%
   select(
-    SA3_NAME_2016,
+    SA3_CODE_2016,
     LGA_NAME_2019,
     RATIO
   )
-
 
 # get detailed populations for NSW LGAs with old names and new age groups
 pop_detailed_nsw <- pop_detailed %>%
@@ -157,7 +160,7 @@ pop_detailed_nsw <- pop_detailed %>%
   # join on the LGA names to get the old ones
   left_join(
     sa3_lga19_lookup,
-    by = c("sa3_name16" = "SA3_NAME_2016")
+    by = c("sa3_code16" = "SA3_CODE_2016")
   ) %>%
   group_by(
     LGA_NAME_2019, age_lower, age_upper
@@ -425,11 +428,6 @@ expand_grid(
     "outputs/nsw/age_group_lookup.csv"
   )
 
-# to do:
-stop("compare multiple population sources against the rate of over-vaccination, and the LGA population totals for each LGA")
-stop("plumb in age-specific transmission parammeters to match these age groups")
-stop("use new contact matrix with age breaks matching these")
-
 # assumed maximum coverages
 max_coverage_85_95 <- air_12_age_lookup %>%
   select(
@@ -462,7 +460,7 @@ air <- bind_rows(
   # being vaccinated (we cannot determine the rate of vaccination of 15 year olds from the data)
   "85% / 95%" = forecast_vaccination(
     air_current,
-    previous_days_average = 0:6,
+    previous_days_average = 0:13,
     max_date = Sys.Date() + 7 * 8,
     az_interval_weeks = 6,
     pfizer_interval_weeks = 3,
@@ -470,7 +468,7 @@ air <- bind_rows(
   ),
   "80% / 90% / 95%" = forecast_vaccination(
     air_current,
-    previous_days_average = 0:6,
+    previous_days_average = 0:13,
     max_date = Sys.Date() + 7 * 8,
     az_interval_weeks = 6,
     pfizer_interval_weeks = 3,
@@ -551,12 +549,12 @@ ggsave(
   width = 9,
   height = 6
 )
-  
+
 # compute efficacies against transmission, based on type and number of doses
-efficacy_az_1_dose <- combine_efficacy(0.18, 0.48)
-efficacy_pf_1_dose <- combine_efficacy(0.30, 0.46)
-efficacy_az_2_dose <- combine_efficacy(0.60, 0.65)
-efficacy_pf_2_dose <- combine_efficacy(0.79, 0.65)
+efficacy_az_1_dose <- combine_efficacy(0.46, 0.02)
+efficacy_pf_1_dose <- combine_efficacy(0.57, 0.13)
+efficacy_az_2_dose <- combine_efficacy(0.67, 0.36)
+efficacy_pf_2_dose <- combine_efficacy(0.80, 0.65)
 
 # compute the *additional* effect of the second dose
 efficacy_az_2_dose_extra <- efficacy_az_2_dose - efficacy_az_1_dose
@@ -731,35 +729,10 @@ coverage <- coverage_air_80 %>%
 
 write.csv(coverage, file = "outputs/nsw/nsw_lgas_vaccination_coverage.csv")
 
-# collapse back to air age bin for plotting
-coverage_age_air_80_plot <- coverage %>%
-  group_by(
-    scenario,
-    coverage_scenario,
-    date,
-    lga,
-    age_air_80,
-    forecast
-  ) %>%
-  summarise(
-    coverage_any_vaccine = sum(coverage_any_vaccine * population) / sum(population),
-    average_efficacy_transmission = first(average_efficacy_transmission),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    age_air_80 = factor(
-      age_air_80,
-      levels = rev(unique(age_air_80))
-    ),
-    coverage_scenario = factor(
-      coverage_scenario,
-      levels = unique(coverage_scenario)
-    )
-  )
-
+# plot for LGAs of concern
 for (this_lga in c(lgas_of_concern, extra_lgas)) {
   
-  coverage_age_air_80_plot %>%
+  coverage_air_80 %>%
     filter(
       lga == this_lga
     ) %>%
@@ -771,14 +744,11 @@ for (this_lga in c(lgas_of_concern, extra_lgas)) {
         levels = rev(unique(coverage_scenario))
       )
     ) %>%
-    rename(
-      age = age_air_80
-    ) %>%
     ggplot(
       aes(
         x = date,
         y = vaccination_effect,
-        col = age,
+        col = age_air_80,
         linetype = forecast
       )
     ) +
@@ -803,7 +773,9 @@ for (this_lga in c(lgas_of_concern, extra_lgas)) {
   
 }
 
-baseline_ngm <- baseline_matrix(1)
+# get baseline pre-vaccination NGM for NSW, accounting for population age
+# distribution, household size, and  age-specific transmission parameters
+baseline_ngm <- get_nsw_baseline_matrix(1)
 
 # estimate effects of vaccination on transmission
 vaccination_effect <- coverage %>%
@@ -826,7 +798,6 @@ vaccination_effect <- coverage %>%
   )
 
 write_csv(vaccination_effect, "outputs/nsw/nsw_lgas_vaccination_effect.csv")  
-
 
 vaccination_effect_plot <- vaccination_effect %>%
   filter(
