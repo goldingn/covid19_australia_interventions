@@ -261,29 +261,29 @@ air_raw <- air_raw_postcode %>%
       TRUE ~ VACCINE_TYPE
     )
   ) %>%
-  # rename the LGAs to the old version
-  left_join(
-    lga_rename,
-    by = c(LGA_NAME19 = "LGA_NAME19_new")
-  ) %>%
-  select(
-    -LGA_NAME19,
-    -LGA_CODE19
-  ) %>%
-  rename(
-    LGA_NAME19 = LGA_NAME19_OLD
-  ) %>%
-  relocate(
-    LGA_NAME19,
-    .after = POSTCODE
-  ) %>%
+  # # rename the LGAs to the old version
+  # left_join(
+  #   lga_rename,
+  #   by = c(LGA_NAME19 = "LGA_NAME19_new")
+  # ) %>%
+  # select(
+  #   -LGA_NAME19,
+  #   -LGA_CODE19
+  # ) %>%
+  # rename(
+  #   LGA_NAME19 = LGA_NAME19_OLD
+  # ) %>%
+  # relocate(
+  #   LGA_NAME19,
+  #   .after = POSTCODE
+  # ) %>%
   left_join(
     postcode_lga_lookup,
     by = "POSTCODE"
   ) %>%
   # where the postcode is not in the lookup, assign all weight to the NSW Health allocated LGA
   mutate(
-    LGA_NAME19 = coalesce(LGA_NAME19, LGA_NAME_2019),
+    LGA_NAME19 = coalesce(LGA_NAME_2019, LGA_NAME19),
     weight = replace_na(weight, 1)
   ) %>%
   group_by(
