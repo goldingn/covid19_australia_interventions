@@ -463,7 +463,7 @@ air <- bind_rows(
     previous_days_average = 0:13,
     max_date = Sys.Date() + 7 * 8,
     az_interval_weeks = 6,
-    pfizer_interval_weeks = 3,
+    pfizer_interval_weeks = 5,
     max_coverages = max_coverage_85_95
   ),
   "80% / 90% / 95%" = forecast_vaccination(
@@ -471,7 +471,7 @@ air <- bind_rows(
     previous_days_average = 0:13,
     max_date = Sys.Date() + 7 * 8,
     az_interval_weeks = 6,
-    pfizer_interval_weeks = 3,
+    pfizer_interval_weeks = 5,
     max_coverages = max_coverage_80_90_95
   ),
   .id = "coverage_scenario"
@@ -479,9 +479,9 @@ air <- bind_rows(
 
 # plot coverage stats
 air %>%
-  filter(
-    lga %in% lgas_of_concern
-  ) %>%
+  # filter(
+  #   lga %in% lgas_of_concern
+  # ) %>%
   mutate(
     any_vaccinated = dose_1_AstraZeneca + dose_1_Pfizer,
     fully_vaccinated = dose_2_AstraZeneca + dose_2_Pfizer
@@ -530,11 +530,13 @@ air %>%
     color = grey(0.7),
     size = 0.2
   ) +
-  geom_line() +
+  geom_line(
+    size = 0.1
+  ) +
   ylab("Vaccination coverage (eligible population)") +
   xlab("") +
   ggtitle(
-    "Scenario forecast vaccination coverage in LGAs of concern",
+    "Scenario forecast vaccination coverage in LGAs",
     "assuming different coverages in the over/under 40s"
   ) +
   theme_cowplot() +

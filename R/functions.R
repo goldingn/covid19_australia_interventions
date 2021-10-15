@@ -9769,8 +9769,8 @@ forecast_vaccination <- function(
       dose_2_AstraZeneca_lag = lag(dose_1_AstraZeneca, az_interval_weeks * 7),
       dose_2_Pfizer_lag = lag(dose_1_Pfizer, pfizer_interval_weeks * 7),
       # and weight them with the ones based on the current rates, to get a
-      # smoother transition over 28 days
-      dose_2_recent_weight = pmax(0, 1 - pmin(1, as.numeric(date - latest_data_date) / 28)),
+      # smoother transition over 7 days
+      dose_2_recent_weight = pmax(0, 1 - pmin(1, as.numeric(date - latest_data_date) / 14)),
       dose_2_AstraZeneca = if_else(
         forecast,
         dose_2_AstraZeneca * dose_2_recent_weight + dose_2_AstraZeneca_lag * (1 - dose_2_recent_weight),
