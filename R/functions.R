@@ -494,7 +494,7 @@ interventions <- function(
   
   tas_interventions <- tibble::tribble(
     ~date, ~state,
-    "2021-10-16", # https://www.premier.tas.gov.au/covid-19_updates/press_confernce_-_15_october_2021
+    "2021-10-16", "TAS" # https://www.premier.tas.gov.au/covid-19_updates/press_confernce_-_15_october_2021
   )
   
   vic_interventions <- tibble::tribble(
