@@ -494,7 +494,7 @@ interventions <- function(
   
   tas_interventions <- tibble::tribble(
     ~date, ~state,
-    
+    "2021-10-16", # https://www.premier.tas.gov.au/covid-19_updates/press_confernce_-_15_october_2021
   )
   
   vic_interventions <- tibble::tribble(
@@ -524,21 +524,21 @@ interventions <- function(
   
   if(end_dates){
     
-    # act_interventions <-  act_interventions %>%
-    #   bind_rows(
-    #     tibble::tribble(
-    #       ~date, ~state,
-    #   
-    #     )
-    #   )
+    act_interventions <-  act_interventions %>%
+      bind_rows(
+        tibble::tribble(
+          ~date, ~state,
+          "2021-10-15", "ACT" # lockdown end 11:59 PM 2021/10/14 https://twitter.com/ACTHealth/status/1447778422755708933?s=20
+        )
+      )
     
-    # nsw_interventions <-  nsw_interventions %>%
-    #   bind_rows(
-    #     tibble::tribble(
-    #       ~date, ~state,
-    #       #"2021-07-17", "NSW" # https://www.abc.net.au/news/2021-07-07/covid-live-updates-coronavirus-press-conference-sydney-lockdown/100270832?utm_campaign=abc_news_web&utm_content=link&utm_medium=content_shared&utm_source=abc_news_web#live-blog-post-1201975138
-    #     )
-    #   )
+    nsw_interventions <-  nsw_interventions %>%
+      bind_rows(
+        tibble::tribble(
+          ~date, ~state,
+          "2021-10-11", "NSW" # https://www.nsw.gov.au/media-releases/ready-set-go-nsw-prepares-to-re-open
+        )
+      )
     
     nt_interventions <-  nt_interventions %>%
       bind_rows(
@@ -568,12 +568,12 @@ interventions <- function(
           "2021-07-28", "SA" # restrictions eased from 28th https://www.sahealth.sa.gov.au/wps/wcm/connect/public+content/sa+health+internet/about+us/news+and+media/all+media+releases/covid-19+update+28+july+2021
         )
       )
-    
+
     # tas_interventions <-  tas_interventions %>%
     #   bind_rows(
     #     tibble::tribble(
     #       ~date, ~state,
-    #       
+    #       "2021-10-19", "TAS" # https://www.premier.tas.gov.au/covid-19_updates/press_confernce_-_15_october_2021
     #     )
     #   )
     
@@ -5826,7 +5826,7 @@ reff_plotting <- function(
                   max_date = max_date,
                   multistate = TRUE,
                   base_colour = green,
-                  ylim = c(0, 6),
+                  ylim = c(0, 5),
                   projection_at = projection_date,
                   plot_voc = TRUE) +
     ggtitle(label = "Local to local transmission potential",
