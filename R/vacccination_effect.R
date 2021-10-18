@@ -353,7 +353,8 @@ ggplot(vaccine_effect_timeseries) +
       "darkblue",
       "gold1"
     )
-  )
+  ) +
+  ylim(c(0.4, 1))
 
 ggsave(
   filename = "outputs/figures/vaccination_effect.png",
