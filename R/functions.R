@@ -569,13 +569,13 @@ interventions <- function(
         )
       )
 
-    # tas_interventions <-  tas_interventions %>%
-    #   bind_rows(
-    #     tibble::tribble(
-    #       ~date, ~state,
-    #       "2021-10-19", "TAS" # https://www.premier.tas.gov.au/covid-19_updates/press_confernce_-_15_october_2021
-    #     )
-    #   )
+    tas_interventions <-  tas_interventions %>%
+      bind_rows(
+        tibble::tribble(
+          ~date, ~state,
+          "2021-10-19", "TAS" # https://www.premier.tas.gov.au/covid-19_updates/press_confernce_-_15_october_2021
+        )
+      )
     
     vic_interventions <-  vic_interventions %>%
       bind_rows(
@@ -583,7 +583,8 @@ interventions <- function(
           ~date, ~state,
           "2021-02-18", "VIC",
           "2021-06-11", "VIC",
-          "2021-07-28", "VIC" # lockdown lifted 11.59 PM 2021/07/27 https://www.premier.vic.gov.au/lockdown-lifted-across-victoria
+          "2021-07-28", "VIC", # lockdown lifted 11.59 PM 2021/07/27 https://www.premier.vic.gov.au/lockdown-lifted-across-victoria
+          "2021-10-22", "VIC" # lockdown lifted 11.59 PM 2021/10/21
         )
       )
     
@@ -5826,7 +5827,7 @@ reff_plotting <- function(
                   max_date = max_date,
                   multistate = TRUE,
                   base_colour = green,
-                  ylim = c(0, 5),
+                  ylim = c(0, 4),
                   projection_at = projection_date,
                   plot_voc = TRUE) +
     ggtitle(label = "Local to local transmission potential",
@@ -5848,6 +5849,36 @@ reff_plotting <- function(
   p
   
   save_ggplot("R_eff_12_local.png", dir, subdir)
+  
+  # Reff for active cases
+  p <- plot_trend(sims$R_eff_loc_12,
+                  data = fitted_model_extended$data,
+                  min_date = min_date,
+                  max_date = max_date,
+                  multistate = TRUE,
+                  base_colour = green,
+                  ylim = c(0, 2),
+                  projection_at = projection_date,
+                  plot_voc = TRUE) +
+    ggtitle(label = "Local to local transmission potential",
+            subtitle = "Average across active cases") +
+    ylab(expression(R["eff"]~from~"locally-acquired"~cases))
+  
+  if (mobility_extrapolation_rectangle) {
+    p <- p + annotate("rect",
+                      xmin = fitted_model_extended$data$dates$latest_infection,
+                      xmax = fitted_model_extended$data$dates$latest_mobility,
+                      ymin = -Inf,
+                      ymax = Inf,
+                      fill = grey(0.5), alpha = 0.1)
+    
+  }
+  
+  # add case rug plot and washout
+  p <- p + few_case_washout + case_rug
+  p
+  
+  save_ggplot("R_eff_12_local_zoom.png", dir, subdir)
   
   # component 2 (noisy error trends)
   p <- plot_trend(sims$epsilon_L,
