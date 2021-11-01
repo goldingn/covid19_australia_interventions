@@ -553,10 +553,22 @@ ggsave(
 )
 
 # compute efficacies against transmission, based on type and number of doses
-efficacy_az_1_dose <- combine_efficacy(0.46, 0.02)
-efficacy_pf_1_dose <- combine_efficacy(0.57, 0.13)
-efficacy_az_2_dose <- combine_efficacy(0.67, 0.36)
-efficacy_pf_2_dose <- combine_efficacy(0.80, 0.65)
+efficacy_az_1_dose <- combine_efficacy(
+  ve("susceptibility", fraction_pfizer = 0, fraction_dose_2 = 0),
+  ve("onward", fraction_pfizer = 0, fraction_dose_2 = 0)
+)
+efficacy_pf_1_dose <- combine_efficacy(
+  ve("susceptibility", fraction_pfizer = 1, fraction_dose_2 = 0),
+  ve("onward", fraction_pfizer = 1, fraction_dose_2 = 0)
+)
+efficacy_az_2_dose <- combine_efficacy(
+  ve("susceptibility", fraction_pfizer = 0, fraction_dose_2 = 1),
+  ve("onward", fraction_pfizer = 0, fraction_dose_2 = 1)
+)
+efficacy_pf_2_dose <- combine_efficacy(
+  ve("susceptibility", fraction_pfizer = 1, fraction_dose_2 = 1),
+  ve("onward", fraction_pfizer = 1, fraction_dose_2 = 1)
+)
 
 # compute the *additional* effect of the second dose
 efficacy_az_2_dose_extra <- efficacy_az_2_dose - efficacy_az_1_dose
@@ -778,25 +790,56 @@ for (this_lga in c(lgas_of_concern, extra_lgas)) {
 # get baseline pre-vaccination NGM for NSW, accounting for population age
 # distribution, household size, and  age-specific transmission parameters
 baseline_ngm <- get_nsw_baseline_matrix(1)
+baseline_R  <- get_R(baseline_ngm)
 
 # estimate effects of vaccination on transmission
 vaccination_effect <- coverage %>%
   arrange(scenario, coverage_scenario, lga, date, age) %>%
+  mutate(
+    ve_susceptibility = ve(
+      "susceptibility",
+      fraction_az_dose_1 = fraction_dose_1_AstraZeneca,
+      fraction_az_dose_2 = fraction_dose_2_AstraZeneca,
+      fraction_pfizer_dose_1 = fraction_dose_1_Pfizer,
+      fraction_pfizer_dose_2 = fraction_dose_2_Pfizer,
+      dose_2_as_extra = TRUE
+    ),
+    ve_onward = ve(
+      "onward",
+      fraction_az_dose_1 = fraction_dose_1_AstraZeneca,
+      fraction_az_dose_2 = fraction_dose_2_AstraZeneca,
+      fraction_pfizer_dose_1 = fraction_dose_1_Pfizer,
+      fraction_pfizer_dose_2 = fraction_dose_2_Pfizer,
+      dose_2_as_extra = TRUE
+    ),
+    across(
+      starts_with("ve"),
+      .fns = list(multiplier = ~1 - coverage_any_vaccine * .x)
+    )
+  ) %>%
   group_by(
     lga, date, forecast, scenario, coverage_scenario
   ) %>%
   summarise(
-    vaccination_transmission_multiplier = vaccination_transmission_effect(
-      age_coverage = coverage_any_vaccine,
-      efficacy_mean = average_efficacy_transmission,
-      next_generation_matrix = baseline_ngm,
-      R0 = 1
-    )$overall,
+    vaccination_effect_matrix = list(
+      outer(
+        ve_susceptibility_multiplier,
+        ve_onward_multiplier,
+        FUN = "*"
+      )
+    ),
     .groups = "drop"
+  ) %>%
+  rowwise() %>%
+  mutate(
+    vaccination_transmission_multiplier = get_R(baseline_ngm * vaccination_effect_matrix) / baseline_R
   ) %>%
   mutate(
     vaccination_transmission_reduction_percent =
       100 * (1 - vaccination_transmission_multiplier)
+  ) %>%
+  select(
+    -vaccination_effect_matrix
   )
 
 write_csv(vaccination_effect, "outputs/nsw/nsw_lgas_vaccination_effect.csv")  

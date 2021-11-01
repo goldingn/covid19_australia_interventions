@@ -10438,3 +10438,71 @@ get_nsw_baseline_matrix <- function(R = 3.6, asymp_rel_infectious = 0.5,
   
 }
 
+# vaccine efficacy estimates
+ve <- function(
+  parameter = c("susceptibility", "onward"),
+  fraction_pfizer = 0.5,
+  fraction_dose_2 = 0.9,
+  fraction_az_dose_1 = (1 - fraction_pfizer) * (1 - fraction_dose_2),
+  fraction_az_dose_2 = (1 - fraction_pfizer) * fraction_dose_2,
+  fraction_pfizer_dose_1 = fraction_pfizer * (1 - fraction_dose_2),
+  fraction_pfizer_dose_2 = fraction_pfizer * fraction_dose_2,
+  dose_2_as_extra = FALSE
+) {
+  
+  # compute vaccine efficacy against susceptibility or onward transmission, for
+  # any mix of product and number of doses
+  total <- fraction_az_dose_1 +
+    fraction_az_dose_2 +
+    fraction_pfizer_dose_1 +
+    fraction_pfizer_dose_2
+  
+  if (any(abs(total - 1) > 1e6)) {
+    stop("fractions do not sum to one")
+  }
+  
+  parameter <- match.arg(parameter)
+  
+  ve_estimates <- list(
+    susceptibility = list(
+      az = list(
+        dose_1 = 0.46,
+        dose_2 = 0.67
+      ),
+      pfizer = list(
+        dose_1 = 0.57,
+        dose_2 = 0.80
+      )
+    ),
+    onward = list(
+      az = list(
+        dose_1 = 0.02,
+        dose_2 = 0.36
+      ),
+      pfizer = list(
+        dose_1 = 0.13,
+        dose_2 = 0.65
+      )
+    )
+  )
+
+  # if we want the VE estimates for dose 2 to be expressed as the additional
+  # effect on top of dose 1, modify the dose 2 estimates. This is used to
+  # capture efficacy over time with lags to acquired immunity, so that the
+  # immunity does not drop to 0 at the date of the second dose
+  if (dose_2_as_extra) {
+    for (parameter in names(ve_estimates)) {
+      for (vaccine in names(ve_estimates$susceptibility)) {
+        estimate <- ve_estimates[[parameter]][[vaccine]]
+        ve_estimates[[parameter]][[vaccine]]$dose_2 <- estimate$dose_2 - estimate$dose_1
+      }
+    }
+  }
+  
+  ve_estimates[[parameter]]$az$dose_1 * fraction_az_dose_1 +
+    ve_estimates[[parameter]]$az$dose_2 * fraction_az_dose_2 +
+    ve_estimates[[parameter]]$pfizer$dose_1 * fraction_pfizer_dose_1 +
+    ve_estimates[[parameter]]$pfizer$dose_2 * fraction_pfizer_dose_2
+  
+  
+}
