@@ -454,6 +454,23 @@ max_coverage_80_90_95 <- air_12_age_lookup %>%
     )
   )
 
+max_coverage_latest <- air_12_age_lookup %>%
+  select(
+    age_air_80
+  ) %>%
+  distinct() %>%
+  mutate(
+    hypothetical_max_coverage = case_when(
+      age_air_80 %in% c("60-69", "70-79", "80+") ~ 0.95,
+      age_air_80 %in% c("50-59") ~ 0.95,
+      age_air_80 %in% c("40-49") ~ 0.94,
+      age_air_80 %in% c("30-39") ~ 0.92,
+      age_air_80 %in% c("20-29") ~ 0.87,
+      age_air_80 %in% c("16-19") ~ 0.89,
+      age_air_80 %in% c("12-15") ~ 0.8,
+      TRUE ~ 0
+    )
+  )
 
 air <- bind_rows(
   # forecast doses under current vaccination rate, assuming no under 16s are
@@ -473,6 +490,14 @@ air <- bind_rows(
     az_interval_weeks = 6,
     pfizer_interval_weeks = 5,
     max_coverages = max_coverage_80_90_95
+  ),
+  "latest" = forecast_vaccination(
+    air_current,
+    previous_days_average = 0:13,
+    max_date = Sys.Date() + 7 * 8,
+    az_interval_weeks = 6,
+    pfizer_interval_weeks = 5,
+    max_coverages = max_coverage_latest
   ),
   .id = "coverage_scenario"
 )
@@ -796,6 +821,14 @@ baseline_R  <- get_R(baseline_ngm)
 vaccination_effect <- coverage %>%
   arrange(scenario, coverage_scenario, lga, date, age) %>%
   mutate(
+    across(
+      ends_with("Pfizer"),
+      ~if_else(age %in% c("5-9", "10-11"), 1, .x)
+    ),
+    across(
+      ends_with("AstraZeneca"),
+      ~if_else(age %in% c("5-9", "10-11"), 0, .x)
+    ),
     ve_susceptibility = ve(
       "susceptibility",
       fraction_az_dose_1 = fraction_dose_1_AstraZeneca,
