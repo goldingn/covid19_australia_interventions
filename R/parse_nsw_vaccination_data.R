@@ -815,7 +815,8 @@ vaccination_effect <- coverage %>%
     across(
       starts_with("ve"),
       .fns = list(multiplier = ~1 - coverage_any_vaccine * .x)
-    )
+    ),
+    .after = forecast
   ) %>%
   group_by(
     lga, date, forecast, scenario, coverage_scenario

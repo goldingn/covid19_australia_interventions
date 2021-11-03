@@ -10405,6 +10405,8 @@ get_nsw_baseline_matrix <- function(R = 3.6, asymp_rel_infectious = 0.5,
     population = get_polymod_population()
   )
   
+  
+  
   # predict to NSW
   nsw_settings <- predict_setting_contacts(
     population = abs_age_state("NSW"),
@@ -10491,10 +10493,10 @@ ve <- function(
   # capture efficacy over time with lags to acquired immunity, so that the
   # immunity does not drop to 0 at the date of the second dose
   if (dose_2_as_extra) {
-    for (parameter in names(ve_estimates)) {
+    for (this_parameter in names(ve_estimates)) {
       for (vaccine in names(ve_estimates$susceptibility)) {
-        estimate <- ve_estimates[[parameter]][[vaccine]]
-        ve_estimates[[parameter]][[vaccine]]$dose_2 <- estimate$dose_2 - estimate$dose_1
+        estimate <- ve_estimates[[this_parameter]][[vaccine]]
+        ve_estimates[[this_parameter]][[vaccine]]$dose_2 <- estimate$dose_2 - estimate$dose_1
       }
     }
   }
