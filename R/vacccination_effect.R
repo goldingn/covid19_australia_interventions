@@ -310,6 +310,7 @@ write_csv(
 )
 
 dpi <- 150
+font_size <- 16
 
 ggplot(vaccine_effect_timeseries) +
   geom_line(
@@ -318,7 +319,8 @@ ggplot(vaccine_effect_timeseries) +
       y = effect,
       colour = state
     ),
-    size = 2
+    size = 1.5,
+    alpha = 1
   ) +
   theme_classic() +
   labs(
@@ -338,9 +340,12 @@ ggplot(vaccine_effect_timeseries) +
   cowplot::panel_border(remove = TRUE) +
   theme(
     strip.background = element_blank(),
-    strip.text = element_text(hjust = 0, face = "bold"),
-    axis.title.y.right = element_text(vjust = 0.5, angle = 90),
-    panel.spacing = unit(1.2, "lines")
+    axis.title.y.right = element_text(vjust = 0.5, angle = 90, size = font_size),
+    legend.position = c(0.02, 0.135),
+    legend.text = element_text(size = font_size),
+    axis.text = element_text(size = font_size),
+    plot.title = element_text(size = font_size + 8),
+    plot.subtitle = element_text(size = font_size)
   ) +
   scale_colour_manual(
     values = c(
@@ -354,7 +359,11 @@ ggplot(vaccine_effect_timeseries) +
       "gold1"
     )
   ) +
-  ylim(c(0.4, 1))
+  scale_y_continuous(
+    position = "right",
+    limits = c(0, 1),
+    breaks = seq(0, 1, by = 0.1)
+  )
 
 ggsave(
   filename = "outputs/figures/vaccination_effect.png",
@@ -448,6 +457,15 @@ ggplot(
     state ~ vaccine + dose_number,
     scales = "free_y"
   )
+
+
+
+q_age   <- read_csv(file = "data/vaccinatinon/quantium_vaccination_Rollout/Rollout/dim_age_band.csv")
+q_sa4   <- read_csv(file = "data/vaccinatinon/quantium_vaccination_Rollout/Rollout/dim_sa4.csv")
+q_time  <- read_csv(file = "data/vaccinatinon/quantium_vaccination_Rollout/Rollout/dim_time.csv")
+q_brand <- read_csv(file = "data/vaccinatinon/quantium_vaccination_Rollout/Rollout/dim_vaccine.csv")
+q_vacc  <- read_csv(file = "data/vaccinatinon/quantium_vaccination_Rollout/Rollout/vaccinations.csv")
+
 
 # 
 # effective_dose_data %>%
