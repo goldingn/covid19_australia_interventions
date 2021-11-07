@@ -28,10 +28,13 @@ max_data_date <- max(survey_distance$date)
 
 
 intervention_steps <- interventions(
-  end_dates = TRUE,
-   exclude_after = "2021-10-15"
+  end_dates = TRUE#,
+   # exclude_after = "2021-10-21"
 ) %>%
   filter(date <= max_data_date) %>%
+  # no survey data from during the TAS lockdown in these dates so not possible
+  # to fit effect of this lockdown, and therefore excluding this intervention
+  filter(!(state == "TAS" & date >= "2021-10-16" & date <= "2021-10-19")) %>%
   mutate(
     intervention_id = paste0(
       "intervention_",
