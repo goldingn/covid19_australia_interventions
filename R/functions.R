@@ -5017,18 +5017,22 @@ reff_model_data <- function(
   # disaggregate imported and local cases according to the generation interval
   # probabilities to get the expected number of infectious people in each state
   # and time
+  tti_cdfs <- readRDS("outputs/isolation_cdfs.RDS")
+  
   local_infectiousness <- gi_convolution(
     local_cases_infectious_corrected,
     dates = dates,
     states = states,
-    gi_cdf = gi_cdf
+    gi_cdf = gi_cdf,
+    ttd_cdfs = tti_cdfs
   )
   
   imported_infectiousness <- gi_convolution(
     imported_cases_corrected,
     dates = dates,
     states = states,
-    gi_cdf = gi_cdf
+    gi_cdf = gi_cdf,
+    ttd_cdfs = tti_cdfs
   )
 
   # elements to exclude due to a lack of infectiousness
@@ -5112,6 +5116,12 @@ reff_model <- function(data) {
     states = data$states
   )
   
+  extra_isolation_local_reduction <- extra_isolation_effect(
+    dates = data$dates$infection_project,
+    cdf = gi_cdf,
+    states = data$states
+  )
+  
   # the reduction from R0 down to R_eff for imported cases due to different
   # quarantine measures each measure applied during a different period. Q_t is
   # R_eff_t / R0 for each time t, modelled as a monotone decreasing step function
@@ -5145,13 +5155,14 @@ reff_model <- function(data) {
   # pull out R_t component due to distancing for locally-acquired cases, and
   # extend to correct length
   R_eff_loc_1_no_surv <- extend(distancing_effect$R_t, data$n_dates_project)
-  
-  
+    
   # pull out vaccination effect
   vax_effect <- data$vaccine_effect_matrix
   
   # multiply by the surveillance and vaccination effects
-  R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_reff_local_reduction * vax_effect
+  R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_reff_local_reduction * vax_effect *
+    extra_isolation_local_reduction
+
   log_R_eff_loc_1 <- log(R_eff_loc_1)
   
   # extract R0 from this model and estimate R_t component due to quarantine for
@@ -5254,6 +5265,7 @@ reff_model <- function(data) {
       log_q,
       distancing_effect,
       surveillance_reff_local_reduction,
+      extra_isolation_local_reduction,
       log_R_eff_loc,
       log_R_eff_imp,
       epsilon_L
@@ -5315,6 +5327,13 @@ reff_1_only_surveillance <- function(fitted_model) {
   ga <- fitted_model$greta_arrays
   log_R0 <- ga$log_R0
   reduction <- ga$surveillance_reff_local_reduction
+  exp(log_R0 + log(reduction))
+}
+
+reff_1_only_extra_isolation <- function(fitted_model) {
+  ga <- fitted_model$greta_arrays
+  log_R0 <- ga$log_R0
+  reduction <- ga$extra_isolation_local_reduction
   exp(log_R0 + log(reduction))
 }
 
@@ -5682,6 +5701,7 @@ reff_plotting <- function(
       R_eff_loc_1_macro = reff_1_only_macro(fitted_model_extended),
       R_eff_loc_1_micro = reff_1_only_micro(fitted_model_extended),
       R_eff_loc_1_surv = reff_1_only_surveillance(fitted_model_extended),
+      R_eff_loc_1_iso = reff_1_only_extra_isolation(fitted_model_extended)
       R_eff_loc_1_vaccine_only = reff_1_vaccine_only(fitted_model_extended, vaccine_timeseries),
       R_eff_loc_1_without_vaccine = reff_1_without_vaccine(fitted_model_extended, vaccine_timeseries)
     ) 
@@ -5697,6 +5717,7 @@ reff_plotting <- function(
     "R_eff_loc_1_micro",
     "R_eff_loc_1_macro",
     "R_eff_loc_1_surv",
+    "R_eff_loc_1_iso"
     "R_eff_loc_1_vaccine_only",
     "R_eff_loc_1_without_vaccine"
   )
@@ -5788,6 +5809,21 @@ reff_plotting <- function(
     ylab(expression(R["eff"]~component))
   
   save_ggplot("R_eff_1_local_surv.png", dir, subdir)
+  
+  # extra isolation effect only
+  plot_trend(sims$R_eff_loc_1_iso,
+             data = fitted_model_extended$data,
+             min_date = min_date,
+             max_date = max_date,
+             multistate = TRUE,
+             base_colour = ,
+             projection_at = projection_date,
+             plot_voc = TRUE) + 
+    ggtitle(label = "Impact contract tracing isolation",
+            subtitle = expression(R["eff"]~"if"~due~to~social~distancing)) +
+    ylab(expression(R["eff"]~component))
+  
+  save_ggplot("R_eff_1_ttiq.png", dir, subdir)
   
   # Component 1 for national / state populations
   plot_trend(sims$R_eff_loc_1,
