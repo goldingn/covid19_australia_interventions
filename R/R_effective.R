@@ -16,11 +16,12 @@ data$dates$linelist
 
 # save the key dates for Freya and David to read in, and tabulated local cases
 # data for the Robs
+
 write_reff_key_dates(data)
 write_local_cases(data)
 
 # format and write out any new linelists to the past_cases folder for Rob H
-update_past_cases()
+#update_past_cases()
 
 # define the model (and greta arrays) for Reff, and sample until convergence
 fitted_model <- fit_reff_model(data)
@@ -29,13 +30,22 @@ fitted_model <- fit_reff_model(data)
 saveRDS(fitted_model, "outputs/fitted_reff_model.RDS")
 # fitted_model <- readRDS("outputs/fitted_reff_model.RDS")
 
-# output Reff trajectory draws for Rob M
-write_reff_sims(fitted_model, dir = "outputs/projection")
 
 # visual checks of model fit
 plot_reff_checks(fitted_model)
 
-timeseries <- readRDS(file = "outputs/vaccine_timeseries.RDS")
+
+# output Reff trajectory draws for Rob M
+write_reff_sims(fitted_model, dir = "outputs/projection")
+
+
+vaccine_effect_timeseries <- readRDS(file = "outputs/vaccine_effect_timeseries.RDS")
+
+# write sims of effect of vaccine on C1
+write_reff_sims_novax(
+  fitted_model,
+  vaccine_timeseries = vaccine_effect_timeseries
+) # fix to novax for current series
 
 # do plots for main period
 reff_plotting(fitted_model, dir = "outputs")
@@ -48,16 +58,28 @@ reff_plotting(
   min_date = NA
 )
 
-# and for projected part
-reff_plotting(fitted_model,
-              dir = "outputs/projection",
-              max_date = fitted_model$data$dates$latest_project,
-              mobility_extrapolation_rectangle = FALSE,
-              projection_date = fitted_model$data$dates$latest_mobility)
+# projection plots 
+reff_plotting(
+  fitted_model,
+  dir = "outputs/projection",
+  max_date = fitted_model$data$dates$latest_project,
+  mobility_extrapolation_rectangle = FALSE,
+  projection_date = fitted_model$data$dates$latest_mobility
+)
+
+# 6-month projection plots
+reff_plotting(
+  fitted_model,
+  dir = "outputs/projection",
+  subdir = "figures/six_month",
+  min_date = NA,
+  max_date = fitted_model$data$dates$latest_project,
+  mobility_extrapolation_rectangle = FALSE,
+  projection_date = fitted_model$data$dates$latest_mobility
+)
 
 
-# produce simulations where proportion VOC is zero throughout period for reporting
-# in common operating picture table
+# produce simulations where proportion of variant is constant
 simulate_variant(variant = "wt")
 simulate_variant(variant = "alpha")
 simulate_variant(variant = "delta")

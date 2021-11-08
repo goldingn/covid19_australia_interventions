@@ -87,7 +87,8 @@ ll_date <- data$date_time[[1]]
   
   dat <- readxl::read_xlsx(
     data$file,
-    col_types = col_types
+    col_types = col_types,
+    na = "NULL"
   )
   
 filter_date <- ll_date - lubridate::days(28)
