@@ -8570,83 +8570,170 @@ disaggregation_vec <- function(mask, distribution) {
   masked_distribution / sum(masked_distribution)
 }
 
-baseline_matrix <- function(R0 = 2.5, final_age_bin = 80) {
-  # construct a next generation matrix for Australia from Prem matrix
+get_unscaled_ngm <- function(contact_matrices, transmission_matrices) {
   
-  
-  # Prem 2017 contact matrix
-  contact_matrix_raw <- readxl::read_xlsx(
-    path = "data/vaccinatinon/MUestimates_all_locations_1.xlsx",
-    sheet = "Australia",
-    col_types = rep("numeric", 16)
-  ) %>%
-    as.matrix
-  
-  # expand out to add an 80+ category the same as the 75-80 category
-  contact_matrix <- matrix(NA, 17, 17)
-  contact_matrix[17, 17] <- contact_matrix_raw[16, 16]
-  contact_matrix[17, 1:16] <- contact_matrix_raw[16, ]
-  contact_matrix[1:16, 17] <- contact_matrix_raw[, 16]
-  contact_matrix[1:16, 1:16] <- contact_matrix_raw
-  
-  # set names
-  bin_names <- age_classes(80)$classes 
-  dimnames(contact_matrix) <- list(
-    bin_names,
-    bin_names
+  next_generation_matrices <- mapply(
+    FUN = `*`,
+    contact_matrices,
+    transmission_matrices,
+    SIMPLIFY = FALSE
   )
   
-  # relative infectiousness data from Trauer et al 2021
-  age_susceptability <- readr::read_csv(
-    file = "data/vaccinatinon/trauer_2021_supp_table5.csv",
-    col_names = c(
-      "age_group",
-      "clinical_fraction",
-      "relative_susceptability",
-      "infection_fatality_rate",
-      "proportion_symtomatic_hospitalised"
-    ),
-    col_types = cols(
-      age_group = col_character(),
-      clinical_fraction = col_double(),
-      relative_susceptability = col_double(),
-      infection_fatality_rate = col_double(),
-      proportion_symtomatic_hospitalised = col_double()
-    ),
-    skip = 1
-  ) %>%
-    # duplicate the final row, and re-use for the 74-79 and 80+ classes
-    add_row(
-      .[16, ]
-    ) %>%
-    mutate(
-      age_class = bin_names
-    ) %>%
-    dplyr::select(
-      age_class,
-      everything(),
-      -age_group
-    )
-  
-  # calculate relative infectiousness - assume asymptomatics are 50% less
-  # infectious, and use age-stratified symptomaticity
-  relative_infectiousness <- age_susceptability$clinical_fraction*1 + 0.5*(1 - age_susceptability$clinical_fraction)
-  q <- relative_infectiousness
-  q_scaled <- q/max(q)
-  
-  # apply the q scaling before computing m
-  contact_matrix_scaled <- sweep(contact_matrix, 2, q_scaled, FUN = "*")
-  
-  # calculate m - number of onward infections per relative contact 
-  m <- find_m(
-    R_target = R0,
-    transition_matrix = contact_matrix_scaled
-  )
-  
-  contact_matrix_scaled * m
+  ngm_overall <- Reduce("+", next_generation_matrices)
   
 }
 
+get_australia_ngm_unscaled <- function(model, age_breaks) {
+  
+  # unscaled next generation matrix for all Australia
+  
+  transmission_matrices <- get_setting_transmission_matrices(
+    age_breaks = age_breaks
+  )
+  
+  abs_pop_age_lga_2020 %>%
+    group_by(age_group) %>%
+    summarise(
+      population = sum(population)
+    ) %>%
+    mutate(
+      lower.age.limit = readr::parse_number(as.character(age_group))
+    ) %>%
+    mutate(
+      country = "Australia"
+    ) %>%
+    nest(
+      population = -country
+    ) %>%
+    rowwise() %>%
+    mutate(
+      per_capita_household_size = get_per_capita_household_size(),
+      setting_matrices = list(
+        predict_setting_contacts(
+          contact_model = model,
+          population = population,
+          per_capita_household_size = per_capita_household_size,
+          age_breaks = age_breaks
+        )
+      ),
+      contact_matrices = list(
+        setting_matrices[c("home", "school", "work", "other")]
+      ),
+      ngm_unscaled = list(
+        all = get_unscaled_ngm(
+          contact_matrices = contact_matrices,
+          transmission_matrices = transmission_matrices
+        )
+      )
+    ) %>%
+    pull(ngm_unscaled) %>%
+    `[[`(1)
+  
+  
+}
+
+
+baseline_matrix <- function(R0 = 2.5, final_age_bin = 80) {
+  # # construct a next generation matrix for Australia from Prem matrix
+  # 
+  # 
+  # # Prem 2017 contact matrix
+  # contact_matrix_raw <- readxl::read_xlsx(
+  #   path = "data/vaccinatinon/MUestimates_all_locations_1.xlsx",
+  #   sheet = "Australia",
+  #   col_types = rep("numeric", 16)
+  # ) %>%
+  #   as.matrix
+  # 
+  # # expand out to add an 80+ category the same as the 75-80 category
+  # contact_matrix <- matrix(NA, 17, 17)
+  # contact_matrix[17, 17] <- contact_matrix_raw[16, 16]
+  # contact_matrix[17, 1:16] <- contact_matrix_raw[16, ]
+  # contact_matrix[1:16, 17] <- contact_matrix_raw[, 16]
+  # contact_matrix[1:16, 1:16] <- contact_matrix_raw
+  # 
+  # # set names
+  # bin_names <- age_classes(80)$classes 
+  # dimnames(contact_matrix) <- list(
+  #   bin_names,
+  #   bin_names
+  # )
+  # 
+  # # relative infectiousness data from Trauer et al 2021
+  # age_susceptability <- readr::read_csv(
+  #   file = "data/vaccinatinon/trauer_2021_supp_table5.csv",
+  #   col_names = c(
+  #     "age_group",
+  #     "clinical_fraction",
+  #     "relative_susceptability",
+  #     "infection_fatality_rate",
+  #     "proportion_symtomatic_hospitalised"
+  #   ),
+  #   col_types = cols(
+  #     age_group = col_character(),
+  #     clinical_fraction = col_double(),
+  #     relative_susceptability = col_double(),
+  #     infection_fatality_rate = col_double(),
+  #     proportion_symtomatic_hospitalised = col_double()
+  #   ),
+  #   skip = 1
+  # ) %>%
+  #   # duplicate the final row, and re-use for the 74-79 and 80+ classes
+  #   add_row(
+  #     .[16, ]
+  #   ) %>%
+  #   mutate(
+  #     age_class = bin_names
+  #   ) %>%
+  #   dplyr::select(
+  #     age_class,
+  #     everything(),
+  #     -age_group
+  #   )
+  # 
+  # # calculate relative infectiousness - assume asymptomatics are 50% less
+  # # infectious, and use age-stratified symptomaticity
+  # relative_infectiousness <- age_susceptability$clinical_fraction*1 + 0.5*(1 - age_susceptability$clinical_fraction)
+  # q <- relative_infectiousness
+  # q_scaled <- q/max(q)
+  # 
+  # # apply the q scaling before computing m
+  # contact_matrix_scaled <- sweep(contact_matrix, 2, q_scaled, FUN = "*")
+  # 
+  # # calculate m - number of onward infections per relative contact 
+  # m <- find_m(
+  #   R_target = R0,
+  #   transition_matrix = contact_matrix_scaled
+  # )
+  # 
+  # contact_matrix_scaled * m
+  # 
+  ######
+  
+  # construct ngm for australia using conmat and davies estimates
+  library("conmat")
+  
+  model <- fit_setting_contacts(
+    contact_data_list = get_polymod_setting_data(),
+    population = get_polymod_population()
+  )
+  
+  age_breaks_5y <- c(seq(0, 80, by = 5), Inf)
+  
+  ngm_unscaled <- get_australia_ngm_unscaled(
+    model = model,
+    age_breaks = age_breaks_5y
+  )
+  
+  m <- find_m(
+    R_target = R0,
+    transition_matrix = ngm_unscaled
+  )
+  
+  
+  ngm_unscaled*m
+  
+}
 
 
 age_classes <- function(final_age_bin = 80, by = 5) {
