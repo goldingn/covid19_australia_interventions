@@ -4339,6 +4339,38 @@ get_nndss_linelist <- function(
       CV_EXPOSURE_SETTING = "numeric",
       CV_SOURCE_INFECTION = "numeric"
     )
+    
+    col_types_3 <- c(
+      STATE = "text",
+      POSTCODE = "numeric",
+      CONFIRMATION_STATUS = "text",
+      TRUE_ONSET_DATE = "date",
+      SPECIMEN_DATE = "date",
+      NOTIFICATION_DATE = "date",
+      NOTIFICATION_RECEIVE_DATE = "date",
+      Diagnosis_Date = "date",
+      AGE_AT_ONSET = "numeric",
+      SEX = "numeric",
+      DIED = "numeric",
+      PLACE_OF_ACQUISITION = "text",
+      HOSPITALISED = "numeric",
+      CV_ICU = "numeric",
+      CV_VENTILATED = "numeric",
+      OUTBREAK_REF = "text",
+      CASE_FOUND_BY = "numeric",
+      CV_SYMPTOMS = "text",
+      CV_OTHER_SYMPTOMS = "text",
+      CV_COMORBIDITIES = "text",
+      CV_OTHER_COMORBIDITIES = "text",
+      CV_GESTATION = "numeric",
+      #CV_CLOSE_CONTACT = "numeric"
+      CV_EXPOSURE_SETTING = "numeric",
+      CV_SOURCE_INFECTION = "numeric",
+      CV_SYMPTOMS_REPORTED = "numeric",
+      CV_QUARANTINE_STATUS = "numeric",
+      CV_DATE_ENTERED_QUARANTINE = "date"
+    )
+    
   }
   
   
@@ -4348,7 +4380,11 @@ get_nndss_linelist <- function(
   if(ll_date < "2021-03-08"){
     col_types <- col_types_1
   } else {
-    col_types <- col_types_2
+    if(ll_date < "2021-11-08"){
+      col_types <- col_types_2
+    } else {
+        col_types <- col_types_3
+    }
   }
   
   dat <- readxl::read_xlsx(
@@ -4385,7 +4421,8 @@ get_nndss_linelist <- function(
     mutate(
       TRUE_ONSET_DATE = clean_date(TRUE_ONSET_DATE),
       NOTIFICATION_RECEIVE_DATE = clean_date(NOTIFICATION_RECEIVE_DATE),
-      SPECIMEN_DATE = clean_date(SPECIMEN_DATE)
+      SPECIMEN_DATE = clean_date(SPECIMEN_DATE),
+      CV_DATE_ENTERED_QUARANTINE = clean_date(CV_DATE_ENTERED_QUARANTINE)
     ) %>%
     mutate(
       import_status = case_when(
@@ -4469,6 +4506,7 @@ get_nndss_linelist <- function(
       date_onset = TRUE_ONSET_DATE,
       date_detection = SPECIMEN_DATE,
       date_confirmation,
+      date_quarantine = CV_DATE_ENTERED_QUARANTINE,
       state = STATE,
       import_status,
       postcode_of_acquisition,
