@@ -1,23 +1,3 @@
-
-vax_files_dates <- function(dir){
-  list.files(path = dir) %>%
-    sub(
-      pattern = "DohertyTimeseriesExport_",
-      replacement = "",
-      x = .
-    ) %>%
-    sub(
-      pattern = "_.*",
-      replacement = "",
-      x = .
-    ) %>%
-    as.Date
-}
-
-
-vax_files_dates(dir = "~/not_synced/vaccination/vaccination_data_with_booster/dose_ordering/")
-
-
 load_air_data <- function(
   data_dir = "~/not_synced/vaccination/vaccination_data_with_booster/"
 ){
@@ -148,7 +128,7 @@ load_air_data <- function(
         vaccine == "MODERN" ~ "pf",
         vaccine == "COVAST" ~ "az"
       ),
-      # not accounting for effect of booster as yet, counting only as seccond dose
+      # not accounting for effect of booster as yet, counting only as second dose
       dose_number = case_when(
         !is.na(dose3) ~ 2,
         !is.na(dose2) ~ 2,
@@ -159,6 +139,33 @@ load_air_data <- function(
 }
 
 
-
-
-
+tibble(
+  date = rep(
+    seq.Date(
+      from = as.Date("2021-02-22"),
+      to = as.Date("2021-03-29"),
+      by = 7
+    ),
+    times = 2
+  ),
+  doses = c(10, 20, 20, 20, 10,  0,
+            0,  0, 10, 20, 30, 40),
+  dose_number = c(
+    rep(1, 6),
+    rep(2, 6)
+  )
+) %>%
+  group_by(dose_number) %>%
+  mutate(
+    correction = slider::pslide_dbl(
+      .l = list(
+        date,
+        doses,
+        dose_number
+      ),
+      .f = immunity_lag_correction,
+      .before = Inf
+    ) %>%
+      unlist,
+    effective_doses = correction * doses
+  )
