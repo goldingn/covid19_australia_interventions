@@ -29,7 +29,8 @@ individuals_on_dose <- cumulative_doses %>%
   mutate(
     `1` = unlist(`1`),
     `2` = unlist(`2`),
-    `1` = `1` - `2`
+    `1` = `1` - `2`,
+    `1` = ifelse(`1`< 0, 0, `1`) # consider subtracting out AZ if Pf goes -ve re AIR advice on schedule mixing
   ) %>%
   pivot_longer(
     cols = `1`:`2`,
@@ -40,6 +41,32 @@ individuals_on_dose <- cumulative_doses %>%
     dose_number = as.integer(dose_number)
   )
 
+# check plot - should not be negative
+individuals_on_dose %>%
+  filter(
+    date >= max(date) - weeks(4),
+    dose_number == 1
+  ) %>%
+  ggplot() +
+  geom_bar(
+    aes(
+      x = date,
+      y = doses,
+      fill = age_class
+    ),
+    stat = "identity",
+    position = "dodge"
+  ) +
+  facet_grid(
+    state ~ vaccine + age_class,
+    scales = "free_y"
+  ) +
+  coord_cartesian(
+    ylim = c(NA, 2000)
+  ) +
+  theme(
+    axis.text.y = element_text(angle = 270)
+  )
 
 age_distribution_state <- get_age_distribution_by_state()
 
@@ -459,13 +486,13 @@ ggplot(
   )
 
 
-
-q_age   <- read_csv(file = "data/vaccinatinon/quantium_vaccination_Rollout/Rollout/dim_age_band.csv")
-q_sa4   <- read_csv(file = "data/vaccinatinon/quantium_vaccination_Rollout/Rollout/dim_sa4.csv")
-q_time  <- read_csv(file = "data/vaccinatinon/quantium_vaccination_Rollout/Rollout/dim_time.csv")
-q_brand <- read_csv(file = "data/vaccinatinon/quantium_vaccination_Rollout/Rollout/dim_vaccine.csv")
-q_vacc  <- read_csv(file = "data/vaccinatinon/quantium_vaccination_Rollout/Rollout/vaccinations.csv")
-
+# 
+# q_age   <- read_csv(file = "data/vaccinatinon/quantium_vaccination_Rollout/Rollout/dim_age_band.csv")
+# q_sa4   <- read_csv(file = "data/vaccinatinon/quantium_vaccination_Rollout/Rollout/dim_sa4.csv")
+# q_time  <- read_csv(file = "data/vaccinatinon/quantium_vaccination_Rollout/Rollout/dim_time.csv")
+# q_brand <- read_csv(file = "data/vaccinatinon/quantium_vaccination_Rollout/Rollout/dim_vaccine.csv")
+# q_vacc  <- read_csv(file = "data/vaccinatinon/quantium_vaccination_Rollout/Rollout/vaccinations.csv")
+# 
 
 # 
 # effective_dose_data %>%
