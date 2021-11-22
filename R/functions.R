@@ -17,9 +17,7 @@ library(R6)
 library(slider)
 library(cowplot)
 library(lubridate)
-library(readxl)
 library(rvest)
-library(lubridate)
 
 tfp <- reticulate::import("tensorflow_probability")
 
@@ -9618,7 +9616,7 @@ vax_files_dates <- function(dir){
     as.Date
 }
 
-load_cumulative_doses <- function(dir = "~/not_synced/vaccination/vaccination_timeseries_medicare_and_provider/"){
+load_cumulative_doses_old <- function(dir = "~/not_synced/vaccination/vaccination_timeseries_medicare_and_provider/"){
   
   file_index <- vax_files_dates(dir) %>%
     which.max()

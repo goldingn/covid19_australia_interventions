@@ -3,7 +3,7 @@ source("R/lib.R")
 source("R/functions.R")
 
 # load data on number of individuals who have had first and second doses
-cumulative_doses <- load_cumulative_doses()
+cumulative_doses <- load_cumulative_doses_old()
 
 
 ggplot(cumulative_doses) +
