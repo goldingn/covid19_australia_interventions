@@ -5616,6 +5616,49 @@ constrain_run_length <- function(x, min_run_length = 7) {
   
 }
 
+reff_plotting_sims <- function(
+  fitted_model,
+  vaccine_timeseries = vaccine_effect_timeseries,
+  nsim = 10000
+){
+  # add counterfactuals to the model object:
+  # add fitted_model_extended obect because fitted_model is modified
+  fitted_model_extended <- fitted_model
+  # Reff for locals component 1 under
+  # only micro/macro/surveillance improvements
+  fitted_model_extended$greta_arrays <- c(
+    fitted_model$greta_arrays,
+    list(
+      R_eff_loc_1_macro = reff_1_only_macro(fitted_model_extended),
+      R_eff_loc_1_micro = reff_1_only_micro(fitted_model_extended),
+      R_eff_loc_1_surv = reff_1_only_surveillance(fitted_model_extended),
+      R_eff_loc_1_vaccine_only = reff_1_vaccine_only(fitted_model_extended, vaccine_timeseries),
+      R_eff_loc_1_without_vaccine = reff_1_without_vaccine(fitted_model_extended, vaccine_timeseries)
+    ) 
+  )
+  
+  # flatten all relevant greta array matrices to vectors before calculating
+  trajectory_types <- c(
+    "R_eff_loc_1",
+    "R_eff_imp_1",
+    "R_eff_loc_12",
+    "R_eff_imp_12",
+    "epsilon_L",
+    "R_eff_loc_1_micro",
+    "R_eff_loc_1_macro",
+    "R_eff_loc_1_surv",
+    "R_eff_loc_1_vaccine_only",
+    "R_eff_loc_1_without_vaccine"
+  )
+  vector_list <- lapply(fitted_model_extended$greta_arrays[trajectory_types], c)
+  
+  # simulate from posterior for these quantities of interest
+  args <- c(vector_list, list(values = fitted_model_extended$draws, nsim = nsim))
+  sims <- do.call(calculate, args)
+  
+  return(sims)
+}
+
 # function to calculate, plot, and save all the outputs (with flags for plot
 # types) - pass in an optional maximum date argument
 reff_plotting <- function(
@@ -5628,8 +5671,46 @@ reff_plotting <- function(
   mobility_extrapolation_rectangle = TRUE,
   projection_date = NA,
   washout_cutoff = 0,
-  vaccine_timeseries = vaccine_effect_timeseries
+  vaccine_timeseries = vaccine_effect_timeseries,
+  sims = NULL
 ) {
+  
+  if(is.null(sims)){
+    # add counterfactuals to the model object:
+    # add fitted_model_extended obect because fitted_model is modified
+    fitted_model_extended <- fitted_model
+    # Reff for locals component 1 under
+    # only micro/macro/surveillance improvements
+    fitted_model_extended$greta_arrays <- c(
+      fitted_model$greta_arrays,
+      list(
+        R_eff_loc_1_macro = reff_1_only_macro(fitted_model_extended),
+        R_eff_loc_1_micro = reff_1_only_micro(fitted_model_extended),
+        R_eff_loc_1_surv = reff_1_only_surveillance(fitted_model_extended),
+        R_eff_loc_1_vaccine_only = reff_1_vaccine_only(fitted_model_extended, vaccine_timeseries),
+        R_eff_loc_1_without_vaccine = reff_1_without_vaccine(fitted_model_extended, vaccine_timeseries)
+      ) 
+    )
+    
+    # flatten all relevant greta array matrices to vectors before calculating
+    trajectory_types <- c(
+      "R_eff_loc_1",
+      "R_eff_imp_1",
+      "R_eff_loc_12",
+      "R_eff_imp_12",
+      "epsilon_L",
+      "R_eff_loc_1_micro",
+      "R_eff_loc_1_macro",
+      "R_eff_loc_1_surv",
+      "R_eff_loc_1_vaccine_only",
+      "R_eff_loc_1_without_vaccine"
+    )
+    vector_list <- lapply(fitted_model_extended$greta_arrays[trajectory_types], c)
+    
+    # simulate from posterior for these quantities of interest
+    args <- c(vector_list, list(values = fitted_model_extended$draws, nsim = 10000))
+    sims <- do.call(calculate, args)
+  }
   
   if(is.na(min_date)){
     min_date <- max_date - months(6)
@@ -5709,44 +5790,9 @@ reff_plotting <- function(
   
   
   
-  # add counterfactuals to the model object:
-  # add fitted_model_extended obect because fitted_model is modified
-  fitted_model_extended <- fitted_model
-  # Reff for locals component 1 under
-  # only micro/macro/surveillance improvements
-  fitted_model_extended$greta_arrays <- c(
-    fitted_model$greta_arrays,
-    list(
-      R_eff_loc_1_macro = reff_1_only_macro(fitted_model_extended),
-      R_eff_loc_1_micro = reff_1_only_micro(fitted_model_extended),
-      R_eff_loc_1_surv = reff_1_only_surveillance(fitted_model_extended),
-      R_eff_loc_1_vaccine_only = reff_1_vaccine_only(fitted_model_extended, vaccine_timeseries),
-      R_eff_loc_1_without_vaccine = reff_1_without_vaccine(fitted_model_extended, vaccine_timeseries)
-    ) 
-  )
-  
-  # flatten all relevant greta array matrices to vectors before calculating
-  trajectory_types <- c(
-    "R_eff_loc_1",
-    "R_eff_imp_1",
-    "R_eff_loc_12",
-    "R_eff_imp_12",
-    "epsilon_L",
-    "R_eff_loc_1_micro",
-    "R_eff_loc_1_macro",
-    "R_eff_loc_1_surv",
-    "R_eff_loc_1_vaccine_only",
-    "R_eff_loc_1_without_vaccine"
-  )
-  vector_list <- lapply(fitted_model_extended$greta_arrays[trajectory_types], c)
-  
-  # simulate from posterior for these quantities of interest
-  args <- c(vector_list, list(values = fitted_model_extended$draws, nsim = 10000))
-  sims <- do.call(calculate, args)
-  
   # vaccine effect only
   plot_trend(sims$R_eff_loc_1_vaccine_only, 
-             data = fitted_model_extended$data,
+             data = fitted_model$data,
              min_date = min_date,
              max_date = max_date,
              multistate = TRUE,
@@ -5766,7 +5812,7 @@ reff_plotting <- function(
     # vaccine effect out of C1
   plot_trend(
     sims$R_eff_loc_1_without_vaccine,
-    data = fitted_model_extended$data,
+    data = fitted_model$data,
     min_date = min_date,
     max_date = max_date,
     multistate = TRUE,
@@ -5785,7 +5831,7 @@ reff_plotting <- function(
   
   # microdistancing only
   plot_trend(sims$R_eff_loc_1_micro,
-             data = fitted_model_extended$data,
+             data = fitted_model$data,
              min_date = min_date,
              max_date = max_date,
              multistate = TRUE,
@@ -5800,7 +5846,7 @@ reff_plotting <- function(
   
   # macrodistancing only
   plot_trend(sims$R_eff_loc_1_macro,
-             data = fitted_model_extended$data,
+             data = fitted_model$data,
              min_date = min_date,
              max_date = max_date,
              multistate = TRUE,
@@ -5815,7 +5861,7 @@ reff_plotting <- function(
   
   # improved surveilance only
   plot_trend(sims$R_eff_loc_1_surv,
-             data = fitted_model_extended$data,
+             data = fitted_model$data,
              max_date = max_date,
              multistate = TRUE,
              base_colour = yellow,
@@ -5829,7 +5875,7 @@ reff_plotting <- function(
   
   # Component 1 for national / state populations
   plot_trend(sims$R_eff_loc_1,
-             data = fitted_model_extended$data,
+             data = fitted_model$data,
              min_date = min_date,
              max_date = max_date,
              multistate = TRUE,
@@ -5843,7 +5889,7 @@ reff_plotting <- function(
   save_ggplot("R_eff_1_local.png", dir, subdir)
   
   plot_trend(sims$R_eff_imp_1,
-             data = fitted_model_extended$data,
+             data = fitted_model$data,
              min_date = min_date,
              max_date = max_date,
              multistate = FALSE,
@@ -5860,7 +5906,7 @@ reff_plotting <- function(
   
   # Reff for active cases
   p <- plot_trend(sims$R_eff_loc_12,
-                  data = fitted_model_extended$data,
+                  data = fitted_model$data,
                   min_date = min_date,
                   max_date = max_date,
                   multistate = TRUE,
@@ -5874,8 +5920,8 @@ reff_plotting <- function(
   
   if (mobility_extrapolation_rectangle) {
     p <- p + annotate("rect",
-                      xmin = fitted_model_extended$data$dates$latest_infection,
-                      xmax = fitted_model_extended$data$dates$latest_mobility,
+                      xmin = fitted_model$data$dates$latest_infection,
+                      xmax = fitted_model$data$dates$latest_mobility,
                       ymin = -Inf,
                       ymax = Inf,
                       fill = grey(0.5), alpha = 0.1)
@@ -5890,7 +5936,7 @@ reff_plotting <- function(
   
   # Reff for active cases
   p <- plot_trend(sims$R_eff_loc_12,
-                  data = fitted_model_extended$data,
+                  data = fitted_model$data,
                   min_date = min_date,
                   max_date = max_date,
                   multistate = TRUE,
@@ -5904,8 +5950,8 @@ reff_plotting <- function(
   
   if (mobility_extrapolation_rectangle) {
     p <- p + annotate("rect",
-                      xmin = fitted_model_extended$data$dates$latest_infection,
-                      xmax = fitted_model_extended$data$dates$latest_mobility,
+                      xmin = fitted_model$data$dates$latest_infection,
+                      xmax = fitted_model$data$dates$latest_mobility,
                       ymin = -Inf,
                       ymax = Inf,
                       fill = grey(0.5), alpha = 0.1)
@@ -5920,7 +5966,7 @@ reff_plotting <- function(
   
   # component 2 (noisy error trends)
   p <- plot_trend(sims$epsilon_L,
-                  data = fitted_model_extended$data,
+                  data = fitted_model$data,
                   min_date = min_date,
                   max_date = max_date,
                   multistate = TRUE,
@@ -5936,8 +5982,8 @@ reff_plotting <- function(
   
   if (mobility_extrapolation_rectangle) {
     p <- p + annotate("rect",
-                      xmin = fitted_model_extended$data$dates$latest_infection,
-                      xmax = fitted_model_extended$data$dates$latest_mobility,
+                      xmin = fitted_model$data$dates$latest_infection,
+                      xmax = fitted_model$data$dates$latest_mobility,
                       ymin = -Inf,
                       ymax = Inf,
                       fill = grey(0.5), alpha = 0.1)
@@ -8608,83 +8654,222 @@ disaggregation_vec <- function(mask, distribution) {
   masked_distribution / sum(masked_distribution)
 }
 
-baseline_matrix <- function(R0 = 2.5, final_age_bin = 80) {
-  # construct a next generation matrix for Australia from Prem matrix
+get_unscaled_ngm <- function(contact_matrices, transmission_matrices) {
   
-  
-  # Prem 2017 contact matrix
-  contact_matrix_raw <- readxl::read_xlsx(
-    path = "data/vaccinatinon/MUestimates_all_locations_1.xlsx",
-    sheet = "Australia",
-    col_types = rep("numeric", 16)
-  ) %>%
-    as.matrix
-  
-  # expand out to add an 80+ category the same as the 75-80 category
-  contact_matrix <- matrix(NA, 17, 17)
-  contact_matrix[17, 17] <- contact_matrix_raw[16, 16]
-  contact_matrix[17, 1:16] <- contact_matrix_raw[16, ]
-  contact_matrix[1:16, 17] <- contact_matrix_raw[, 16]
-  contact_matrix[1:16, 1:16] <- contact_matrix_raw
-  
-  # set names
-  bin_names <- age_classes(80)$classes 
-  dimnames(contact_matrix) <- list(
-    bin_names,
-    bin_names
+  next_generation_matrices <- mapply(
+    FUN = `*`,
+    contact_matrices,
+    transmission_matrices,
+    SIMPLIFY = FALSE
   )
   
-  # relative infectiousness data from Trauer et al 2021
-  age_susceptability <- readr::read_csv(
-    file = "data/vaccinatinon/trauer_2021_supp_table5.csv",
-    col_names = c(
-      "age_group",
-      "clinical_fraction",
-      "relative_susceptability",
-      "infection_fatality_rate",
-      "proportion_symtomatic_hospitalised"
-    ),
-    col_types = cols(
-      age_group = col_character(),
-      clinical_fraction = col_double(),
-      relative_susceptability = col_double(),
-      infection_fatality_rate = col_double(),
-      proportion_symtomatic_hospitalised = col_double()
-    ),
-    skip = 1
-  ) %>%
-    # duplicate the final row, and re-use for the 74-79 and 80+ classes
-    add_row(
-      .[16, ]
-    ) %>%
-    mutate(
-      age_class = bin_names
-    ) %>%
-    dplyr::select(
-      age_class,
-      everything(),
-      -age_group
-    )
-  
-  # calculate relative infectiousness - assume asymptomatics are 50% less
-  # infectious, and use age-stratified symptomaticity
-  relative_infectiousness <- age_susceptability$clinical_fraction*1 + 0.5*(1 - age_susceptability$clinical_fraction)
-  q <- relative_infectiousness
-  q_scaled <- q/max(q)
-  
-  # apply the q scaling before computing m
-  contact_matrix_scaled <- sweep(contact_matrix, 2, q_scaled, FUN = "*")
-  
-  # calculate m - number of onward infections per relative contact 
-  m <- find_m(
-    R_target = R0,
-    transition_matrix = contact_matrix_scaled
-  )
-  
-  contact_matrix_scaled * m
+  ngm_overall <- Reduce("+", next_generation_matrices)
   
 }
 
+get_australia_ngm_unscaled <- function(model, age_breaks) {
+  
+  # unscaled next generation matrix for all Australia
+  
+  transmission_matrices <- get_setting_transmission_matrices(
+    age_breaks = age_breaks
+  )
+  
+  abs_pop_age_lga_2020 %>%
+    group_by(age_group) %>%
+    summarise(
+      population = sum(population)
+    ) %>%
+    mutate(
+      lower.age.limit = readr::parse_number(as.character(age_group))
+    ) %>%
+    mutate(
+      country = "Australia"
+    ) %>%
+    nest(
+      population = -country
+    ) %>%
+    rowwise() %>%
+    mutate(
+      per_capita_household_size = get_per_capita_household_size(),
+      setting_matrices = list(
+        predict_setting_contacts(
+          contact_model = model,
+          population = population,
+          per_capita_household_size = per_capita_household_size,
+          age_breaks = age_breaks
+        )
+      ),
+      contact_matrices = list(
+        setting_matrices[c("home", "school", "work", "other")]
+      ),
+      ngm_unscaled = list(
+        all = get_unscaled_ngm(
+          contact_matrices = contact_matrices,
+          transmission_matrices = transmission_matrices
+        )
+      )
+    ) %>%
+    pull(ngm_unscaled) %>%
+    `[[`(1)
+  
+  
+}
+
+polymod_model <- function(){
+  
+  file <- "outputs/polymod_model.RDS"
+  
+  library(conmat)
+  
+  if(file.exists(file)){
+    
+    model <- readRDS(file = file)
+    
+  } else {
+    
+    print("The polymod model is not stored. Don't you fret my love, I'm fitting the model now, just chill.")
+    
+    model <- fit_setting_contacts(
+      contact_data_list = get_polymod_setting_data(),
+      population = get_polymod_population()
+    )
+    
+    saveRDS(
+      object = model,
+      file = file
+    )
+    
+  }
+  
+  return(model)
+  
+}
+
+australia_ngm_unscaled <- function(){
+  
+  file <- "outputs/aus_ngm_unscaled.RDS"
+  
+  library(conmat)
+  
+  if(file.exists(file)){
+    
+    ngm_unscaled <- readRDS(file = file)
+    
+  } else {
+    
+    print("The Australia Nex. Gen. Mat. is not stored. Don't you fret my love, I'm fetching it now, just chill.")
+    
+    library("conmat")
+    
+    model <- polymod_model()
+    
+    age_breaks_5y <- c(seq(0, 80, by = 5), Inf)
+    
+    ngm_unscaled <- get_australia_ngm_unscaled(
+      model = model,
+      age_breaks = age_breaks_5y
+    )
+    
+    saveRDS(
+      object = ngm_unscaled,
+      file = file
+    )
+    
+  }
+  
+  return(ngm_unscaled)
+}
+
+baseline_matrix <- function(R0 = 2.5, final_age_bin = 80) {
+  # # construct a next generation matrix for Australia from Prem matrix
+  # 
+  # # Prem 2017 contact matrix
+  # contact_matrix_raw <- readxl::read_xlsx(
+  #   path = "data/vaccinatinon/MUestimates_all_locations_1.xlsx",
+  #   sheet = "Australia",
+  #   col_types = rep("numeric", 16)
+  # ) %>%
+  #   as.matrix
+  # 
+  # # expand out to add an 80+ category the same as the 75-80 category
+  # contact_matrix <- matrix(NA, 17, 17)
+  # contact_matrix[17, 17] <- contact_matrix_raw[16, 16]
+  # contact_matrix[17, 1:16] <- contact_matrix_raw[16, ]
+  # contact_matrix[1:16, 17] <- contact_matrix_raw[, 16]
+  # contact_matrix[1:16, 1:16] <- contact_matrix_raw
+  # 
+  # # set names
+  # bin_names <- age_classes(80)$classes
+  # dimnames(contact_matrix) <- list(
+  #   bin_names,
+  #   bin_names
+  # )
+  # 
+  # # relative infectiousness data from Trauer et al 2021
+  # age_susceptability <- readr::read_csv(
+  #   file = "data/vaccinatinon/trauer_2021_supp_table5.csv",
+  #   col_names = c(
+  #     "age_group",
+  #     "clinical_fraction",
+  #     "relative_susceptability",
+  #     "infection_fatality_rate",
+  #     "proportion_symtomatic_hospitalised"
+  #   ),
+  #   col_types = cols(
+  #     age_group = col_character(),
+  #     clinical_fraction = col_double(),
+  #     relative_susceptability = col_double(),
+  #     infection_fatality_rate = col_double(),
+  #     proportion_symtomatic_hospitalised = col_double()
+  #   ),
+  #   skip = 1
+  # ) %>%
+  #   # duplicate the final row, and re-use for the 74-79 and 80+ classes
+  #   add_row(
+  #     .[16, ]
+  #   ) %>%
+  #   mutate(
+  #     age_class = bin_names
+  #   ) %>%
+  #   dplyr::select(
+  #     age_class,
+  #     everything(),
+  #     -age_group
+  #   )
+  # 
+  # # calculate relative infectiousness - assume asymptomatics are 50% less
+  # # infectious, and use age-stratified symptomaticity
+  # relative_infectiousness <- age_susceptability$clinical_fraction*1 + 0.5*(1 - age_susceptability$clinical_fraction)
+  # q <- relative_infectiousness
+  # q_scaled <- q/max(q)
+  # 
+  # # apply the q scaling before computing m
+  # contact_matrix_scaled <- sweep(contact_matrix, 2, q_scaled, FUN = "*")
+  # 
+  # # calculate m - number of onward infections per relative contact
+  # m <- find_m(
+  #   R_target = R0,
+  #   transition_matrix = contact_matrix_scaled
+  # )
+  # 
+  # contact_matrix_scaled * m
+
+  ######
+  
+  # construct ngm for australia using conmat and davies estimates
+  
+  ngm_unscaled <- australia_ngm_unscaled()
+
+  m <- find_m(
+    R_target = R0,
+    transition_matrix = ngm_unscaled
+  )
+
+
+  ngm_unscaled*m
+  
+}
 
 
 age_classes <- function(final_age_bin = 80, by = 5) {
