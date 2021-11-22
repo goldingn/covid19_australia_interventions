@@ -41,21 +41,30 @@ write_reff_sims(fitted_model, dir = "outputs/projection")
 
 vaccine_effect_timeseries <- readRDS(file = "outputs/vaccine_effect_timeseries.RDS")
 
-# write sims of effect of vaccine on C1
+# write sims of C1 without vaccine effect
 write_reff_sims_novax(
   fitted_model,
   vaccine_timeseries = vaccine_effect_timeseries
-) # fix to novax for current series
+)
+
+# generatge sims for plotting
+# (saves repeat generation of sims in each reff_plotting call and keeps them consistent)
+sims <- reff_plotting_sims(fitted_model)
 
 # do plots for main period
-reff_plotting(fitted_model, dir = "outputs")
+reff_plotting(
+  fitted_model,
+  dir = "outputs",
+  sims = sims
+)
 
 # most recent six months
 reff_plotting(
   fitted_model,
   dir = "outputs",
   subdir = "figures/six_month",
-  min_date = NA
+  min_date = NA,
+  sims = sims
 )
 
 # projection plots 
@@ -64,7 +73,8 @@ reff_plotting(
   dir = "outputs/projection",
   max_date = fitted_model$data$dates$latest_project,
   mobility_extrapolation_rectangle = FALSE,
-  projection_date = fitted_model$data$dates$latest_mobility
+  projection_date = fitted_model$data$dates$latest_mobility,
+  sims = sims
 )
 
 # 6-month projection plots
@@ -75,7 +85,8 @@ reff_plotting(
   min_date = NA,
   max_date = fitted_model$data$dates$latest_project,
   mobility_extrapolation_rectangle = FALSE,
-  projection_date = fitted_model$data$dates$latest_mobility
+  projection_date = fitted_model$data$dates$latest_mobility,
+  sims = sims
 )
 
 
