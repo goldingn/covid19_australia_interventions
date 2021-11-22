@@ -8670,10 +8670,73 @@ get_australia_ngm_unscaled <- function(model, age_breaks) {
   
 }
 
+polymod_model <- function(){
+  
+  file <- "outputs/polymod_model.RDS"
+  
+  library(conmat)
+  
+  if(file.exists(file)){
+    
+    model <- readRDS(file = file)
+    
+  } else {
+    
+    print("The polymod model is not stored. Don't you fret my love, I'm fitting the model now, just chill.")
+    
+    model <- fit_setting_contacts(
+      contact_data_list = get_polymod_setting_data(),
+      population = get_polymod_population()
+    )
+    
+    saveRDS(
+      object = model,
+      file = file
+    )
+    
+  }
+  
+  return(model)
+  
+}
+
+australia_ngm_unscaled <- function(){
+  
+  file <- "outputs/aus_ngm_unscaled.RDS"
+  
+  library(conmat)
+  
+  if(file.exists(file)){
+    
+    ngm_unscaled <- readRDS(file = file)
+    
+  } else {
+    
+    print("The Australia Nex. Gen. Mat. is not stored. Don't you fret my love, I'm fetching it now, just chill.")
+    
+    library("conmat")
+    
+    model <- polymod_model()
+    
+    age_breaks_5y <- c(seq(0, 80, by = 5), Inf)
+    
+    ngm_unscaled <- get_australia_ngm_unscaled(
+      model = model,
+      age_breaks = age_breaks_5y
+    )
+    
+    saveRDS(
+      object = ngm_unscaled,
+      file = file
+    )
+    
+  }
+  
+  return(ngm_unscaled)
+}
 
 baseline_matrix <- function(R0 = 2.5, final_age_bin = 80) {
   # # construct a next generation matrix for Australia from Prem matrix
-  # 
   # 
   # # Prem 2017 contact matrix
   # contact_matrix_raw <- readxl::read_xlsx(
@@ -8691,7 +8754,7 @@ baseline_matrix <- function(R0 = 2.5, final_age_bin = 80) {
   # contact_matrix[1:16, 1:16] <- contact_matrix_raw
   # 
   # # set names
-  # bin_names <- age_classes(80)$classes 
+  # bin_names <- age_classes(80)$classes
   # dimnames(contact_matrix) <- list(
   #   bin_names,
   #   bin_names
@@ -8738,37 +8801,26 @@ baseline_matrix <- function(R0 = 2.5, final_age_bin = 80) {
   # # apply the q scaling before computing m
   # contact_matrix_scaled <- sweep(contact_matrix, 2, q_scaled, FUN = "*")
   # 
-  # # calculate m - number of onward infections per relative contact 
+  # # calculate m - number of onward infections per relative contact
   # m <- find_m(
   #   R_target = R0,
   #   transition_matrix = contact_matrix_scaled
   # )
   # 
   # contact_matrix_scaled * m
-  # 
+
   ######
   
   # construct ngm for australia using conmat and davies estimates
-  library("conmat")
   
-  model <- fit_setting_contacts(
-    contact_data_list = get_polymod_setting_data(),
-    population = get_polymod_population()
-  )
-  
-  age_breaks_5y <- c(seq(0, 80, by = 5), Inf)
-  
-  ngm_unscaled <- get_australia_ngm_unscaled(
-    model = model,
-    age_breaks = age_breaks_5y
-  )
-  
+  ngm_unscaled <- australia_ngm_unscaled()
+
   m <- find_m(
     R_target = R0,
     transition_matrix = ngm_unscaled
   )
-  
-  
+
+
   ngm_unscaled*m
   
 }
