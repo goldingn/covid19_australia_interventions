@@ -5616,6 +5616,49 @@ constrain_run_length <- function(x, min_run_length = 7) {
   
 }
 
+reff_plotting_sims <- function(
+  fitted_model,
+  vaccine_timeseries = vaccine_effect_timeseries,
+  nsim = 10000
+){
+  # add counterfactuals to the model object:
+  # add fitted_model_extended obect because fitted_model is modified
+  fitted_model_extended <- fitted_model
+  # Reff for locals component 1 under
+  # only micro/macro/surveillance improvements
+  fitted_model_extended$greta_arrays <- c(
+    fitted_model$greta_arrays,
+    list(
+      R_eff_loc_1_macro = reff_1_only_macro(fitted_model_extended),
+      R_eff_loc_1_micro = reff_1_only_micro(fitted_model_extended),
+      R_eff_loc_1_surv = reff_1_only_surveillance(fitted_model_extended),
+      R_eff_loc_1_vaccine_only = reff_1_vaccine_only(fitted_model_extended, vaccine_timeseries),
+      R_eff_loc_1_without_vaccine = reff_1_without_vaccine(fitted_model_extended, vaccine_timeseries)
+    ) 
+  )
+  
+  # flatten all relevant greta array matrices to vectors before calculating
+  trajectory_types <- c(
+    "R_eff_loc_1",
+    "R_eff_imp_1",
+    "R_eff_loc_12",
+    "R_eff_imp_12",
+    "epsilon_L",
+    "R_eff_loc_1_micro",
+    "R_eff_loc_1_macro",
+    "R_eff_loc_1_surv",
+    "R_eff_loc_1_vaccine_only",
+    "R_eff_loc_1_without_vaccine"
+  )
+  vector_list <- lapply(fitted_model_extended$greta_arrays[trajectory_types], c)
+  
+  # simulate from posterior for these quantities of interest
+  args <- c(vector_list, list(values = fitted_model_extended$draws, nsim = nsim))
+  sims <- do.call(calculate, args)
+  
+  return(sims)
+}
+
 # function to calculate, plot, and save all the outputs (with flags for plot
 # types) - pass in an optional maximum date argument
 reff_plotting <- function(
@@ -5628,8 +5671,46 @@ reff_plotting <- function(
   mobility_extrapolation_rectangle = TRUE,
   projection_date = NA,
   washout_cutoff = 0,
-  vaccine_timeseries = vaccine_effect_timeseries
+  vaccine_timeseries = vaccine_effect_timeseries,
+  sims = NULL
 ) {
+  
+  if(is.null(sims)){
+    # add counterfactuals to the model object:
+    # add fitted_model_extended obect because fitted_model is modified
+    fitted_model_extended <- fitted_model
+    # Reff for locals component 1 under
+    # only micro/macro/surveillance improvements
+    fitted_model_extended$greta_arrays <- c(
+      fitted_model$greta_arrays,
+      list(
+        R_eff_loc_1_macro = reff_1_only_macro(fitted_model_extended),
+        R_eff_loc_1_micro = reff_1_only_micro(fitted_model_extended),
+        R_eff_loc_1_surv = reff_1_only_surveillance(fitted_model_extended),
+        R_eff_loc_1_vaccine_only = reff_1_vaccine_only(fitted_model_extended, vaccine_timeseries),
+        R_eff_loc_1_without_vaccine = reff_1_without_vaccine(fitted_model_extended, vaccine_timeseries)
+      ) 
+    )
+    
+    # flatten all relevant greta array matrices to vectors before calculating
+    trajectory_types <- c(
+      "R_eff_loc_1",
+      "R_eff_imp_1",
+      "R_eff_loc_12",
+      "R_eff_imp_12",
+      "epsilon_L",
+      "R_eff_loc_1_micro",
+      "R_eff_loc_1_macro",
+      "R_eff_loc_1_surv",
+      "R_eff_loc_1_vaccine_only",
+      "R_eff_loc_1_without_vaccine"
+    )
+    vector_list <- lapply(fitted_model_extended$greta_arrays[trajectory_types], c)
+    
+    # simulate from posterior for these quantities of interest
+    args <- c(vector_list, list(values = fitted_model_extended$draws, nsim = 10000))
+    sims <- do.call(calculate, args)
+  }
   
   if(is.na(min_date)){
     min_date <- max_date - months(6)
@@ -5709,44 +5790,9 @@ reff_plotting <- function(
   
   
   
-  # add counterfactuals to the model object:
-  # add fitted_model_extended obect because fitted_model is modified
-  fitted_model_extended <- fitted_model
-  # Reff for locals component 1 under
-  # only micro/macro/surveillance improvements
-  fitted_model_extended$greta_arrays <- c(
-    fitted_model$greta_arrays,
-    list(
-      R_eff_loc_1_macro = reff_1_only_macro(fitted_model_extended),
-      R_eff_loc_1_micro = reff_1_only_micro(fitted_model_extended),
-      R_eff_loc_1_surv = reff_1_only_surveillance(fitted_model_extended),
-      R_eff_loc_1_vaccine_only = reff_1_vaccine_only(fitted_model_extended, vaccine_timeseries),
-      R_eff_loc_1_without_vaccine = reff_1_without_vaccine(fitted_model_extended, vaccine_timeseries)
-    ) 
-  )
-  
-  # flatten all relevant greta array matrices to vectors before calculating
-  trajectory_types <- c(
-    "R_eff_loc_1",
-    "R_eff_imp_1",
-    "R_eff_loc_12",
-    "R_eff_imp_12",
-    "epsilon_L",
-    "R_eff_loc_1_micro",
-    "R_eff_loc_1_macro",
-    "R_eff_loc_1_surv",
-    "R_eff_loc_1_vaccine_only",
-    "R_eff_loc_1_without_vaccine"
-  )
-  vector_list <- lapply(fitted_model_extended$greta_arrays[trajectory_types], c)
-  
-  # simulate from posterior for these quantities of interest
-  args <- c(vector_list, list(values = fitted_model_extended$draws, nsim = 10000))
-  sims <- do.call(calculate, args)
-  
   # vaccine effect only
   plot_trend(sims$R_eff_loc_1_vaccine_only, 
-             data = fitted_model_extended$data,
+             data = fitted_model$data,
              min_date = min_date,
              max_date = max_date,
              multistate = TRUE,
@@ -5766,7 +5812,7 @@ reff_plotting <- function(
     # vaccine effect out of C1
   plot_trend(
     sims$R_eff_loc_1_without_vaccine,
-    data = fitted_model_extended$data,
+    data = fitted_model$data,
     min_date = min_date,
     max_date = max_date,
     multistate = TRUE,
@@ -5785,7 +5831,7 @@ reff_plotting <- function(
   
   # microdistancing only
   plot_trend(sims$R_eff_loc_1_micro,
-             data = fitted_model_extended$data,
+             data = fitted_model$data,
              min_date = min_date,
              max_date = max_date,
              multistate = TRUE,
@@ -5800,7 +5846,7 @@ reff_plotting <- function(
   
   # macrodistancing only
   plot_trend(sims$R_eff_loc_1_macro,
-             data = fitted_model_extended$data,
+             data = fitted_model$data,
              min_date = min_date,
              max_date = max_date,
              multistate = TRUE,
@@ -5815,7 +5861,7 @@ reff_plotting <- function(
   
   # improved surveilance only
   plot_trend(sims$R_eff_loc_1_surv,
-             data = fitted_model_extended$data,
+             data = fitted_model$data,
              max_date = max_date,
              multistate = TRUE,
              base_colour = yellow,
@@ -5829,7 +5875,7 @@ reff_plotting <- function(
   
   # Component 1 for national / state populations
   plot_trend(sims$R_eff_loc_1,
-             data = fitted_model_extended$data,
+             data = fitted_model$data,
              min_date = min_date,
              max_date = max_date,
              multistate = TRUE,
@@ -5843,7 +5889,7 @@ reff_plotting <- function(
   save_ggplot("R_eff_1_local.png", dir, subdir)
   
   plot_trend(sims$R_eff_imp_1,
-             data = fitted_model_extended$data,
+             data = fitted_model$data,
              min_date = min_date,
              max_date = max_date,
              multistate = FALSE,
@@ -5860,7 +5906,7 @@ reff_plotting <- function(
   
   # Reff for active cases
   p <- plot_trend(sims$R_eff_loc_12,
-                  data = fitted_model_extended$data,
+                  data = fitted_model$data,
                   min_date = min_date,
                   max_date = max_date,
                   multistate = TRUE,
@@ -5874,8 +5920,8 @@ reff_plotting <- function(
   
   if (mobility_extrapolation_rectangle) {
     p <- p + annotate("rect",
-                      xmin = fitted_model_extended$data$dates$latest_infection,
-                      xmax = fitted_model_extended$data$dates$latest_mobility,
+                      xmin = fitted_model$data$dates$latest_infection,
+                      xmax = fitted_model$data$dates$latest_mobility,
                       ymin = -Inf,
                       ymax = Inf,
                       fill = grey(0.5), alpha = 0.1)
@@ -5890,7 +5936,7 @@ reff_plotting <- function(
   
   # Reff for active cases
   p <- plot_trend(sims$R_eff_loc_12,
-                  data = fitted_model_extended$data,
+                  data = fitted_model$data,
                   min_date = min_date,
                   max_date = max_date,
                   multistate = TRUE,
@@ -5904,8 +5950,8 @@ reff_plotting <- function(
   
   if (mobility_extrapolation_rectangle) {
     p <- p + annotate("rect",
-                      xmin = fitted_model_extended$data$dates$latest_infection,
-                      xmax = fitted_model_extended$data$dates$latest_mobility,
+                      xmin = fitted_model$data$dates$latest_infection,
+                      xmax = fitted_model$data$dates$latest_mobility,
                       ymin = -Inf,
                       ymax = Inf,
                       fill = grey(0.5), alpha = 0.1)
@@ -5920,7 +5966,7 @@ reff_plotting <- function(
   
   # component 2 (noisy error trends)
   p <- plot_trend(sims$epsilon_L,
-                  data = fitted_model_extended$data,
+                  data = fitted_model$data,
                   min_date = min_date,
                   max_date = max_date,
                   multistate = TRUE,
@@ -5936,8 +5982,8 @@ reff_plotting <- function(
   
   if (mobility_extrapolation_rectangle) {
     p <- p + annotate("rect",
-                      xmin = fitted_model_extended$data$dates$latest_infection,
-                      xmax = fitted_model_extended$data$dates$latest_mobility,
+                      xmin = fitted_model$data$dates$latest_infection,
+                      xmax = fitted_model$data$dates$latest_mobility,
                       ymin = -Inf,
                       ymax = Inf,
                       fill = grey(0.5), alpha = 0.1)
