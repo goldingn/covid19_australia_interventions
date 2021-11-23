@@ -193,11 +193,11 @@ cumulative_individuals_any_vaccine <- cumulative_first_dosed_individuals %>%
   )
 
 effective_dose_data <- bind_rows(
-  first_dosed_individuals %>%
+  cumulative_first_dosed_individuals %>%
     select(state, age_class, date, effective_marginal_efficacy),
-  second_dosed_individuals %>%
+  cumulative_second_dosed_individuals %>%
     select(state, age_class, date, effective_marginal_efficacy),
-  third_dosed_individuals %>%
+  cumulative_third_dosed_individuals %>%
     select(state, age_class, date, effective_marginal_efficacy)
 ) %>%
   group_by(state, age_class, date) %>%
@@ -532,6 +532,8 @@ vaccination_effect <- effective_dose_data %>%
 #       effective_vaccination_transmission_reduction_percent
 #     )
 #   )
+
+dose_dates <- unique(vaccination_effect$date)
 
 vaccine_effect_timeseries <- bind_rows(
   vaccination_effect[1,],
