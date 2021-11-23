@@ -18,6 +18,7 @@ library(slider)
 library(cowplot)
 library(lubridate)
 library(rvest)
+library(matrittr)
 
 tfp <- reticulate::import("tensorflow_probability")
 
@@ -8784,7 +8785,7 @@ australia_ngm_unscaled <- function(){
   return(ngm_unscaled)
 }
 
-baseline_matrix <- function(R0 = 2.5, final_age_bin = 80) {
+baseline_matrix <- function(R0 = 3, final_age_bin = 80) {
   # # construct a next generation matrix for Australia from Prem matrix
   # 
   # # Prem 2017 contact matrix
@@ -9324,6 +9325,217 @@ extract_over_70_ifr_effect <- function(x, which = c("odriscoll", "brazeau")) {
 }
 
 
+load_air_data <- function(
+  data_dir = "~/not_synced/vaccination/vaccination_data_with_booster/"
+){
+  
+  do_dir <- file.path(data_dir, "dose_ordering") 
+  un_dir <- file.path(data_dir, "unknowns")
+  
+  do_dates <- list.files(
+    path = do_dir
+  ) %>%
+    sub(
+      pattern = "DohertyTimeseriesExport_",
+      replacement = "",
+      x = .
+    ) %>%
+    sub(
+      pattern = "DoseOrdering_",
+      replacement = "",
+      x = .
+    ) %>%
+    sub(
+      pattern = "_.*",
+      replacement = "",
+      x = .
+    ) %>%
+    as.Date
+  
+  un_dates <- list.files(
+    path = un_dir
+  ) %>%
+    sub(
+      pattern = "DohertyTimeseriesExport_",
+      replacement = "",
+      x = .
+    ) %>%
+    sub(
+      pattern = "Unknowns_",
+      replacement = "",
+      x = .
+    ) %>%
+    sub(
+      pattern = "_.*",
+      replacement = "",
+      x = .
+    ) %>%
+    as.Date
+  
+  if(max(do_dates) != max(un_dates)){
+    stop("Most recent dose ordering and unknowns files have different dates")
+  }
+  
+  do_index <- which.max(do_dates)
+  un_index <- which.max(un_dates)
+  
+  extraction_date <- do_dates[do_index]
+  
+  do_path <- list.files(
+    path = do_dir,
+    full.names = TRUE
+  )[do_index]
+  
+  un_path <-list.files(
+    path = un_dir,
+    full.names = TRUE
+  )[un_index]
+  
+  do_raw <- read_csv(
+    file = do_path
+  ) %>%
+    rename(
+      "state" = PATIENT_MEDICARE_STATE
+    )
+  
+  un_raw <- read_csv(
+    file = un_path
+  ) %>%
+    rename(
+      "state" = PROVIDER_STATE
+    )
+  
+  over_80 <- c(
+    "80+",
+    "80-84",
+    "85+",
+    "85-89",
+    "90+",
+    "90-94",
+    "95+",
+    "95-99",
+    "100+"
+  )
+  
+  df <- bind_rows(
+    do_raw %>%
+      filter(
+        state != "Unknown",
+        state != "UNK"
+      ),
+    un_raw
+  ) %>%
+    rename(
+      "age_class" = CURRENT_AGE_GROUP,
+      "week" = AS_OF_ENCOUNTER_WEEK,
+      "date" = AS_OF_WEEK_COMMENCING,
+      "dose1" = FIRST_DOSE,
+      "dose2" = SECOND_DOSE,
+      "dose3" = THIRD_DOSE,
+      "count" = CUMULATIVE_UNIQUE_INDIVIDUALS_VACCINATED
+    ) %>%
+    select(-week) %>%
+    mutate(
+      date = as.Date(
+        date,
+        format = "%d/%m/%Y"
+      ),
+      age_class = case_when(
+        age_class %in% over_80 ~ "80+",
+        TRUE ~ age_class
+      )
+    )
+  
+  df_1014 <- df %>%
+    filter(age_class == "12-15") %>%
+    mutate(
+      count = 0.75 * count,
+      age_class = "10-14"
+    )
+  
+  df_1519 <- df %>%
+    filter(age_class == "12-15" | age_class == "16-19") %>%
+    mutate(
+      count = case_when(
+        age_class == "12-15" ~ 0.25 * count,
+        TRUE ~ count
+      ),
+      age_class = "15-19"
+    ) 
+  
+  df2 <- bind_rows(
+    df %>%
+      filter(age_class != "12-15", age_class != "16-19"),
+    df_1014,
+    df_1519
+  ) %>%
+    group_by(
+      state,
+      age_class,
+      date,
+      dose1,
+      dose2,
+      dose3
+    ) %>%
+    summarise(
+      count = sum(count),
+      .groups = "drop"
+    )
+  
+  
+  if(
+    any(
+      any(!is.na(df2$dose3) & is.na(df2$dose2)),
+      any(!is.na(df2$dose2) & is.na(df2$dose1))
+    )
+  ){
+    stop("Dodgy schedules: at least one entry has had a subsequent dose without previous dose, e.g. dose 2 without dose 1")
+  }
+  
+  age_distribution_state <- get_age_distribution_by_state()
+  
+  dose_dates <- unique(df2$date)
+  
+  df2 %$%
+    expand_grid(
+      age_distribution_state %>%
+        dplyr::select(state, age_class),
+      date = dose_dates,
+      dose1 = unique(dose1),
+      dose2 = unique(dose2),
+      dose3 = unique(dose3)
+    ) %>%
+    mutate(
+      legitimate_schedule = case_when(
+        !is.na(dose3) & is.na(dose2) ~ FALSE,
+        !is.na(dose2) & is.na(dose1) ~ FALSE,
+        TRUE ~ TRUE
+      )
+    ) %>%
+    filter(legitimate_schedule) %>%
+    dplyr::select(-legitimate_schedule) %>%
+    full_join(
+      df2,
+      by = c("state", "age_class", "date", "dose1", "dose2", "dose3")
+    ) %>%
+    mutate(
+      count = ifelse(
+        is.na(count),
+        yes = 0,
+        no = count
+      )
+    ) %>%
+    arrange(
+      state,
+      age_class,
+      date,
+      dose1,
+      dose2,
+      dose3
+    )
+  
+}
+
 simulate_variant <- function(
   .fitted_model = fitted_model,
   dir = "outputs/projection/",
@@ -9635,6 +9847,7 @@ load_cumulative_doses_old <- function(dir = "~/not_synced/vaccination/vaccinatio
       ),
       state = case_when(
         state_medicare == "Unknown" ~ state_provider,
+        state_medicare == "UNK" ~ state_provider,
         TRUE ~ state_medicare
       )
     ) %>%
