@@ -4950,7 +4950,14 @@ get_nsw_linelist <- function () {
 # distribution by surveillance effectiveness (fraction of cases detected and
 # isolated by each day post infection) and convolve the cases to get the
 # combined infectiousness in each date and state.
-gi_convolution <- function(cases, dates, states, gi_cdf, gi_bounds = c(0, 20)) {
+gi_convolution <- function(
+  cases,
+  dates,
+  states,
+  gi_cdf,
+  # ttd_cdfs,
+  gi_bounds = c(0, 20)
+) {
   
   n_dates <- length(dates)
   n_states <- length(states)
@@ -4967,7 +4974,8 @@ gi_convolution <- function(cases, dates, states, gi_cdf, gi_bounds = c(0, 20)) {
         gi_cdf = gi_cdf,
         dates = dates,
         state = states[i],
-        gi_bounds = gi_bounds
+        gi_bounds = gi_bounds#,
+        # ttd_cdfs = ttd_cdfs
       )
     
     convolved[, i] <- gi_mat %*% cases[, i]
@@ -5097,22 +5105,22 @@ reff_model_data <- function(
   # disaggregate imported and local cases according to the generation interval
   # probabilities to get the expected number of infectious people in each state
   # and time
-  tti_cdfs <- readRDS("outputs/isolation_cdfs.RDS")
+  #tti_cdfs <- readRDS("outputs/isolation_cdfs.RDS")
   
   local_infectiousness <- gi_convolution(
     local_cases_infectious_corrected,
     dates = dates,
     states = states,
-    gi_cdf = gi_cdf,
-    ttd_cdfs = tti_cdfs
+    gi_cdf = gi_cdf#,
+    #ttd_cdfs = tti_cdfs
   )
   
   imported_infectiousness <- gi_convolution(
     imported_cases_corrected,
     dates = dates,
     states = states,
-    gi_cdf = gi_cdf,
-    ttd_cdfs = tti_cdfs
+    gi_cdf = gi_cdf#,
+    #ttd_cdfs = tti_cdfs
   )
 
   # elements to exclude due to a lack of infectiousness
@@ -5196,11 +5204,11 @@ reff_model <- function(data) {
     states = data$states
   )
   
-  extra_isolation_local_reduction <- extra_isolation_effect(
-    dates = data$dates$infection_project,
-    cdf = gi_cdf,
-    states = data$states
-  )
+  # extra_isolation_local_reduction <- extra_isolation_effect(
+  #   dates = data$dates$infection_project,
+  #   cdf = gi_cdf,
+  #   states = data$states
+  # )
   
   # the reduction from R0 down to R_eff for imported cases due to different
   # quarantine measures each measure applied during a different period. Q_t is
@@ -5240,8 +5248,8 @@ reff_model <- function(data) {
   vax_effect <- data$vaccine_effect_matrix
   
   # multiply by the surveillance and vaccination effects
-  R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_reff_local_reduction * vax_effect *
-    extra_isolation_local_reduction
+  R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_reff_local_reduction * vax_effect #*
+    #extra_isolation_local_reduction
 
   log_R_eff_loc_1 <- log(R_eff_loc_1)
   
@@ -5345,7 +5353,7 @@ reff_model <- function(data) {
       log_q,
       distancing_effect,
       surveillance_reff_local_reduction,
-      extra_isolation_local_reduction,
+      #extra_isolation_local_reduction,
       log_R_eff_loc,
       log_R_eff_imp,
       epsilon_L
@@ -5412,8 +5420,14 @@ reff_1_only_surveillance <- function(fitted_model) {
 
 reff_1_only_extra_isolation <- function(fitted_model) {
   ga <- fitted_model$greta_arrays
-  log_R0 <- ga$log_R0
-  reduction <- ga$extra_isolation_local_reduction
+  # log_R0 <- ga$log_R0
+  # reduction <- ga$extra_isolation_local_reduction
+  reduction <- extra_isolation_effect(
+    dates = fitted_model$data$dates$infection_project,
+    cdf = gi_cdf,
+    states = fitted_model$data$states
+  )
+  
   exp(log_R0 + log(reduction))
 }
 
@@ -5693,6 +5707,7 @@ reff_plotting_sims <- function(
       R_eff_loc_1_macro = reff_1_only_macro(fitted_model_extended),
       R_eff_loc_1_micro = reff_1_only_micro(fitted_model_extended),
       R_eff_loc_1_surv = reff_1_only_surveillance(fitted_model_extended),
+      R_eff_loc_1_iso = reff_1_only_extra_isolation(fitted_model_extended),
       R_eff_loc_1_vaccine_only = reff_1_vaccine_only(fitted_model_extended, vaccine_timeseries),
       R_eff_loc_1_without_vaccine = reff_1_without_vaccine(fitted_model_extended, vaccine_timeseries)
     ) 
@@ -5708,6 +5723,7 @@ reff_plotting_sims <- function(
     "R_eff_loc_1_micro",
     "R_eff_loc_1_macro",
     "R_eff_loc_1_surv",
+    "R_eff_loc_1_iso",
     "R_eff_loc_1_vaccine_only",
     "R_eff_loc_1_without_vaccine"
   )
@@ -5748,6 +5764,7 @@ reff_plotting <- function(
         R_eff_loc_1_macro = reff_1_only_macro(fitted_model_extended),
         R_eff_loc_1_micro = reff_1_only_micro(fitted_model_extended),
         R_eff_loc_1_surv = reff_1_only_surveillance(fitted_model_extended),
+        R_eff_loc_1_iso = reff_1_only_extra_isolation(fitted_model_extended),
         R_eff_loc_1_vaccine_only = reff_1_vaccine_only(fitted_model_extended, vaccine_timeseries),
         R_eff_loc_1_without_vaccine = reff_1_without_vaccine(fitted_model_extended, vaccine_timeseries)
       ) 
@@ -5763,6 +5780,7 @@ reff_plotting <- function(
       "R_eff_loc_1_micro",
       "R_eff_loc_1_macro",
       "R_eff_loc_1_surv",
+      "R_eff_loc_1_iso",
       "R_eff_loc_1_vaccine_only",
       "R_eff_loc_1_without_vaccine"
     )
