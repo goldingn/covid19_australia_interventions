@@ -4276,7 +4276,8 @@ linelist_date_times <- function(
   # pull out the date time stamp
   date_time_text <- gsub(name_pattern, "", basename(files)) 
   date_time_text <- gsub(".xlsx$", "", date_time_text)
-  date_times <- as.POSIXct(date_time_text, format = "%d%b%Y %H%M")
+  #date_times_hm <- as.POSIXct(date_time_text, format = "%d%b%Y %H%M")
+  date_times <- as.POSIXct(date_time_text, format = "%d%b%Y")
   # return as a dataframe
   tibble::tibble(
     file = files,
