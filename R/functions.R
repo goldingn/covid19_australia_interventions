@@ -5640,6 +5640,15 @@ vaccination_dates <- function() {
 }
 
 
+reff_C12_C1_ratio <- function(fitted_model){
+  ga <- fitted_model$greta_arrays
+  
+  reff_1  <- ga$R_eff_loc_1
+  reff_12 <- ga$R_eff_loc_12
+  
+  log(reff_12/reff_1)
+}
+
 # outputting Reff trajectories for Rob M
 reff_sims <- function(fitted_model, nsim = 2000, which = "R_eff_loc_12") {
   
@@ -5709,7 +5718,8 @@ reff_plotting_sims <- function(
       R_eff_loc_1_surv = reff_1_only_surveillance(fitted_model_extended),
       R_eff_loc_1_iso = reff_1_only_extra_isolation(fitted_model_extended),
       R_eff_loc_1_vaccine_only = reff_1_vaccine_only(fitted_model_extended, vaccine_timeseries),
-      R_eff_loc_1_without_vaccine = reff_1_without_vaccine(fitted_model_extended, vaccine_timeseries)
+      R_eff_loc_1_without_vaccine = reff_1_without_vaccine(fitted_model_extended, vaccine_timeseries),
+      R_eff_12_1_ratio = reff_C12_C1_ratio(fitted_model_extended)
     ) 
   )
   
@@ -5725,7 +5735,8 @@ reff_plotting_sims <- function(
     "R_eff_loc_1_surv",
     "R_eff_loc_1_iso",
     "R_eff_loc_1_vaccine_only",
-    "R_eff_loc_1_without_vaccine"
+    "R_eff_loc_1_without_vaccine",
+    "R_eff_12_1_ratio"
   )
   vector_list <- lapply(fitted_model_extended$greta_arrays[trajectory_types], c)
   
@@ -5766,7 +5777,8 @@ reff_plotting <- function(
         R_eff_loc_1_surv = reff_1_only_surveillance(fitted_model_extended),
         R_eff_loc_1_iso = reff_1_only_extra_isolation(fitted_model_extended),
         R_eff_loc_1_vaccine_only = reff_1_vaccine_only(fitted_model_extended, vaccine_timeseries),
-        R_eff_loc_1_without_vaccine = reff_1_without_vaccine(fitted_model_extended, vaccine_timeseries)
+        R_eff_loc_1_without_vaccine = reff_1_without_vaccine(fitted_model_extended, vaccine_timeseries),
+        R_eff_12_1_ratio = reff_C12_C1_ratio(fitted_model_extended)
       ) 
     )
     
@@ -5782,7 +5794,8 @@ reff_plotting <- function(
       "R_eff_loc_1_surv",
       "R_eff_loc_1_iso",
       "R_eff_loc_1_vaccine_only",
-      "R_eff_loc_1_without_vaccine"
+      "R_eff_loc_1_without_vaccine",
+      "R_eff_12_1_ratio"
     )
     vector_list <- lapply(fitted_model_extended$greta_arrays[trajectory_types], c)
     
@@ -5867,7 +5880,38 @@ reff_plotting <- function(
     linetype = 3
   )
   
+  # ratio of C12 and C1
+  p <- plot_trend(sims$R_eff_12_1_ratio,
+                  data = fitted_model$data,
+                  min_date = min_date,
+                  max_date = max_date,
+                  multistate = TRUE,
+                  base_colour = pink,
+                  hline_at = 0,
+                  projection_at = projection_date,
+                  ylim = NULL,
+                  ybreaks = c(-5, 5),
+                  plot_voc = TRUE) + 
+    ggtitle(label = "Log ratio of local-to-local transmission and transmission potential",
+            subtitle = expression(Log~ratio~of~R["eff"]~and~transmission~potential)) +
+    ylab("Deviation")
   
+  if (mobility_extrapolation_rectangle) {
+    p <- p + annotate("rect",
+                      xmin = fitted_model$data$dates$latest_infection,
+                      xmax = fitted_model$data$dates$latest_mobility,
+                      ymin = -Inf,
+                      ymax = Inf,
+                      fill = grey(0.5), alpha = 0.1)
+    
+  }
+  
+  # add case rug plot and washout
+  p <- p + case_rug + few_case_washout
+  
+  p
+  
+  save_ggplot("R_eff_12_1_ratio.png", dir, subdir)
   
 
   # vaccine effect only
@@ -6091,6 +6135,7 @@ reff_plotting <- function(
   p
   
   save_ggplot("R_eff_2_local.png", dir, subdir)
+  
   
 }
 
@@ -8214,7 +8259,7 @@ plot_delays <- function(
     
     # add shading for regions where the national distribution is used
     geom_ribbon(
-      aes(ymin = -10, ymax = use_national * 100 - 10),
+      aes(ymin = -100, ymax = use_national * 100 - 10),
       fill = grey(1),
       alpha = 0.5,
       colour = grey(0.9),
