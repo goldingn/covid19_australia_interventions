@@ -1,6 +1,6 @@
-source("R/lib")
+source("R/lib.R")
 
-source("R/functions")
+source("R/functions.R")
 
 nindss <- get_nndss_linelist()
 
@@ -69,6 +69,8 @@ p_isolation <- isolation_delays_from_onset %>%
   ) +
   xlab("Symptom onset date") +
   ylab("Days to case isolation")
+
+p_isolation
 
 ggsave(
   filename = "time_to_isolation.png",

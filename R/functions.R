@@ -5420,7 +5420,7 @@ reff_1_only_surveillance <- function(fitted_model) {
 
 reff_1_only_extra_isolation <- function(fitted_model) {
   ga <- fitted_model$greta_arrays
-  # log_R0 <- ga$log_R0
+  log_R0 <- ga$log_R0
   # reduction <- ga$extra_isolation_local_reduction
   reduction <- extra_isolation_effect(
     dates = fitted_model$data$dates$infection_project,
@@ -5999,7 +5999,7 @@ reff_plotting <- function(
   
   # extra isolation effect only
   plot_trend(sims$R_eff_loc_1_iso,
-             data = fitted_model_extended$data,
+             data = fitted_model$data,
              min_date = min_date,
              max_date = max_date,
              multistate = TRUE,
