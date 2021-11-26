@@ -1550,6 +1550,7 @@ plot_trend <- function(
     min_date <- max_date - months(6)
   }
   
+  
   mean <- colMeans(simulations)
   ci_90 <- apply(simulations, 2, quantile, c(0.05, 0.95)) 
   ci_50 <- apply(simulations, 2, quantile, c(0.25, 0.75))
@@ -4839,6 +4840,7 @@ get_nsw_linelist <- function () {
       ),
       date_detection = NA,
       date_confirmation = EARLIEST_CONFIRMED_OR_PROBABLE,
+      date_quarantine = DATE_ISOLATION_BEGAN,
       state = "NSW",
       import_status = ifelse(
         PLACE_ACQUISITION == "Acquired in NSW",
@@ -4857,6 +4859,7 @@ get_nsw_linelist <- function () {
       date_onset,
       date_detection,
       date_confirmation = EARLIEST_CONFIRMED_OR_PROBABLE,
+      date_quarantine,
       state,
       import_status,
       postcode_of_acquisition,
