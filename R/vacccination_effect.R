@@ -2,175 +2,226 @@ source("R/lib.R")
 
 source("R/functions.R")
 
-# load data on number of individuals who have had first and second doses
-cumulative_doses <- load_cumulative_doses()
+air_data <- load_air_data()
 
 
-ggplot(cumulative_doses) +
-  geom_bar(
-    aes(
-      x = date,
-      y = doses,
-      fill = age_class
+air_collapsed <- air_data %>%
+  mutate(
+    # Here assuming Moderna Spikevax equivalent to Pfizer Comirnaty so collapsing
+    across(
+      .cols = starts_with("dose"),
+      ~ case_when(
+        is.na(.) ~ NA_character_,
+        . == "COVAST" ~ "az",
+        TRUE ~ "pf"
+      )
     ),
-    stat = "identity"
-  ) +
-  facet_grid(
-    state ~ vaccine + dose_number,
-    scales = "free_y"
-  )
-
-
-individuals_on_dose <- cumulative_doses %>%
-  pivot_wider(
-    names_from = dose_number,
-    values_from = doses
-  ) %>%
-  mutate(
-    `1` = unlist(`1`),
-    `2` = unlist(`2`),
-    `1` = `1` - `2`,
-    `1` = ifelse(`1`< 0, 0, `1`) # consider subtracting out AZ if Pf goes -ve re AIR advice on schedule mixing
-  ) %>%
-  pivot_longer(
-    cols = `1`:`2`,
-    names_to = "dose_number",
-    values_to = "doses"
-  ) %>%
-  mutate(
-    dose_number = as.integer(dose_number)
-  )
-
-# check plot - should not be negative
-individuals_on_dose %>%
-  filter(
-    date >= max(date) - weeks(4),
-    dose_number == 1
-  ) %>%
-  ggplot() +
-  geom_bar(
-    aes(
-      x = date,
-      y = doses,
-      fill = age_class
+    # here assuming that in a mixed schedule you continue to get the level of efficacy
+    # offered by the more effective vaccine from the point of receiving the more effective one
+    dose2 = case_when(
+      dose1 == "pf" & dose2 == "az" ~ "pf",
+      TRUE ~ dose2
     ),
-    stat = "identity",
-    position = "dodge"
-  ) +
-  facet_grid(
-    state ~ vaccine + age_class,
-    scales = "free_y"
-  ) +
-  coord_cartesian(
-    ylim = c(NA, 2000)
-  ) +
-  theme(
-    axis.text.y = element_text(angle = 270)
-  )
-
-age_distribution_state <- get_age_distribution_by_state()
-
-dose_dates <- unique(individuals_on_dose$date)
-
-dose_data <- individuals_on_dose %>%
-  # hack to set all moderna doses to pfizer because
-  # assumed equal efficacy
-  # fix into pipeline properly but should give same result for now
-  mutate(
-    vaccine = case_when(
-      vaccine == "mo" ~ "pf",
-      TRUE ~ vaccine
+    dose3 = case_when(
+      dose2 == "pf" & dose3 == "az" ~ "pf",
+      TRUE ~ dose3
     )
   ) %>%
-  group_by(state, vaccine, age_class, date, dose_number) %>%
-  summarise(doses = sum(doses)) %>%
-  # end hack
-  full_join(
-    y = expand_grid(
-      date = dose_dates,
-      vaccine = c("az", "pf"),
-      dose_number = 1:2,
-      age_distribution_state
-    )
+  group_by(
+    state, age_class, date, dose1, dose2, dose3
   ) %>%
-  mutate(doses = ifelse(is.na(doses), 0, doses)) %>%
-  dplyr::select(-fraction) %>%
-  arrange(state, age_class, vaccine, dose_number, date) %>%
-  group_by(state, age_class, vaccine, dose_number) %>% 
+  summarise(
+    count = sum(count),
+    .groups = "drop"
+  )
+
+
+efficacy_az_1_dose <- combine_efficacy(0.46, 0.02)
+efficacy_az_2_dose <- combine_efficacy(0.67, 0.36)
+efficacy_pf_1_dose <- combine_efficacy(0.57, 0.13)
+efficacy_pf_2_dose <- combine_efficacy(0.80, 0.65)
+
+marginal_az_az <- efficacy_az_2_dose - efficacy_az_1_dose
+marginal_pf_pf <- efficacy_pf_2_dose - efficacy_pf_1_dose
+marginal_az_pf <- efficacy_pf_2_dose - efficacy_pf_2_dose
+
+marginal_az_az_az <- 0
+marginal_az_az_pf <- efficacy_pf_2_dose - efficacy_az_2_dose
+marginal_pf_pf_pf <- 0
+
+cumulative_first_dosed_individuals <- air_collapsed %>%
+  group_by(
+    state, age_class, date, dose1
+  ) %>%
+  summarise(
+    count = sum(count),
+    .groups = "drop"
+  ) %>% 
+  group_by(state, age_class, dose1) %>%
   mutate(
     correction = slider::pslide_dbl(
       .l = list(
-        date,
-        doses,
-        dose_number
+        date = date,
+        doses = count,
+        dose_number = 1
       ),
       .f = immunity_lag_correction,
       .before = Inf
     ) %>%
       unlist,
-    effective_doses = correction * doses
+    effective_count = correction * count,
+    new = slider::slide_dbl(
+      .x = count,
+      .f = function(.x){
+        if(length(.x) == 1){
+          .x
+        } else {
+          .x[2]-.x[1]
+        }
+      },
+      .before = 1
+    )
   ) %>%
+  arrange(state, age_class, dose1, date) %>%
   ungroup %>%
-  group_by(state, age_class, date) %>%
   mutate(
-    any_vaccine = sum(doses),
-    effective_any_vaccine = sum(effective_doses),
-  ) %>%
-  ungroup %>%
-  mutate(
-    fraction = doses / any_vaccine,
-    effective_fraction = effective_doses / effective_any_vaccine,
-    coverage_any_vaccine = any_vaccine / pop,
-    effective_coverage_any_vaccine = effective_any_vaccine / pop,
-  ) %>%
-  arrange(state, age_class, date) 
-
-efficacy_data <- dose_data %>%
-  pivot_wider(
-    names_from = c(vaccine, dose_number),
-    values_from = c(doses, correction, effective_doses, fraction, effective_fraction)
-  ) %>%
-  mutate(
-    average_efficacy_transmission = average_efficacy(
-      efficacy_az_1_dose = combine_efficacy(0.46, 0.02),
-      efficacy_az_2_dose = combine_efficacy(0.67, 0.36),
-      efficacy_pf_1_dose = combine_efficacy(0.57, 0.13),
-      efficacy_pf_2_dose = combine_efficacy(0.80, 0.65),
-      proportion_pf_2_dose = fraction_pf_2,
-      proportion_az_2_dose = fraction_az_2,
-      proportion_pf_1_dose = fraction_pf_1,
-      proportion_az_1_dose = fraction_az_1
+    marginal_effect = case_when(
+      dose1 == "az" ~ efficacy_az_1_dose,
+      dose1 == "pf" ~ efficacy_pf_1_dose
     ),
-    effective_average_efficacy_transmission = average_efficacy(
-      efficacy_az_1_dose = combine_efficacy(0.46, 0.02),
-      efficacy_az_2_dose = combine_efficacy(0.67, 0.36),
-      efficacy_pf_1_dose = combine_efficacy(0.57, 0.13),
-      efficacy_pf_2_dose = combine_efficacy(0.80, 0.65),
-      proportion_pf_2_dose = effective_fraction_pf_2,
-      proportion_az_2_dose = effective_fraction_az_2,
-      proportion_pf_1_dose = effective_fraction_pf_1,
-      proportion_az_1_dose = effective_fraction_az_1
-    ),
-    average_efficacy_transmission = replace_na(average_efficacy_transmission, 0),
-    effective_average_efficacy_transmission = replace_na(effective_average_efficacy_transmission, 0)
-  ) %>%
-  left_join(
-    age_lookup,
-    by = c("age_class" = "age_5y")
-  )  %>%
-  dplyr::select(
-    -age
-  ) %>%
-  rename(
-    age = age_class
+    effective_marginal_efficacy = effective_count * marginal_effect
   )
 
-efficacy_data
-efficacy_data %>% glimpse
-
-vaccination_effect <- efficacy_data %>%
+cumulative_second_dosed_individuals <- air_collapsed %>%
+  filter(!is.na(dose2)) %>%
+  group_by(
+    state, age_class, date, dose1, dose2
+  ) %>%
+  summarise(
+    count = sum(count),
+    .groups = "drop"
+  ) %>% 
+  group_by(state, age_class, dose1, dose2) %>%
   mutate(
-    age_group = age %>%
+    correction = slider::pslide_dbl(
+      .l = list(
+        date,
+        count,
+        2
+      ),
+      .f = immunity_lag_correction,
+      .before = Inf
+    ) %>%
+      unlist,
+    effective_count= correction * count,
+    new = slider::slide_dbl(
+      .x = count,
+      .f = function(.x){
+        if(length(.x) == 1){
+          .x
+        } else {
+          .x[2]-.x[1]
+        }
+      },
+      .before = 1
+    )
+  ) %>%
+  arrange(state, age_class, dose1, dose2, date) %>%
+  ungroup %>%
+  mutate(
+    marginal_effect = case_when(
+      dose1 == "az" & dose2 == "az" ~ marginal_az_az,
+      dose1 == "az" & dose2 == "pf" ~ marginal_az_pf,
+      dose1 == "pf" & dose2 == "pf" ~ marginal_pf_pf,
+    ),
+    effective_marginal_efficacy = effective_count * marginal_effect
+  )
+
+cumulative_third_dosed_individuals <- air_collapsed %>%
+  filter(!is.na(dose3)) %>%
+  group_by(
+    state, age_class, date, dose1, dose2, dose3
+  ) %>%
+  summarise(
+    count = sum(count),
+    .groups = "drop"
+  ) %>% 
+  group_by(state, age_class, dose1, dose2, dose3) %>%
+  mutate(
+    correction = slider::pslide_dbl(
+      .l = list(
+        date,
+        count,
+        2
+      ),
+      .f = immunity_lag_correction,
+      .before = Inf
+    ) %>%
+      unlist,
+    effective_count = correction * count,
+    new = slider::slide_dbl(
+      .x = count,
+      .f = function(.x){
+        if(length(.x) == 1){
+          .x
+        } else {
+          .x[2]-.x[1]
+        }
+      },
+      .before = 1
+    )
+  ) %>%
+  arrange(state, age_class, dose1, dose2, dose3, date) %>%
+  ungroup %>%
+  mutate(
+    marginal_effect = case_when(
+      dose2 == "az" & dose3 == "az" ~ marginal_az_az_az,
+      dose2 == "az" & dose3 == "pf" ~ marginal_az_az_pf,
+      dose2 == "pf" & dose3 == "pf" ~ marginal_pf_pf_pf,
+    ),
+    effective_marginal_efficacy = effective_count * marginal_effect
+  )
+
+age_distribution_state <- get_age_distribution_by_state()
+
+cumulative_individuals_any_vaccine <- cumulative_first_dosed_individuals %>%
+  group_by(state, age_class, date) %>%
+  summarise(
+    count = sum(count),
+    effective_count = sum(effective_count),
+    .groups = "drop"
+  )
+
+effective_dose_data <- bind_rows(
+  cumulative_first_dosed_individuals %>%
+    select(state, age_class, date, effective_marginal_efficacy),
+  cumulative_second_dosed_individuals %>%
+    select(state, age_class, date, effective_marginal_efficacy),
+  cumulative_third_dosed_individuals %>%
+    select(state, age_class, date, effective_marginal_efficacy)
+) %>%
+  group_by(state, age_class, date) %>%
+  summarise(
+    effective_total_efficacy = sum(effective_marginal_efficacy),
+    .groups = "drop"
+  ) %>%
+  full_join(
+    age_distribution_state,
+    by = c("state", "age_class")
+  ) %>%
+  dplyr::select(-fraction) %>%
+  mutate(
+    effective_average_efficacy_transmission = effective_total_efficacy/pop
+  ) %>%
+  left_join(
+    cumulative_individuals_any_vaccine,
+    by = c("state", "age_class", "date")
+  )
+
+
+vaccination_effect <- effective_dose_data %>%
+  mutate(
+    age_group = age_class %>%
       factor(
         levels = c(
           "0-4",
@@ -191,7 +242,15 @@ vaccination_effect <- efficacy_data %>%
           "75-79",
           "80+"
         )
-      )
+      ),
+    .after = age_class
+  ) %>%
+  dplyr::select(-age_class) %>%
+  rename(
+    "effective_any_vaccine" = effective_count
+  ) %>%
+  mutate(
+    effective_coverage_any_vaccine = effective_any_vaccine / pop
   ) %>%
   arrange(
     state, date, age_group
@@ -200,11 +259,6 @@ vaccination_effect <- efficacy_data %>%
     state, date
   ) %>%
   summarise(
-    vaccination_transmission_multiplier = vaccination_transmission_effect(
-      age_coverage = coverage_any_vaccine,
-      efficacy_mean = average_efficacy_transmission,
-      next_generation_matrix = baseline_matrix()
-    )$overall,
     effective_vaccination_transmission_multiplier = vaccination_transmission_effect(
       age_coverage = effective_coverage_any_vaccine,
       efficacy_mean = effective_average_efficacy_transmission,
@@ -213,8 +267,6 @@ vaccination_effect <- efficacy_data %>%
     .groups = "drop"
   ) %>%
   mutate(
-    vaccination_transmission_reduction_percent =
-      100 * (1 - vaccination_transmission_multiplier),
     effective_vaccination_transmission_reduction_percent =
       100 * (1 - effective_vaccination_transmission_multiplier)
   ) %>%
@@ -240,6 +292,248 @@ vaccination_effect <- efficacy_data %>%
       effective_vaccination_transmission_reduction_percent
     )
   )
+
+
+# # load data on number of individuals who have had first and second doses
+# cumulative_doses <- load_cumulative_doses_old()
+# 
+# 
+# ggplot(cumulative_doses) +
+#   geom_bar(
+#     aes(
+#       x = date,
+#       y = doses,
+#       fill = age_class
+#     ),
+#     stat = "identity"
+#   ) +
+#   facet_grid(
+#     state ~ vaccine + dose_number,
+#     scales = "free_y"
+#   )
+# 
+# 
+# individuals_on_dose <- cumulative_doses %>%
+#   pivot_wider(
+#     names_from = dose_number,
+#     values_from = doses
+#   ) %>%
+#   mutate(
+#     `1` = unlist(`1`),
+#     `2` = unlist(`2`),
+#     `1` = `1` - `2`,
+#     `1` = ifelse(`1`< 0, 0, `1`) # consider subtracting out AZ if Pf goes -ve re AIR advice on schedule mixing
+#   ) %>%
+#   pivot_longer(
+#     cols = `1`:`2`,
+#     names_to = "dose_number",
+#     values_to = "doses"
+#   ) %>%
+#   mutate(
+#     dose_number = as.integer(dose_number)
+#   )
+# 
+# # check plot - should not be negative
+# individuals_on_dose %>%
+#   filter(
+#     date >= max(date) - weeks(4),
+#     dose_number == 1
+#   ) %>%
+#   ggplot() +
+#   geom_bar(
+#     aes(
+#       x = date,
+#       y = doses,
+#       fill = age_class
+#     ),
+#     stat = "identity",
+#     position = "dodge"
+#   ) +
+#   facet_grid(
+#     state ~ vaccine + age_class,
+#     scales = "free_y"
+#   ) +
+#   coord_cartesian(
+#     ylim = c(NA, 2000)
+#   ) +
+#   theme(
+#     axis.text.y = element_text(angle = 270)
+#   )
+# 
+# age_distribution_state <- get_age_distribution_by_state()
+# 
+# dose_dates <- unique(individuals_on_dose$date)
+# 
+# dose_data <- individuals_on_dose %>%
+#   # hack to set all moderna doses to pfizer because
+#   # assumed equal efficacy
+#   # fix into pipeline properly but should give same result for now
+#   mutate(
+#     vaccine = case_when(
+#       vaccine == "mo" ~ "pf",
+#       TRUE ~ vaccine
+#     )
+#   ) %>%
+#   group_by(state, vaccine, age_class, date, dose_number) %>%
+#   summarise(doses = sum(doses)) %>%
+#   # end hack
+#   full_join(
+#     y = expand_grid(
+#       date = dose_dates,
+#       vaccine = c("az", "pf"),
+#       dose_number = 1:2,
+#       age_distribution_state
+#     )
+#   ) %>%
+#   mutate(doses = ifelse(is.na(doses), 0, doses)) %>%
+#   dplyr::select(-fraction) %>%
+#   arrange(state, age_class, vaccine, dose_number, date) %>%
+#   group_by(state, age_class, vaccine, dose_number) %>% 
+#   mutate(
+#     correction = slider::pslide_dbl(
+#       .l = list(
+#         date,
+#         doses,
+#         dose_number
+#       ),
+#       .f = immunity_lag_correction,
+#       .before = Inf
+#     ) %>%
+#       unlist,
+#     effective_doses = correction * doses
+#   ) %>%
+#   ungroup %>%
+#   group_by(state, age_class, date) %>%
+#   mutate(
+#     any_vaccine = sum(doses),
+#     effective_any_vaccine = sum(effective_doses),
+#   ) %>%
+#   ungroup %>%
+#   mutate(
+#     fraction = doses / any_vaccine,
+#     effective_fraction = effective_doses / effective_any_vaccine,
+#     coverage_any_vaccine = any_vaccine / pop,
+#     effective_coverage_any_vaccine = effective_any_vaccine / pop,
+#   ) %>%
+#   arrange(state, age_class, date) 
+# 
+# efficacy_data <- dose_data %>%
+#   pivot_wider(
+#     names_from = c(vaccine, dose_number),
+#     values_from = c(doses, correction, effective_doses, fraction, effective_fraction)
+#   ) %>%
+#   mutate(
+#     average_efficacy_transmission = average_efficacy(
+#       efficacy_az_1_dose = combine_efficacy(0.46, 0.02),
+#       efficacy_az_2_dose = combine_efficacy(0.67, 0.36),
+#       efficacy_pf_1_dose = combine_efficacy(0.57, 0.13),
+#       efficacy_pf_2_dose = combine_efficacy(0.80, 0.65),
+#       proportion_pf_2_dose = fraction_pf_2,
+#       proportion_az_2_dose = fraction_az_2,
+#       proportion_pf_1_dose = fraction_pf_1,
+#       proportion_az_1_dose = fraction_az_1
+#     ),
+#     effective_average_efficacy_transmission = average_efficacy(
+#       efficacy_az_1_dose = combine_efficacy(0.46, 0.02),
+#       efficacy_az_2_dose = combine_efficacy(0.67, 0.36),
+#       efficacy_pf_1_dose = combine_efficacy(0.57, 0.13),
+#       efficacy_pf_2_dose = combine_efficacy(0.80, 0.65),
+#       proportion_pf_2_dose = effective_fraction_pf_2,
+#       proportion_az_2_dose = effective_fraction_az_2,
+#       proportion_pf_1_dose = effective_fraction_pf_1,
+#       proportion_az_1_dose = effective_fraction_az_1
+#     ),
+#     average_efficacy_transmission = replace_na(average_efficacy_transmission, 0),
+#     effective_average_efficacy_transmission = replace_na(effective_average_efficacy_transmission, 0)
+#   ) %>%
+#   left_join(
+#     age_lookup,
+#     by = c("age_class" = "age_5y")
+#   )  %>%
+#   dplyr::select(
+#     -age
+#   ) %>%
+#   rename(
+#     age = age_class
+#   )
+# 
+# efficacy_data
+# efficacy_data %>% glimpse
+# 
+# vaccination_effect <- efficacy_data %>%
+#   mutate(
+#     age_group = age %>%
+#       factor(
+#         levels = c(
+#           "0-4",
+#           "5-9",
+#           "10-14",
+#           "15-19",
+#           "20-24",
+#           "25-29",
+#           "30-34",
+#           "35-39",
+#           "40-44",
+#           "45-49",
+#           "50-54",
+#           "55-59",
+#           "60-64",
+#           "65-69",
+#           "70-74",
+#           "75-79",
+#           "80+"
+#         )
+#       )
+#   ) %>%
+#   arrange(
+#     state, date, age_group
+#   ) %>%
+#   group_by(
+#     state, date
+#   ) %>%
+#   summarise(
+#     vaccination_transmission_multiplier = vaccination_transmission_effect(
+#       age_coverage = coverage_any_vaccine,
+#       efficacy_mean = average_efficacy_transmission,
+#       next_generation_matrix = baseline_matrix()
+#     )$overall,
+#     effective_vaccination_transmission_multiplier = vaccination_transmission_effect(
+#       age_coverage = effective_coverage_any_vaccine,
+#       efficacy_mean = effective_average_efficacy_transmission,
+#       next_generation_matrix = baseline_matrix()
+#     )$overall,
+#     .groups = "drop"
+#   ) %>%
+#   mutate(
+#     vaccination_transmission_reduction_percent =
+#       100 * (1 - vaccination_transmission_multiplier),
+#     effective_vaccination_transmission_reduction_percent =
+#       100 * (1 - effective_vaccination_transmission_multiplier)
+#   ) %>%
+#   mutate(
+#     dubious = (date - min(date)) < 21,
+#     across(
+#       starts_with("effective_"),
+#       ~ ifelse(dubious, NA, .)
+#     )
+#   ) %>%
+#   select(
+#     -dubious
+#   ) %>% 
+#   mutate(
+#     effective_vaccination_transmission_multiplier = ifelse(
+#       is.na(effective_vaccination_transmission_multiplier),
+#       1,
+#       effective_vaccination_transmission_multiplier
+#     ),
+#     effective_vaccination_transmission_reduction_percent = ifelse(
+#       is.na(effective_vaccination_transmission_reduction_percent),
+#       0,
+#       effective_vaccination_transmission_reduction_percent
+#     )
+#   )
+
+dose_dates <- unique(vaccination_effect$date)
 
 vaccine_effect_timeseries <- bind_rows(
   vaccination_effect[1,],
@@ -283,33 +577,33 @@ vaccine_effect_timeseries <- bind_rows(
     
     
     
-effective_dose_data <- dose_data %>%
-  dplyr::select(
-    state,
-    age_class,
-    vaccine,
-    dose_number,
-    doses,
-    effective_doses,
-    date
-  ) %>%
-  mutate(
-    dubious = (date - min(date)) < 21,
-    across(
-      starts_with("effective_"),
-      ~ ifelse(dubious, 0, .)
-    )
-  ) %>%
-  dplyr::select(
-    -dubious
-  ) %>% 
-  arrange(
-    state,
-    age_class,
-    vaccine,
-    dose_number,
-    date
-  )
+# effective_dose_data <- dose_data %>%
+#   dplyr::select(
+#     state,
+#     age_class,
+#     vaccine,
+#     dose_number,
+#     doses,
+#     effective_doses,
+#     date
+#   ) %>%
+#   mutate(
+#     dubious = (date - min(date)) < 21,
+#     across(
+#       starts_with("effective_"),
+#       ~ ifelse(dubious, 0, .)
+#     )
+#   ) %>%
+#   dplyr::select(
+#     -dubious
+#   ) %>% 
+#   arrange(
+#     state,
+#     age_class,
+#     vaccine,
+#     dose_number,
+#     date
+#   )
 
 data_date <- max(vaccine_effect_timeseries$date)
 
@@ -328,13 +622,13 @@ write_csv(
 )
 
 
-write_csv(
-  effective_dose_data,
-  file = sprintf(
-    "outputs/effective_dose_data_%s.csv",
-    data_date
-  )
-)
+# write_csv(
+#   effective_dose_data,
+#   file = sprintf(
+#     "outputs/effective_dose_data_%s.csv",
+#     data_date
+#   )
+# )
 
 dpi <- 150
 font_size <- 16
@@ -469,21 +763,21 @@ ggsave(
 
 
 # fix this and need to split out moderna from pfizer
-ggplot(
-  effective_dose_data
-  ) +
-  geom_bar(
-    aes(
-      x = date,
-      y = doses,
-      fill = age_class
-    ),
-    stat = "identity"
-  ) +
-  facet_grid(
-    state ~ vaccine + dose_number,
-    scales = "free_y"
-  )
+# ggplot(
+#   effective_dose_data
+#   ) +
+#   geom_bar(
+#     aes(
+#       x = date,
+#       y = doses,
+#       fill = age_class
+#     ),
+#     stat = "identity"
+#   ) +
+#   facet_grid(
+#     state ~ vaccine + dose_number,
+#     scales = "free_y"
+#   )
 
 
 # 
