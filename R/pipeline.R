@@ -36,7 +36,11 @@ source("R/check_linelist.R")
 source("R/rolling_delays.R")
 #  -- figs to dropbox / to Freya
 
-# 4. Sync NNDSS data and write out case data (local_cases.csv) for Monash (Rob Hyndman/Mitch)
+# 4. TTIQ and Isolation effect
+source("R/isolation_effect.R")
+# -- figs and ttiq_effect.csv to dropbox / to Freya
+
+# 5. Sync NNDSS data and write out case data (local_cases.csv) for Monash (Rob Hyndman/Mitch)
 # and U of Melbourne (Rob Moss/Ruarai). RNG seed needs to match that in R_effective.R for imputation to
 # be consistent. This is also done in the final script, but I send it to them
 # whilst waiting [~60s]
@@ -61,7 +65,7 @@ write_linelist()
 # Section C) Dependent on survey data update (the numbered file must be manually
 # copied to data/survey_raw):
 
-# 5. parse all contact rate data, automatically remove duplicates, and visually
+# 6. parse all contact rate data, automatically remove duplicates, and visually
 # check for duplicate ages [~60s]
 parse_all_doh_surveys() %>%
   filter(wave > (max(wave) - 4)) %>%
@@ -74,7 +78,7 @@ ggsave(
 )
 # will light up cells with any overly large counts. If this happens check raw data
 
-# 6. Output microdistancing survey data for U of Adelaide (Tobin/Josh, previously Dennis)
+# 7. Output microdistancing survey data for U of Adelaide (Tobin/Josh, previously Dennis)
 # (data/microdistancing/Barometer wave <wave> compliance.csv and
 # data/contacts/barometer/contact numbers wave <wave>.csv), run microdistancing
 # model, and output figure (microdistancing_effect.png) and trend estimates
@@ -84,7 +88,7 @@ source("R/microdistancing_change.R")
 # data/contacts/barometer/contact numbers wave <wave>.csv to Tobin/Dylan/Josh
 # -- figure to dropbox / Freya
 
-# 7. Run macrodistancing model and output figure ((microdistancing_effect.png) and
+# 8. Run macrodistancing model and output figure ((microdistancing_effect.png) and
 # trend estimates (macrodistancing_trends.RDS). Can be run concurrently with
 # microdistancing model (i.e. on a separate process/machine) [~1-2h]
 source("R/macrodistancing_change.R")
@@ -92,7 +96,7 @@ source("R/macrodistancing_change.R")
 
 # Section C) Dependent on NNDSS data update and outputs of all previous scripts:
 
-# 8. Run R effective model and output figures (R_eff_12_local.png,
+# 9. Run R effective model and output figures (R_eff_12_local.png,
 # R_eff_1_import.png, R_eff_1_local.png, R_eff_1_local_macro.png,
 # R_eff_1_local_micro.png, R_eff_1_local_surv.png, R_eff_2_local.png in both
 # outputs/figures/ and outputs/projection/figures/) and trajectory draws for Rob
