@@ -19,6 +19,7 @@ library(cowplot)
 library(lubridate)
 library(rvest)
 library(magrittr)
+library(conmat)
 
 tfp <- reticulate::import("tensorflow_probability")
 
