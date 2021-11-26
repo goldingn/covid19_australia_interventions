@@ -205,7 +205,11 @@ isolation_delays_from_onset <- isolation_data %$%
     date = date_onset,
     delay = time_to_isolation,
     direction = "forward",
-    national_exclusions = NULL
+    national_exclusions = tibble(
+      state = "VIC",
+      start = as.Date("2020-06-14"),
+      end = as.Date("2020-12-01")
+    )
   )
 
 # detection_delays_from_onset <- isolation_data %$%
