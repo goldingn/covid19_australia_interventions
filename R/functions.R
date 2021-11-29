@@ -6603,8 +6603,16 @@ load_linelist <- function(date = NULL,
       paste0("~/not_synced/vic/", ., "_linelist_reff.csv") %>%
       get_vic_linelist()
     
+    vic_ll_date <- vic_linelist$date_linelist[1]
+    vic_ll_start <- min(vic_linelist$date_confirmation)
+    
     linelist <- linelist %>%
-      filter(state != "VIC") %>%
+      filter(
+        !(state == "VIC" &
+            date_confirmation >= vic_ll_start & 
+            date_confirmation <= vic_ll_date
+        )
+      ) %>%
       bind_rows(vic_linelist)
     
   }
