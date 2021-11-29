@@ -8023,7 +8023,11 @@ estimate_delays <- function(
   absolute_min_records = 100,
   min_window = 7,
   max_window = 56,
-  national_exclusions = tibble(state = "VIC", start = as.Date("2020-06-14"), end = NA),
+  national_exclusions = tibble(
+    state = "VIC",
+    start = as.Date("2020-06-14"),
+    end   = as.Date("2020-12-01")
+  ),
   revert_to_national = TRUE
 ) {
   
