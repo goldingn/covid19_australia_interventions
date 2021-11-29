@@ -5598,40 +5598,6 @@ reff_1_without_vaccine <- function(fitted_model, vaccine_effect){
 }
 
 
-reff_1_without_vaccine <- function(fitted_model, vaccine_effect){
-  
-  ga <- fitted_model$greta_arrays
-  
-  dates <- fitted_model$data$dates$infection_project
-  
-  df <- full_join(
-    expand_grid(
-      date = dates,
-      state = unique(vaccine_effect$state)
-    ),
-    vaccine_effect
-  ) %>%
-    arrange(state, date) %>% 
-    group_by(state) %>%
-    tidyr::fill(
-      effect,
-      .direction = "updown"
-    ) %>%
-    pivot_wider(
-      names_from = state,
-      values_from = effect
-    )
-  
-  ote <- df %>%
-    dplyr::select(-date) %>%
-    as.matrix
-  
-  
-  reff1 <- ga$R_eff_loc_1 
-  
-  reff1/ote
-  
-}
 
 vaccination_dates <- function() {
   expand_grid(
