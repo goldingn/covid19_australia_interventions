@@ -42,8 +42,8 @@ efficacy_pf_1_dose <- combine_efficacy(0.57, 0.13)
 efficacy_pf_2_dose <- combine_efficacy(0.80, 0.65)
 
 marginal_az_az <- efficacy_az_2_dose - efficacy_az_1_dose
+marginal_az_pf <- efficacy_pf_2_dose - efficacy_az_1_dose
 marginal_pf_pf <- efficacy_pf_2_dose - efficacy_pf_1_dose
-marginal_az_pf <- efficacy_pf_2_dose - efficacy_pf_2_dose
 
 marginal_az_az_az <- 0
 marginal_az_az_pf <- efficacy_pf_2_dose - efficacy_az_2_dose
