@@ -6,15 +6,6 @@ nindss <- load_linelist(use_vic = FALSE)
 
 notification_delay_cdf <- get_notification_delay_cdf(nindss)
 
-# impute onset dates and infection dates using this
-nindss <- nindss %>%
-  impute_linelist(notification_delay_cdf = notification_delay_cdf)
-
-nindss <- nindss %>%
-  mutate(
-    date_quarantine = ifelse(is.na(date_quarantine), date_confirmation, date_quarantine)
-  )
-
 month_grid <- nindss %>%
   filter(import_status == "local") %$%
   expand_grid(
@@ -132,6 +123,15 @@ missingness %>%
   ) 
 
 save_ggplot("proportion_with_quarantine_date.png", multi = TRUE)
+
+# impute onset dates and infection dates using this
+nindss <- nindss %>%
+  impute_linelist(notification_delay_cdf = notification_delay_cdf)
+
+nindss <- nindss %>%
+  mutate(
+    date_quarantine = as_date(ifelse(is.na(date_quarantine), date_confirmation, date_quarantine))
+  )
 
 
 linelist_date <- nindss$date_linelist[1]
