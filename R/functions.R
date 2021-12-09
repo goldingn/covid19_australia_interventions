@@ -4414,20 +4414,66 @@ get_nndss_linelist <- function(
       CV_DATE_ENTERED_QUARANTINE = "date"
     )
     
+    col_types_4 <- c(
+      STATE = "text",
+      POSTCODE = "numeric",
+      CONFIRMATION_STATUS = "text",
+      TRUE_ONSET_DATE = "date",
+      SPECIMEN_DATE = "date",
+      NOTIFICATION_DATE = "date",
+      NOTIFICATION_RECEIVE_DATE = "date",
+      Diagnosis_Date = "date",
+      AGE_AT_ONSET = "numeric",
+      SEX = "numeric",
+      DIED = "numeric",
+      PLACE_OF_ACQUISITION = "text",
+      HOSPITALISED = "numeric",
+      CV_ICU = "numeric",
+      CV_VENTILATED = "numeric",
+      OUTBREAK_REF = "text",
+      CASE_FOUND_BY = "numeric",
+      CV_SYMPTOMS = "text",
+      CV_OTHER_SYMPTOMS = "text",
+      CV_COMORBIDITIES = "text",
+      CV_OTHER_COMORBIDITIES = "text",
+      CV_GESTATION = "numeric",
+      #CV_CLOSE_CONTACT = "numeric"
+      CV_EXPOSURE_SETTING = "numeric",
+      CV_SOURCE_INFECTION = "numeric",
+      CV_SYMPTOMS_REPORTED = "numeric",
+      CV_QUARANTINE_STATUS = "numeric",
+      CV_DATE_ENTERED_QUARANTINE = "date",
+      "numeric",
+      "text",
+      "date",
+      "numeric",
+      "text",
+      "date",
+      "numeric",
+      "text",
+      "date",
+      "numeric",
+      "text",
+      "date",
+      "numeric",
+      "text",
+      "date"
+    )
+    
   }
   
   
   ll_date <- data$date_time[[1]]
   
   
-  if(ll_date < "2021-03-08"){
+  if (ll_date < "2021-03-08") {
     col_types <- col_types_1
+  } else if (ll_date < "2021-11-08") {
+    col_types <- col_types_2
+  } else if (ll_date < "2021-12-02") {
+    col_types <- col_types_3
   } else {
-    if(ll_date < "2021-11-08"){
-      col_types <- col_types_2
-    } else {
-        col_types <- col_types_3
-    }
+    col_types <- col_types_4
   }
   
   dat <- readxl::read_xlsx(
