@@ -1,0 +1,251 @@
+
+
+```{r}
+nndss_ll <- get_nndss_linelist()
+vic_ll <- get_vic_linelist(file = "~/not_synced/vic/20211206_linelist_reff.csv")
+nsw_ll <- get_nsw_linelist()
+
+
+
+vl <- vic_ll %>% filter(import_status == "local", date_confirmation >= "2021-08-01")
+vn <- nndss_ll %>% filter(import_status == "local", date_confirmation >= "2021-08-01", state == "VIC")
+
+nl <- nsw_ll %>% filter(import_status == "local", date_confirmation >= "2021-08-01")
+nn <- nndss_ll %>% filter(import_status == "local", date_confirmation >= "2021-08-01", state == "NSW")
+
+
+
+dat <- bind_rows(
+  vl %>% mutate(linelist = "state"),
+  vn %>% mutate(linelist = "NINDSS"),
+  nl %>% mutate(linelist = "state"),
+  nn %>% mutate(linelist = "NINDSS"),
+)
+```
+
+
+Confirmation dates
+```{r}
+dat %>%
+  ggplot() +
+  geom_bar(
+    aes(
+      x = date_confirmation,
+      fill = linelist
+    ),
+    position = "dodge"
+  ) +
+  facet_grid(
+    rows = vars(state)
+  )
+```
+
+Confirmation dates last month
+```{r}
+dat %>%
+  filter(date_confirmation >= "2021-11-01") %>%
+  ggplot() +
+  geom_bar(
+    aes(
+      x = date_confirmation,
+      fill = linelist
+    ),
+    position = "dodge"
+  ) +
+  facet_grid(
+    rows = vars(state)
+  )
+```
+
+
+Onset dates
+```{r}
+dat %>%
+  ggplot() +
+  geom_bar(
+    aes(
+      x = date_onset,
+      fill = linelist
+    ),
+    position = "dodge"
+  ) +
+  facet_grid(
+    rows = vars(state)
+  ) +
+  coord_cartesian(ylim = c(0,1))
+```
+
+```{r}
+dat %>%
+  ggplot() +
+  geom_point(
+    aes(x = date_onset, y = date_confirmation)
+  ) +
+  facet_grid(rows = vars(state), cols = vars(linelist)) +
+  scale_x_date(date_breaks = "month") +
+  theme(axis.text.x = element_text(angle = 270))
+            
+```
+
+
+```{r}
+dat %>%
+  filter(date_onset >= "2021-08-01") %>%
+  ggplot() +
+  geom_bar(
+    aes(
+      x = date_onset,
+      fill = linelist
+    ),
+    position = "dodge"
+  ) +
+  facet_grid(
+    rows = vars(state)
+  ) 
+```
+
+
+Onset dates last month
+```{r}
+dat %>%
+  filter(date_onset >= "2021-11-01") %>%
+  ggplot() +
+  geom_bar(
+    aes(
+      x = date_onset,
+      fill = linelist
+    ),
+    position = "dodge"
+  ) +
+  facet_grid(
+    rows = vars(state)
+  )
+```
+
+
+Detection dates
+```{r}
+dat %>%
+  ggplot() +
+  geom_bar(
+    aes(
+      x = date_detection,
+      fill = linelist
+    ),
+    position = "dodge"
+  ) +
+  facet_grid(
+    rows = vars(state)
+  ) +
+  coord_cartesian(ylim = c(0,1))
+```
+
+Onset dates last month
+```{r}
+dat %>%
+  filter(date_detection >= "2021-11-01") %>%
+  ggplot() +
+  geom_bar(
+    aes(
+      x = date_detection,
+      fill = linelist
+    ),
+    position = "dodge"
+  ) +
+  facet_grid(
+    rows = vars(state)
+  )
+```
+
+```{r}
+dates <- expand_grid(
+  date = seq.Date(from = as.Date("2021-08-01"), to = as.Date("2021-12-05"), by = 1),
+  state = c("NSW", "VIC"),
+  linelist = c("state", "NINDSS")
+)
+
+dat_conf <- dat %>%
+  group_by(state, linelist, date_confirmation) %>%
+  summarise(cases = n(), .groups = "drop") %>%
+  filter(!is.na(date_confirmation)) %>%
+  full_join(
+    dates %>% rename(date_confirmation = date)
+  ) %>%
+  arrange(state, linelist, date_confirmation) %>%
+  mutate(cases = ifelse(is.na(cases), 0, cases))
+
+dat_onset <- dat %>%
+  group_by(state, linelist, date_onset) %>%
+  summarise(cases = n(), .groups = "drop") %>%
+  filter(!is.na(date_onset)) %>%
+  full_join(
+    dates %>% rename(date_onset = date)
+  ) %>%
+  arrange(state, linelist, date_onset) %>%
+  mutate(cases = ifelse(is.na(cases), 0, cases))
+
+dcn <- dat_conf %>% filter(state == "NSW", linelist == "state", date_confirmation >= "2021-10-01")
+dcv <- dat_conf %>% filter(state == "VIC", linelist == "state", date_confirmation >= "2021-10-01")
+
+don <- dat_onset %>% filter(state == "NSW", linelist == "state", date_onset >= "2021-10-01")
+dov <- dat_onset %>% filter(state == "VIC", linelist == "state", date_onset >= "2021-10-01")
+```
+
+```{r}
+library(tseries)
+```
+
+Autocorrelation
+
+VIC
+
+confirmation dates 
+
+since oct
+```{r}
+acf(dcv$cases)
+```
+
+Since Nov
+```{r}
+dcv %>% filter(date_confirmation >= "2021-11-01") %>% pull(cases) %>% acf
+```
+
+Onset dates
+
+since Oct
+```{r}
+acf(dov$cases)
+```
+
+Since Nov
+```{r}
+dov %>% filter(date_onset >= "2021-11-01") %>% pull(cases) %>% acf
+```
+
+
+NSW
+
+Confrimation dates 
+since oct
+
+```{r}
+acf(dcn$cases)
+```
+
+since nov
+```{r}
+dcn %>% filter(date_confirmation >= "2021-11-01") %>% pull(cases) %>% acf
+```
+
+onset dates
+
+since oct
+```{r}
+acf(don$cases)
+```
+
+since nov
+```{r}
+don %>% filter(date_onset >= "2021-11-01") %>% pull(cases) %>% acf
+```
