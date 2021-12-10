@@ -2796,6 +2796,64 @@ format_raw_survey_data <- function(file = NULL, wave = NULL) {
   
   raw <- read_csv(file)
   
+  if ("Q222" %in% names(raw)) {
+    mask <- raw %>%
+      select(
+        state = S3,
+        date = StartDate,
+        face_covering = Q222
+      )%>%
+      mutate(
+        state = case_when(state == "ACT" ~ "Australian Capital Territory",
+                          TRUE ~ state),
+        state = abbreviate_states(state)
+      ) %>%
+      filter(!is.na(state)) %>%
+      mutate(
+        date = as.character(date),
+        date = as.Date(date, format = "%Y%m%d"),
+        date = min(date)
+      ) %>%
+      group_by(state, date) %>%
+      mutate(respondents = n()) %>%
+      group_by(state, date, face_covering, respondents) %>%
+      summarise(
+        count = n(),
+        .groups = "drop"
+      ) %>%
+      select(date,
+             state,
+             face_covering,
+             count,
+             respondents) %>%
+      arrange(state, date, face_covering)
+    
+  } else {
+    date_survey <- raw$StartDate %>%
+      as.character %>%
+      as.Date(format = "%Y%m%d") %>%
+      min
+    
+    expand_grid(
+      date = date_survey,
+      state = states,
+      face_covering = c("Always", "No", "Often", "Rarely", "Sometimes"),
+      count = 0,
+      respondents = 0
+    )
+  }
+  
+  
+  write_csv(
+    mask,
+    paste0(
+      "data/face_covering/face_covering_",
+      wave,
+      "_.csv"
+    )
+  )
+  
+  
   micro <- raw %>%
     select(
       state = S3,
