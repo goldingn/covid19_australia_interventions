@@ -1,16 +1,24 @@
 source("R/lib.R")
 
 Sys.setenv(RETICULATE_AUTOCONFIGURE = FALSE)
+library(greta)
+library(greta.gp)
+library(tensorflow)
+
+tfp <- reticulate::import("tensorflow_probability")
+
+module <- greta::.internals$utils$misc$module
+fl <- greta:::fl
+tf_float <- greta:::tf_float
+
+
 library(readr)
 library(dplyr)
 library(stringr)
 library(rjson)
 library(tidyr)
-library(greta)
-library(greta.gp)
 library(readxl)
 library(RColorBrewer)
-library(tensorflow)
 library(purrr)
 library(ggplot2)
 library(R6)
@@ -21,11 +29,7 @@ library(rvest)
 library(magrittr)
 library(conmat)
 
-tfp <- reticulate::import("tensorflow_probability")
 
-module <- greta::.internals$utils$misc$module
-fl <- greta:::fl
-tf_float <- greta:::tf_float
 
 # read in and tidy up Facebook movement data
 facebook_mobility <- function() {
