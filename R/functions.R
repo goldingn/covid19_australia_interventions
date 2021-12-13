@@ -28,6 +28,7 @@ library(lubridate)
 library(rvest)
 library(magrittr)
 library(conmat)
+library(bayesplot)
 
 
 
