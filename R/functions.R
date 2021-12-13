@@ -2835,7 +2835,7 @@ format_raw_survey_data <- function(file = NULL, wave = NULL) {
       as.Date(format = "%Y%m%d") %>%
       min
     
-    expand_grid(
+    mask <- expand_grid(
       date = date_survey,
       state = states,
       face_covering = c("Always", "No", "Often", "Rarely", "Sometimes"),
