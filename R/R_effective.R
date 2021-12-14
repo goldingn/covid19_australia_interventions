@@ -67,9 +67,19 @@ reff_plotting(
   sims = sims
 )
 
-# projection plots 
+# most recent month
 reff_plotting(
   fitted_model,
+  dir = "outputs",
+  subdir = "figures/one_month",
+  min_date = fitted_model$data$dates$latest_mobility - months(1),
+  sims = sims
+)
+
+
+# projection plots 
+reff_plotting(
+  fitted_model,  
   dir = "outputs/projection",
   max_date = fitted_model$data$dates$latest_project,
   mobility_extrapolation_rectangle = FALSE,
