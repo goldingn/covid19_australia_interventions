@@ -52,7 +52,7 @@ draws <- mcmc(
   chains = n_chains
 )
 
- draws <- extra_samples(draws, 1000)
+ draws <- extra_samples(draws, 2000)
 convergence(draws)
 
 fitted_model <- module(
@@ -67,7 +67,7 @@ fitted_model <- module(
 # save fitted model
 saveRDS(fitted_model, "outputs/fitted_macro_model.RDS")
 # fitted_model <- readRDS("outputs/fitted_macro_model.RDS")
-
+# 
 # # make predictions using updated data on a day out of sync with standard Monday fit
 # fitted_model$data <- data
 # fitted_model$predictions <- macrodistancing_model(fitted_model$data, fitted_model$params)
@@ -154,7 +154,7 @@ draws_null <- mcmc(
 
 convergence(draws_null)
 
-#draws_null <- extra_samples(draws_null, 500)
+draws_null <- extra_samples(draws_null, 500)
 
 daily_contacts_draws_null <- calculate(
   null$avg_daily_contacts_wide,
@@ -307,35 +307,18 @@ p <- plot_trend(pred_sim,
                 multistate = TRUE,
                 base_colour = purple,
                 max_date = max(data$contacts$date),
+                min_date = max(data$contacts$date) - months(6),
                 ylim = c(0, 20),
                 hline_at = NULL) + 
   ggtitle(label = "Macro-distancing trend",
           subtitle = "Rate of non-household contacts") +
   ylab("Estimated mean number of non-household contacts per day") + 
-  
-  # add baseline estimate
-  geom_point(
-    aes(date, estimate),
-    data = baseline_point,
-    size = 0.5,
-    colour = grey(0.5)
-  ) +
-  geom_errorbar(
-    aes(
-      date,
-      estimate,
-      ymin = lower,
-      ymax = upper
-    ),
-    data = baseline_point,
-    width = 0,
-    colour = grey(0.5)
-  ) + 
-  
+
   # rug marks for holidays
   geom_rug(
     aes(date),
-    data = holiday_lines,
+    data = holiday_lines %>%
+      filter(date >= max(data$contacts$date) - months(6)),
     col = green,
     size = 1,
     length = unit(0.05, "npc"),
@@ -349,7 +332,8 @@ p <- plot_trend(pred_sim,
       wave_date,
       estimate,
     ),
-    data = survey_points,
+    data = survey_points %>%
+      filter(wave_date >= max(data$contacts$date) - months(6)),
     size = 2,
     pch = "_"
   ) +
@@ -361,7 +345,8 @@ p <- plot_trend(pred_sim,
       ymin = lower,
       ymax = upper,
     ),
-    data = survey_points,
+    data = survey_points %>%
+      filter(wave_date >= max(data$contacts$date) - months(6)),
     size = 1,
     alpha = 0.2,
     width = 0
@@ -369,5 +354,5 @@ p <- plot_trend(pred_sim,
 
 p
 
-save_ggplot("macrodistancing_effect_point.png")
+save_ggplot("macrodistancing_effect_six_month.png")
 
