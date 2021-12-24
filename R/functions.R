@@ -4910,30 +4910,40 @@ col_nsw_date <- function(type = c("short", "long")) {
   switch(
     type,
     short = col_date(format = "%Y-%m-%d"),
+    #short = col_date(format = "%d/%m/%y"),
     long = col_date(format = "%d/%m/%Y %H:%M:%S AM")
   )
 }
 
 # get latest NSW linelist
-get_nsw_linelist <- function () {
+get_nsw_linelist <- function (
+  file = NULL,
+  nindss_compatible = TRUE
+) {
   
-  files <- list.files(
-    "~/not_synced/nsw",
-    pattern = ".csv",
-    full.names = TRUE
-  )
-
-  dates <- files %>%
-    basename() %>%
-    substr(1, 8) %>%
-    as.Date(format = "%Y%m%d")
-
-  latest <- which.max(dates)
-  file <- files[latest]
-  date <- dates[latest]
-
-
-  file %>%
+  if(is.null(file)){
+    files <- list.files(
+      "~/not_synced/nsw",
+      pattern = ".csv",
+      full.names = TRUE
+    )
+    
+    dates <- files %>%
+      basename() %>%
+      substr(1, 8) %>%
+      as.Date(format = "%Y%m%d")
+    
+    latest <- which.max(dates)
+    file <- files[latest]
+    date <- dates[latest]
+  } else {
+    date <- file %>%
+      basename() %>%
+      substr(1, 8) %>%
+      as.Date(format = "%Y%m%d")
+  }
+  
+  nsw_linelist <- file %>%
     read_csv(
       col_types = cols(
         .default = col_character(),
@@ -4943,9 +4953,11 @@ get_nsw_linelist <- function () {
         CALCULATED_ONSET_DATE = col_nsw_date(),
         AGE_AT_EVENT_YEARS = col_double(),
         DATE_ISOLATION_BEGAN = col_nsw_date(),
-        #SETTING_OF_TRANSMISSION_DATE = col_nsw_date("long"),
+        #SETTING_OF_TRANSMISSION_DATE = col_date(format = "%Y-%m-%d"),
         SETTING_OF_TRANSMISSION_DATE = col_nsw_date(),
-        INTERVIEWED_DATE = col_nsw_date()
+        INTERVIEWED_DATE = col_nsw_date(),
+        S_gene_result_date = col_nsw_date(),
+        Omicron_Category = col_factor()
       )
     ) %>%
     # remove some bogus dates
@@ -4957,7 +4969,8 @@ get_nsw_linelist <- function () {
         "CALCULATED_ONSET_DATE",
         "DATE_ISOLATION_BEGAN",
         "SETTING_OF_TRANSMISSION_DATE",
-        "INTERVIEWED_DATE"
+        "INTERVIEWED_DATE",
+        "S_gene_result_date"
       )),
       clean_date
     )
@@ -4976,6 +4989,7 @@ get_nsw_linelist <- function () {
         #TRUE ~ CALCULATED_ONSET_DATE
         TRUE ~ SYMPTOM_ONSET_DATE
       ),
+      #date_onset = NA,
       date_detection = NA,
       date_confirmation = EARLIEST_CONFIRMED_OR_PROBABLE,
       date_quarantine = DATE_ISOLATION_BEGAN,
@@ -4992,97 +5006,32 @@ get_nsw_linelist <- function () {
       report_delay = NA,
       date_linelist = date,
       interstate_import = FALSE
-    ) %>%
-    select(
-      date_onset,
-      date_detection,
-      date_confirmation = EARLIEST_CONFIRMED_OR_PROBABLE,
-      date_quarantine,
-      state,
-      import_status,
-      postcode_of_acquisition,
-      postcode_of_residence,
-      state_of_acquisition,
-      state_of_residence,
-      report_delay,
-      date_linelist,
-      interstate_import
-    ) %>%
-    arrange(
-      desc(date_onset)
     )
   
-  # edit for excel file  
-  # file <- "~/not_synced/nsw/cases_freya.xlsx"
-  # date <- as.Date("2021-07-21")
-  # 
-  # file %>%
-  #   readxl::read_xlsx(
-  #     col_types = c(
-  #       "text",
-  #       "date",
-  #       "date",
-  #       "text",
-  #       "text",
-  #       "text",
-  #       "text",
-  #       "text",
-  #       "date",
-  #       "text"
-  #     )
-  #   ) %>%
-  #   distinct(.keep_all = TRUE) %>% # some duplicated rows can be id'd by project_recid
-  #   mutate(
-  #     EARLIEST_CONFIRMED_OR_PROBABLE = as.Date(EARLIEST_CONFIRMED_OR_PROBABLE),
-  #     CALCULATED_ONSET_DATE = as.Date(CALCULATED_ONSET_DATE),
-  #     SETTING_OF_TRANSMISSION_DATE = as.Date(SETTING_OF_TRANSMISSION_DATE)
-  #   ) %>%
-  # # if any infection dates are after onset, or on/after confirmation, set the infection date to NA
-  # mutate(
-  #   SETTING_OF_TRANSMISSION_DATE = case_when(
-  #     SETTING_OF_TRANSMISSION_DATE >= EARLIEST_CONFIRMED_OR_PROBABLE ~ as.Date(NA),
-  #     TRUE ~ SETTING_OF_TRANSMISSION_DATE
-  #   )
-  # ) %>%
-  #   mutate(
-  #     date_onset = case_when(
-  #       !is.na(SETTING_OF_TRANSMISSION_DATE) ~ SETTING_OF_TRANSMISSION_DATE + 5,
-  #       TRUE ~ CALCULATED_ONSET_DATE
-  #     ),
-  #     date_detection = NA,
-  #     date_confirmation = EARLIEST_CONFIRMED_OR_PROBABLE,
-  #     state = "NSW",
-  #     import_status = ifelse(
-  #       PLACE_ACQUISITION == "Acquired in NSW",# rethink this if goes to prime time
-  #       "local",
-  #       "imported"
-  #     ),
-  #     postcode_of_acquisition = NA,
-  #     postcode_of_residence = NA,
-  #     state_of_acquisition = "NSW",
-  #     state_of_residence = NA,
-  #     report_delay = NA,
-  #     date_linelist = date#,
-  #     #interstate_import = FALSE # rethink this if goes to prime time
-  #   ) %>%
-  #   select(
-  #     date_onset,
-  #     date_detection,
-  #     date_confirmation = EARLIEST_CONFIRMED_OR_PROBABLE,
-  #     state,
-  #     import_status,
-  #     postcode_of_acquisition,
-  #     postcode_of_residence,
-  #     state_of_acquisition,
-  #     state_of_residence,
-  #     report_delay,
-  #     date_linelist#,
-  #     #interstate_import
-  #   ) %>%
-  #   arrange(
-  #     desc(date_onset)
-  #   )
+  if(nindss_compatible){
+    nsw_linelist <- nsw_linelist %>%
+      select(
+        date_onset,
+        date_detection,
+        date_confirmation,
+        date_quarantine,
+        state,
+        import_status,
+        postcode_of_acquisition,
+        postcode_of_residence,
+        state_of_acquisition,
+        state_of_residence,
+        report_delay,
+        date_linelist,
+        interstate_import
+      ) %>%
+      arrange(
+        desc(date_onset)
+      )
+  }
   
+  return(nsw_linelist)
+
 }
 
 # given a date-by-state matrix of case counts by date of infection,
@@ -6726,9 +6675,9 @@ load_vic <- function (file) {
 } # possibly deprecated?
 
 load_linelist <- function(date = NULL,
-                          use_vic = TRUE,
+                          use_vic = FALSE,
                           use_sa = FALSE,
-                          use_nsw = TRUE) {
+                          use_nsw = FALSE) {
   
   # load the latest NNDSS linelist (either the latest or specified file)
   linelist <- get_nndss_linelist(date = date)
