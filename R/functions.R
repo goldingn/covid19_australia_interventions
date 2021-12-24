@@ -4399,8 +4399,9 @@ get_nndss_linelist <- function(
   dir = "~/not_synced/nndss",
   strict = TRUE,
   #missing_location_assumption = "imported"
-  missing_location_assumption = "local"
-  #missing_location_assumption = "missing"
+  missing_location_assumption = "local",
+  #missing_location_assumption = "missing",
+  location_conflict_assumption = "local"
 ) {
   
   data <- linelist_date_times(dir)
@@ -4638,10 +4639,10 @@ get_nndss_linelist <- function(
       #   import_status == "missing" & STATE != "WA" ~ "imported",
       #   TRUE ~ import_status
       # )
-    ) #%>%
-    # mutate(
-    #   import_status = ifelse(import_status == "ERROR", "imported", import_status)
-    # )
+    ) %>%
+    mutate(
+      import_status = ifelse(import_status == "ERROR", location_conflict_assumption, import_status)
+    )
   
   # record state of acquisition, and residence
   dat <- dat %>%
