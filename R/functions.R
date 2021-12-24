@@ -1588,21 +1588,49 @@ plot_trend <- function(
     mutate(type = "Nowcast")
   
   
-  date_breaks <- ifelse(
-    length(unique(df$date)) < 200,
-    "1 month",
-    "2 month"
-  )
+  if (length(unique(df$date)) >= 200){
+    date_breaks <- "3 month"
+    date_minor_breaks <- "1 month"
+    date_labels <- "%b %y"
+    x_text_angle <- 0
+    x_text_size <- 9
+    x_text_hjust <- 0.5
+    x_text_vjust <- 0.5
+  } else if(length(unique(df$date)) < 50){
+    date_breaks <- "5 days"
+    date_minor_breaks <- "1 day"
+    date_labels <- "%e-%m"
+    x_text_angle <- 0
+    x_text_size <- 9
+    x_text_hjust <- 0.5
+    x_text_vjust <- 0.5
+  } else {
+    date_breaks <- "1 month"
+    date_minor_breaks <- "2 weeks"
+    date_labels <- "%b"
+    x_text_angle <- 0
+    x_text_size <- 9
+    x_text_hjust <- 0.5
+    x_text_vjust <- 0.5
+  }
   
-  date_minor_breaks <- ifelse(
-    length(unique(df$date)) < 200,
-    "2 weeks",
-    "1 month"
-  )
+
+  
+  # date_breaks <- ifelse(
+  #   length(unique(df$date)) < 200,
+  #   "1 month",
+  #   "2 month"
+  # )
+  # 
+  # date_minor_breaks <- ifelse(
+  #   length(unique(df$date)) < 200,
+  #   "2 weeks",
+  #   "1 month"
+  # )
   
   #range(ylim)[2] - range(ylim)[1]
   
-  x_text_size <- ifelse(length(unique(df$date)) < 200, 10, 9)
+  #x_text_size <- ifelse(length(unique(df$date)) < 200, 10, 9)
   
   
   if (is.null(ylim)) {
@@ -1628,7 +1656,7 @@ plot_trend <- function(
     
     coord_cartesian(ylim = ylim) +
     y_scale +
-    scale_x_date(date_breaks = date_breaks, date_minor_breaks = date_minor_breaks, date_labels = "%e/%m") +
+    scale_x_date(date_breaks = date_breaks, date_minor_breaks = date_minor_breaks, date_labels = date_labels) +
     scale_alpha(range = c(0, 0.5)) +
     scale_fill_manual(values = c("Nowcast" = base_colour)) +
     
@@ -1661,7 +1689,7 @@ plot_trend <- function(
           strip.text = element_text(hjust = 0, face = "bold"),
           axis.title.y.right = element_text(vjust = 0.5, angle = 90),
           panel.spacing = unit(1.2, "lines"),
-          axis.text.x = element_text(size = x_text_size))
+          axis.text.x = element_text(size = x_text_size, angle = x_text_angle, hjust = x_text_hjust, vjust = x_text_vjust))
   
   if(plot_voc){
     p <- p + 
@@ -6758,7 +6786,6 @@ load_linelist <- function(date = NULL,
             date_detection <= nsw_ll_date
         )
       ) %>%
-      
       bind_rows(
         nsw_ll
       )
