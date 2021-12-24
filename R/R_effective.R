@@ -77,6 +77,29 @@ reff_plotting(
 )
 
 
+# most recent month no nowcast
+reff_plotting(
+  fitted_model,
+  dir = "outputs",
+  subdir = "figures/one_month/no_nowcast",
+  min_date = fitted_model$data$dates$latest_mobility - months(1),
+  max_date = fitted_model$data$dates$latest_infection,
+  sims = sims,
+  mobility_extrapolation_rectangle = FALSE
+)
+
+
+# most recent six months no nowcast
+reff_plotting(
+  fitted_model,
+  dir = "outputs",
+  subdir = "figures/six_month/no_nowcast",
+  min_date = NA,
+  max_date = fitted_model$data$dates$latest_infection,
+  sims = sims,
+  mobility_extrapolation_rectangle = FALSE
+)
+
 # projection plots 
 reff_plotting(
   fitted_model,  
