@@ -2,6 +2,11 @@
 # state, using a baseline rate, and survey questions from Freya's survey and the
 # BETA barometer
 
+## running Reff model without updted survey data anywhere between ##> and ##< 2 sections
+
+
+##>1
+
 source("R/lib.R")
 
 source("R/functions.R")
@@ -26,6 +31,8 @@ data <- macrodistancing_data()
 params <- macrodistancing_params(baseline_contact_params)
 predictions <- macrodistancing_model(data, params)
 out <- macrodistancing_likelihood(predictions, data)
+
+##<1
 
 # fit model
 set.seed(2020-05-30)
@@ -66,6 +73,8 @@ fitted_model <- module(
 
 # save fitted model
 saveRDS(fitted_model, "outputs/fitted_macro_model.RDS")
+
+##>2 read in fitted model and un comment next 4 lines
 # fitted_model <- readRDS("outputs/fitted_macro_model.RDS")
 # 
 # # make predictions using updated data on a day out of sync with standard Monday fit
@@ -110,6 +119,8 @@ saveRDS(pred_trend,
         file = "outputs/macrodistancing_trends.RDS")
 
 # run only up to here for reff update
+##<2
+
 
 # estimates at peak and at latest date
 pred_summary <- pred_trend %>%
