@@ -4995,7 +4995,7 @@ get_nsw_linelist <- function (
       date_quarantine = DATE_ISOLATION_BEGAN,
       state = "NSW",
       import_status = ifelse(
-        PLACE_ACQUISITION == "Acquired in NSW",
+        PLACE_ACQUISITION %in% c("Acquired in NSW",NA),
         "local",
         "imported"
       ),
@@ -6675,9 +6675,9 @@ load_vic <- function (file) {
 } # possibly deprecated?
 
 load_linelist <- function(date = NULL,
-                          use_vic = FALSE,
+                          use_vic = TRUE,
                           use_sa = FALSE,
-                          use_nsw = FALSE) {
+                          use_nsw = TRUE) {
   
   # load the latest NNDSS linelist (either the latest or specified file)
   linelist <- get_nndss_linelist(date = date)
