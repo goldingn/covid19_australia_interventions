@@ -1,4 +1,4 @@
-library("R/functions.R")
+source("R/functions.R")
 
 
 nsw_linelist <- get_nsw_linelist(nindss_compatible = FALSE)
