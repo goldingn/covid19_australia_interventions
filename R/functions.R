@@ -4759,7 +4759,7 @@ get_vic_linelist <- function(file) {
     #   na = "NA"
     # ) %>%
     mutate(
-      date_onset = as.Date(SymptomsOnsetDate),
+      date_onset = clean_date(as.Date(SymptomsOnsetDate)),#deal with future onset dates
       date_confirmation = as.Date(DiagnosisDate),
       date_detection = clean_date(as.Date(FirstSpecimenPositiveDate)),
       state = "VIC",
@@ -4781,8 +4781,7 @@ get_vic_linelist <- function(file) {
       ),
       date_detection = case_when(
         is.na(date_detection) ~ date_confirmation - 1,
-        TRUE ~ date_detection
-      )
+        TRUE ~ date_detection)
     ) %>%
     select(
       date_onset,
@@ -5158,7 +5157,7 @@ reff_model_data <- function(
   )
   
   # subset to dates with reasonably high detection probabilities in some states
-  detectable <- detection_prob_mat >= 0.5
+  detectable <- detection_prob_mat >= 0.9
   
   # the last date with infection data we include
   last_detectable_idx <- which(!apply(detectable, 1, any))[1]
@@ -6732,8 +6731,9 @@ load_linelist <- function(date = NULL,
       filter(
         !(state == "NSW" &
             import_status == "local" &
-            date_detection >= nsw_ll_start & 
-            date_detection <= nsw_ll_date
+            date_detection >= nsw_ll_start #& 
+          #grey this out to follow NCIMs delay pattern  
+          # date_detection <= nsw_ll_date
         )
       ) %>%
       bind_rows(
