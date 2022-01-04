@@ -1,4 +1,8 @@
 # omicron TP
+
+# this script needs serious tidying up but the result is fine
+
+
 source("R/functions.R")
 
 fitted_model <- readRDS("outputs/fitted_reff_model.RDS")
@@ -208,3 +212,4 @@ o <- optimise(objective, interval = c(0, 1))
 p_star_omicron <- o$minimum
 
 phi_omicron <- log(p_star_omicron) / log(p)
+# 1.64473
