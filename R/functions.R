@@ -9696,11 +9696,14 @@ load_air_data <- function(
       "count" = CUMULATIVE_UNIQUE_INDIVIDUALS_VACCINATED
     ) %>%
     select(-week) %>%
-    mutate(
-      date = as.Date(
-        date,
-        format = "%d/%m/%Y"
-      ),
+    mutate( #deal with the half week special case dates
+      date = case_when(
+        date == "2022-01-01" ~ as.Date("2021-12-27"),
+        TRUE ~ as.Date(
+          date,
+          format = "%d/%m/%Y"
+        )),
+      
       age_class = case_when(
         age_class %in% over_80 ~ "80+",
         TRUE ~ age_class
