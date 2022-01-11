@@ -206,7 +206,7 @@ lc_long <- local_cases %>%
 
 prob_line <- lc_long %>%
   filter(type == "count") %>%
-  filter(detection_probability >= 0.5) %>%
+  filter(detection_probability >= 0.9) %>%
   group_by(state) %>%
   filter(detection_probability == min(detection_probability)) %>%
   select(state,date_onset)
@@ -233,7 +233,7 @@ lc_long %>%
     scales = "free_y"
   )
     
-
+ggsave("outputs/figures/watermelon.png")
 
 linelist %>%
   filter(

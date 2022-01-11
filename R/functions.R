@@ -4569,7 +4569,7 @@ get_nndss_linelist <- function(
   }
   
   #read the xls format starting from 06-01-2022
-  if (ll_date < "2022-01-06") {
+  if (ll_date < "2022-01-06"|ll_date > "2022-01-07") {
     dat <- readxl::read_xlsx(
       data$file,
       col_types = col_types,
@@ -4786,11 +4786,12 @@ get_vic_linelist <- function(file) {
           #SymptomsOnsetDate = col_date(format = "%d/%m/%Y"),
           LGA = col_character(),
           Acquired = col_character(),
-          FirstSpecimenPositiveDate = col_date(format = "")
+          FirstSpecimenPositiveDate = col_date(format = ""),
+          Classification = col_character()# not backwards compatible for the moment, will do a proper fix later
           #FirstSpecimenPositiveDate = col_date(format = "%d/%m/%Y")
         ),
         na = "NA"
-      ) %>%
+      ) %>% filter(Classification == "Confirmed"|FirstSpecimenPositiveDate > "2021-12-25") %>%
     # read_excel(
     #   col_types = c("numeric", "date", "date", "text", "text", "date"),
     #   na = "NA"

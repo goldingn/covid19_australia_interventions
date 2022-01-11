@@ -75,11 +75,11 @@ fitted_model <- module(
 saveRDS(fitted_model, "outputs/fitted_macro_model.RDS")
 
 ##>2 read in fitted model and un comment next 4 lines
-# fitted_model <- readRDS("outputs/fitted_macro_model.RDS")
-# 
-# # make predictions using updated data on a day out of sync with standard Monday fit
-# fitted_model$data <- data
-# fitted_model$predictions <- macrodistancing_model(fitted_model$data, fitted_model$params)
+fitted_model <- readRDS("outputs/fitted_macro_model.RDS")
+
+# make predictions using updated data on a day out of sync with standard Monday fit
+fitted_model$data <- data
+fitted_model$predictions <- macrodistancing_model(fitted_model$data, fitted_model$params)
 
 nsim <- coda::niter(fitted_model$draws) * coda::nchain(fitted_model$draws)
 nsim <- min(10000, nsim)
