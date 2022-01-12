@@ -2491,33 +2491,33 @@ social_distancing_national <- function(dates, n_extra = 0) {
 
 prop_variant_dates <- function(){
   tibble::tribble(
-    ~state,        ~date, ~prop_wt, ~prop_alpha, ~prop_delta,
-    "ACT",  "2020-01-01",        1,           0,          0,
-    "NSW",  "2020-01-01",        1,           0,          0,
-    "NT",   "2020-01-01",        1,           0,          0,
-    "QLD",  "2020-01-01",        1,           0,          0,
-    "SA",   "2020-01-01",        1,           0,          0,
-    "TAS",  "2020-01-01",        1,           0,          0,
-    "VIC",  "2020-01-01",        1,           0,          0,
-    "WA",   "2020-01-01",        1,           0,          0,
+    ~state,        ~date, ~prop_wt, ~prop_alpha, ~prop_delta, ~prop_omicron,
+    "ACT",  "2020-01-01",        1,           0,           0,             0,
+    "NSW",  "2020-01-01",        1,           0,           0,             0,
+    "NT",   "2020-01-01",        1,           0,           0,             0,
+    "QLD",  "2020-01-01",        1,           0,           0,             0,
+    "SA",   "2020-01-01",        1,           0,           0,             0,
+    "TAS",  "2020-01-01",        1,           0,           0,             0,
+    "VIC",  "2020-01-01",        1,           0,           0,             0,
+    "WA",   "2020-01-01",        1,           0,           0,             0,
     
-    "ACT",  "2021-01-27",        0,           1,          0,
-    "NSW",  "2021-01-27",        0,           1,          0,
-    "NT",   "2021-01-27",        0,           1,          0,
-    "QLD",  "2021-01-27",        0,           1,          0,
-    "SA",   "2021-01-27",        0,           1,          0,
-    "TAS",  "2021-01-27",        0,           1,          0,
-    "VIC",  "2021-01-27",        0,           1,          0,
-    "WA",   "2021-01-27",        0,           1,          0,
+    "ACT",  "2021-01-27",        0,           1,           0,             0,
+    "NSW",  "2021-01-27",        0,           1,           0,             0,
+    "NT",   "2021-01-27",        0,           1,           0,             0,
+    "QLD",  "2021-01-27",        0,           1,           0,             0,
+    "SA",   "2021-01-27",        0,           1,           0,             0,
+    "TAS",  "2021-01-27",        0,           1,           0,             0,
+    "VIC",  "2021-01-27",        0,           1,           0,             0,
+    "WA",   "2021-01-27",        0,           1,           0,             0,
     
-    "ACT",  "2021-06-07",        0,           0,          1,
-    "NSW",  "2021-06-07",        0,           0,          1,
-    "NT",   "2021-06-07",        0,           0,          1,
-    "QLD",  "2021-06-07",        0,           0,          1,
-    "SA",   "2021-06-07",        0,           0,          1,
-    "TAS",  "2021-06-07",        0,           0,          1,
-    "VIC",  "2021-06-07",        0,           0,          1,
-    "WA",   "2021-06-07",        0,           0,          1
+    "ACT",  "2021-06-07",        0,           0,           1,             0,
+    "NSW",  "2021-06-07",        0,           0,           1,             0,
+    "NT",   "2021-06-07",        0,           0,           1,             0,
+    "QLD",  "2021-06-07",        0,           0,           1,             0,
+    "SA",   "2021-06-07",        0,           0,           1,             0,
+    "TAS",  "2021-06-07",        0,           0,           1,             0,
+    "VIC",  "2021-06-07",        0,           0,           1,             0,
+    "WA",   "2021-06-07",        0,           0,           1,             0
   ) %>%
     mutate(
       date = as.Date(date)
@@ -2567,10 +2567,21 @@ prop_variant <- function(dates){
     dplyr::select(-date)%>%
     as.matrix
   
+  prop_omicron <- df %>%
+    dplyr::select(state, date, prop_omicron) %>%
+    pivot_wider(
+      names_from = state,
+      values_from = prop_omicron
+    ) %>%
+    arrange(date) %>%
+    dplyr::select(-date)%>%
+    as.matrix
+  
   prop_variant <- list(
     "prop_wt"    = prop_wt,
     "prop_alpha" = prop_alpha,
-    "prop_delta" = prop_delta
+    "prop_delta" = prop_delta,
+    "prop_omicron" = prop_omicron
   )
   
   return(prop_variant)
@@ -2581,7 +2592,7 @@ prop_variant <- function(dates){
 distancing_effect_model <- function(
   dates,
   gi_cdf,
-  voc_mixture = c("all", "alpha", "delta", "wt")
+  voc_mixture = c("all", "alpha", "delta", "omicron", "wt")
 ) {
   
   voc_mixture <- match.arg(voc_mixture)
@@ -2594,22 +2605,35 @@ distancing_effect_model <- function(
   prop_var <- prop_variant(dates = dates)
   prop_alpha <- prop_var$prop_alpha
   prop_delta <- prop_var$prop_delta
+  prop_omicron <- prop_var$prop_omicron
   prop_wt    <- prop_var$prop_wt
   
   if(voc_mixture == "alpha") {
+    prop_wt <- prop_wt * 0
     prop_alpha <- prop_alpha * 0 + 1
-    prop_delta <- prop_wt <- prop_delta * 0
+    prop_delta <- prop_delta * 0
+    prop_omicron <- prop_omicron * 0
   }
   
   if(voc_mixture == "delta") {
+    prop_wt <- prop_wt * 0
+    prop_alpha <- prop_alpha * 0 
     prop_delta <- prop_delta * 0 + 1
-    prop_alpha <- prop_wt <- prop_alpha * 0
+    prop_omicron <- prop_omicron * 0
+  }
+  
+  if(voc_mixture == "omicron") {
+    prop_wt <- prop_wt * 0
+    prop_alpha <- prop_alpha * 0 
+    prop_delta <- prop_delta * 0
+    prop_omicron <- prop_omicron * 0 + 1
   }
   
   if(voc_mixture == "wt") {
     prop_wt <- prop_wt * 0 + 1
     prop_alpha <- prop_alpha * 0 
     prop_delta <- prop_delta * 0
+    prop_omicron <- prop_omicron * 0
   }
   
   
@@ -2621,10 +2645,11 @@ distancing_effect_model <- function(
   
   phi_alpha       <- normal(1.454, 0.055, truncation = c(0, Inf))
   phi_delta_alpha <- normal(1.421, 0.033, truncation = c(0, Inf))
+  phi_omicron <- 1.645
   
   phi_delta <- phi_alpha * phi_delta_alpha
   
-  phi_star <- prop_wt * 1 + prop_alpha * phi_alpha + prop_delta * phi_delta
+  phi_star <- prop_wt * 1 + prop_alpha * phi_alpha + prop_delta * phi_delta + prop_omicron * phi_omicron
 
   p_star <- p ^ phi_star
   
@@ -9843,7 +9868,8 @@ simulate_variant <- function(
   dir = "outputs/projection/",
   subdir = NA,
   ratio_samples = FALSE,
-  variant = c("wt", "alpha", "delta")
+  variant = c("wt", "alpha", "delta", "omicron"),
+  vax_effect = NULL
 ){
   
   variant <- match.arg(variant)
@@ -9859,35 +9885,43 @@ simulate_variant <- function(
   
   p <- de$p
   
+  
   prop_var <- prop_variant(dates = dates)
   prop_alpha <- prop_var$prop_alpha
   prop_delta <- prop_var$prop_delta
+  prop_omicron <- prop_var$prop_omicron
   prop_wt    <- prop_var$prop_wt
+  
   
   phi_alpha       <- normal(1.454, 0.055, truncation = c(0, Inf))
   phi_delta_alpha <- normal(1.421, 0.033, truncation = c(0, Inf))
+  phi_omicron <- 1.645
   
   phi_delta <- phi_alpha * phi_delta_alpha
-  
-  # phi_star <- prop_wt * 1 + prop_alpha * phi_alpha + prop_delta * phi_delta
-  # 
-  # p <- p_star ^ (1/phi_star)
   
   if(variant == "wt") {
     prop_wt_hat    <- prop_wt    * 0 + 1
     prop_alpha_hat <- prop_alpha * 0 
     prop_delta_hat <- prop_delta * 0
-  }else if(variant == "alpha") {
+    prop_omicron_hat <- prop_omicron * 0
+  } else if(variant == "alpha") {
     prop_wt_hat    <- prop_wt    * 0
     prop_alpha_hat <- prop_alpha * 0 + 1
     prop_delta_hat <- prop_delta * 0
+    prop_omicron_hat <- prop_omicron * 0
   } else if(variant == "delta") {
     prop_wt_hat    <- prop_wt    * 0
     prop_alpha_hat <- prop_alpha * 0
     prop_delta_hat <- prop_delta * 0 + 1
+    prop_omicron_hat <- prop_omicron * 0
+  }  else if(variant == "omicron") {
+    prop_wt_hat    <- prop_wt    * 0
+    prop_alpha_hat <- prop_alpha * 0
+    prop_delta_hat <- prop_delta * 0
+    prop_omicron_hat <- prop_omicron * 0 + 1
   } 
   
-  phi_hat <- prop_wt_hat * 1 + prop_alpha_hat * phi_alpha + prop_delta_hat * phi_delta
+  phi_hat <- prop_wt_hat * 1 + prop_alpha_hat * phi_alpha + prop_delta_hat * phi_delta + prop_omicron_hat * phi_omicron
   
   p_hat <- p ^ phi_hat
   
@@ -9912,7 +9946,29 @@ simulate_variant <- function(
   # 
   
   wt_fitted_model <- .fitted_model
-  wt_fitted_model$greta_arrays$R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_reff_local_reduction
+  
+  if(is.null(vax_effect)){
+    wt_fitted_model$greta_arrays$R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_reff_local_reduction
+  } else {
+    vax_effect <- vax_effect %>%
+      pivot_wider(
+        names_from = state,
+        values_from = effect
+      ) %>%
+      full_join(
+        y = tibble(date = data$dates$infection_project)
+      ) %>%
+      arrange(date) %>%
+      tidyr::fill(
+        everything(),
+        .direction = "updown"
+      ) %>%
+      dplyr::select(-date) %>%
+      as.matrix
+    
+    wt_fitted_model$greta_arrays$R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_reff_local_reduction * vax_effect
+  }
+  
   
   
   dir.create(dir, showWarnings = FALSE)
@@ -10502,3 +10558,15 @@ write_reff_sims_novax <- function(
   
   
 }
+
+state_short_long_table <- tibble::tribble(
+  ~state_short, ~state_long,
+  "ACT", "Australian Capital Territory",
+  "NSW", "New South Wales",
+   "NT", "Northern Territory",
+  "QLD", "Queensland",
+   "SA", "South Australia",
+  "TAS", "Tasmania",
+  "VIC", "Victoria",
+   "WA", "Western Australia"
+)
