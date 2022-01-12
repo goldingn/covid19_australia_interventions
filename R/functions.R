@@ -4364,10 +4364,10 @@ linelist_date_times <- function(
   name_pattern = "^COVID-19 UoM "
 ) {
   # find the files
-  files <- list.files(dir, pattern = ".xlsx$", full.names = TRUE)
+  files <- list.files(dir, pattern = c(".xlsx*$|.csv$"), full.names = TRUE)
   # pull out the date time stamp
   date_time_text <- gsub(name_pattern, "", basename(files)) 
-  date_time_text <- gsub(".xlsx$", "", date_time_text)
+  date_time_text <- gsub(c(".xlsx*$|.csv$"), "", date_time_text)
   #date_times_hm <- as.POSIXct(date_time_text, format = "%d%b%Y %H%M")
   date_times <- as.POSIXct(date_time_text, format = "%d%b%Y")
   # return as a dataframe
@@ -4568,11 +4568,48 @@ get_nndss_linelist <- function(
     col_types <- col_types_4
   }
   
-  dat <- readxl::read_xlsx(
-    data$file,
-    col_types = col_types,
-    na = "NULL" # usually turn this off
-  )
+  #read the xls format starting from 06-01-2022
+  if (ll_date < "2022-01-06"|ll_date > "2022-01-07") {
+    dat <- readxl::read_xlsx(
+      data$file,
+      col_types = col_types,
+      na = "NULL" # usually turn this off
+    )
+  } else {
+    dat <- readr::read_csv(
+      data$file,
+      col_types = cols_only(
+        STATE = col_character(),
+        Postcode = col_double(),
+        CONFIRMATION_STATUS = col_character(),
+        TRUE_ONSET_DATE = col_date(format = "%d/%m/%Y"),
+        SPECIMEN_DATE = col_date(format = "%d/%m/%Y"),
+        NOTIFICATION_DATE = col_date(format = "%d/%m/%Y"),
+        NOTIFICATION_RECEIVE_DATE = col_date(format = "%d/%m/%Y"),
+        'DIAGNOSIS DATE' = col_date(format = "%d/%m/%Y"),
+        AGE_AT_ONSET = col_double(),
+        SEX = col_double(),
+        DIED = col_double(),
+        PLACE_OF_ACQUISITION = col_character(),
+        HOSPITALISED = col_double(),
+        CV_ICU = col_double(),
+        CV_VENTILATED = col_double(),
+        OUTBREAK_REF = col_character(),
+        CASE_FOUND_BY = col_double(),
+        CV_SYMPTOMS = col_character(),
+        CV_OTHER_SYMPTOMS = col_character(),
+        CV_COMORBIDITIES = col_character(),
+        CV_OTHER_COMORBIDITIES = col_character(),
+        CV_GESTATION = col_double(),
+        #CV_CLOSE_CONTACT = "numeric"
+        CV_EXPOSURE_SETTING = col_double(),
+        CV_SOURCE_INFECTION = col_double(),
+        CV_SYMPTOMS_REPORTED = col_double(),
+        CV_QUARANTINE_STATUS = col_double(),
+        CV_DATE_ENTERED_QUARANTINE = col_date(format = "%d/%m/%Y")),
+      na = "NULL" # usually turn this off
+    ) %>% rename(POSTCODE = Postcode)
+  }
   
   if(ll_date < "2021-03-08"){
     dat <- dat %>%
@@ -4749,17 +4786,18 @@ get_vic_linelist <- function(file) {
           #SymptomsOnsetDate = col_date(format = "%d/%m/%Y"),
           LGA = col_character(),
           Acquired = col_character(),
-          FirstSpecimenPositiveDate = col_date(format = "")
+          FirstSpecimenPositiveDate = col_date(format = ""),
+          Classification = col_character()# not backwards compatible for the moment, will do a proper fix later
           #FirstSpecimenPositiveDate = col_date(format = "%d/%m/%Y")
         ),
         na = "NA"
-      ) %>%
+      ) %>% filter(Classification == "Confirmed"|FirstSpecimenPositiveDate > "2021-12-25") %>%
     # read_excel(
     #   col_types = c("numeric", "date", "date", "text", "text", "date"),
     #   na = "NA"
     # ) %>%
     mutate(
-      date_onset = as.Date(SymptomsOnsetDate),
+      date_onset = clean_date(as.Date(SymptomsOnsetDate)),#deal with future onset dates
       date_confirmation = as.Date(DiagnosisDate),
       date_detection = clean_date(as.Date(FirstSpecimenPositiveDate)),
       state = "VIC",
@@ -4781,8 +4819,7 @@ get_vic_linelist <- function(file) {
       ),
       date_detection = case_when(
         is.na(date_detection) ~ date_confirmation - 1,
-        TRUE ~ date_detection
-      )
+        TRUE ~ date_detection)
     ) %>%
     select(
       date_onset,
@@ -5158,7 +5195,7 @@ reff_model_data <- function(
   )
   
   # subset to dates with reasonably high detection probabilities in some states
-  detectable <- detection_prob_mat >= 0.5
+  detectable <- detection_prob_mat >= 0.9
   
   # the last date with infection data we include
   last_detectable_idx <- which(!apply(detectable, 1, any))[1]
@@ -6732,8 +6769,9 @@ load_linelist <- function(date = NULL,
       filter(
         !(state == "NSW" &
             import_status == "local" &
-            date_detection >= nsw_ll_start & 
-            date_detection <= nsw_ll_date
+            date_detection >= nsw_ll_start #& 
+          #grey this out to follow NCIMs delay pattern  
+          # date_detection <= nsw_ll_date
         )
       ) %>%
       bind_rows(
@@ -9696,11 +9734,14 @@ load_air_data <- function(
       "count" = CUMULATIVE_UNIQUE_INDIVIDUALS_VACCINATED
     ) %>%
     select(-week) %>%
-    mutate(
-      date = as.Date(
-        date,
-        format = "%d/%m/%Y"
-      ),
+    mutate( #deal with the half week special case dates
+      date = case_when(
+        date == "2022-01-01" ~ as.Date("2021-12-27"),
+        TRUE ~ as.Date(
+          date,
+          format = "%d/%m/%Y"
+        )),
+      
       age_class = case_when(
         age_class %in% over_80 ~ "80+",
         TRUE ~ age_class

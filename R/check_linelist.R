@@ -168,11 +168,48 @@ if (ll_date < "2021-03-08") {
 }
 
 
+#read the xls format starting from 06-01-2022
+if (ll_date < "2022-01-06") {
   dat <- readxl::read_xlsx(
     data$file,
     col_types = col_types,
-    na = "NULL"
+    na = "NULL" # usually turn this off
   )
+} else {
+  dat <- readr::read_csv(
+    data$file,
+    col_types = cols_only(
+      STATE = col_character(),
+      Postcode = col_double(),
+      CONFIRMATION_STATUS = col_character(),
+      TRUE_ONSET_DATE = col_date(format = "%d/%m/%Y"),
+      SPECIMEN_DATE = col_date(format = "%d/%m/%Y"),
+      NOTIFICATION_DATE = col_date(format = "%d/%m/%Y"),
+      NOTIFICATION_RECEIVE_DATE = col_date(format = "%d/%m/%Y"),
+      'DIAGNOSIS DATE' = col_date(format = "%d/%m/%Y"),
+      AGE_AT_ONSET = col_double(),
+      SEX = col_double(),
+      DIED = col_double(),
+      PLACE_OF_ACQUISITION = col_character(),
+      HOSPITALISED = col_double(),
+      CV_ICU = col_double(),
+      CV_VENTILATED = col_double(),
+      OUTBREAK_REF = col_character(),
+      CASE_FOUND_BY = col_double(),
+      CV_SYMPTOMS = col_character(),
+      CV_OTHER_SYMPTOMS = col_character(),
+      CV_COMORBIDITIES = col_character(),
+      CV_OTHER_COMORBIDITIES = col_character(),
+      CV_GESTATION = col_double(),
+      #CV_CLOSE_CONTACT = "numeric"
+      CV_EXPOSURE_SETTING = col_double(),
+      CV_SOURCE_INFECTION = col_double(),
+      CV_SYMPTOMS_REPORTED = col_double(),
+      CV_QUARANTINE_STATUS = col_double(),
+      CV_DATE_ENTERED_QUARANTINE = col_date(format = "%d/%m/%Y")),
+    na = "NULL" # usually turn this off
+  ) %>% rename(POSTCODE = Postcode)
+}
   
 filter_date <- ll_date - lubridate::days(28)
 
