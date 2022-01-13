@@ -4577,6 +4577,51 @@ get_nndss_linelist <- function(
       "date"
     )
     
+    col_types_5 <- c( #same as 4 but postcode in lower case
+      STATE = "text",
+      Postcode = "numeric",
+      CONFIRMATION_STATUS = "text",
+      TRUE_ONSET_DATE = "date",
+      SPECIMEN_DATE = "date",
+      NOTIFICATION_DATE = "date",
+      NOTIFICATION_RECEIVE_DATE = "date",
+      Diagnosis_Date = "date",
+      AGE_AT_ONSET = "numeric",
+      SEX = "numeric",
+      DIED = "numeric",
+      PLACE_OF_ACQUISITION = "text",
+      HOSPITALISED = "numeric",
+      CV_ICU = "numeric",
+      CV_VENTILATED = "numeric",
+      OUTBREAK_REF = "text",
+      CASE_FOUND_BY = "numeric",
+      CV_SYMPTOMS = "text",
+      CV_OTHER_SYMPTOMS = "text",
+      CV_COMORBIDITIES = "text",
+      CV_OTHER_COMORBIDITIES = "text",
+      CV_GESTATION = "numeric",
+      #CV_CLOSE_CONTACT = "numeric"
+      CV_EXPOSURE_SETTING = "numeric",
+      CV_SOURCE_INFECTION = "numeric",
+      CV_SYMPTOMS_REPORTED = "numeric",
+      CV_QUARANTINE_STATUS = "numeric",
+      CV_DATE_ENTERED_QUARANTINE = "date",
+      "numeric",
+      "text",
+      "date",
+      "numeric",
+      "text",
+      "date",
+      "numeric",
+      "text",
+      "date",
+      "numeric",
+      "text",
+      "date",
+      "numeric",
+      "text",
+      "date"
+    )
   }
   
   
@@ -4589,8 +4634,10 @@ get_nndss_linelist <- function(
     col_types <- col_types_2
   } else if (ll_date < "2021-12-02") {
     col_types <- col_types_3
-  } else {
+  } else if (ll_date < "2022-01-06") {
     col_types <- col_types_4
+  } else {
+    col_types <- col_types_5
   }
   
   #read the xls format starting from 06-01-2022
@@ -4643,6 +4690,11 @@ get_nndss_linelist <- function(
       )
   }
   
+  if(ll_date > "2022-01-07"){ #fix changed postcode colname
+    dat <- dat %>%
+      rename(POSTCODE = Postcode) %>% 
+      mutate(POSTCODE = as.numeric(POSTCODE)) #not sure why this breaks down
+  }
   
   if (is.numeric(dat$POSTCODE)) {
     dat <- dat %>%
@@ -4666,7 +4718,12 @@ get_nndss_linelist <- function(
       NOTIFICATION_RECEIVE_DATE = clean_date(NOTIFICATION_RECEIVE_DATE),
       SPECIMEN_DATE = clean_date(SPECIMEN_DATE),
       CV_DATE_ENTERED_QUARANTINE = clean_date(CV_DATE_ENTERED_QUARANTINE)
-    ) %>%
+    ) %>% 
+    mutate( #tidy up PoA codes - maybe fixed at some point
+      PLACE_OF_ACQUISITION = ifelse(nchar(PLACE_OF_ACQUISITION) == 5, 
+                                    paste0("000",PLACE_OF_ACQUISITION),
+                                    PLACE_OF_ACQUISITION)
+    ) %>% 
     mutate(
       import_status = case_when(
         # return "ERROR" if place of acquisition and cv_source_infection
