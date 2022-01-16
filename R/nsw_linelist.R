@@ -206,7 +206,7 @@ lc_long <- local_cases %>%
 
 prob_line <- lc_long %>%
   filter(type == "count") %>%
-  filter(detection_probability >= 0.9) %>%
+  filter(detection_probability >= 0.95) %>%
   group_by(state) %>%
   filter(detection_probability == min(detection_probability)) %>%
   select(state,date_onset)
