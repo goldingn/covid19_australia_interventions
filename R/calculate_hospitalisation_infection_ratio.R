@@ -54,7 +54,7 @@ nsw_clinic_linelist <- file %>%
                discharge_date,los_hours)
 
 nsw_clinic_linelist_calculation_period <- nsw_clinic_linelist %>% 
-  filter(admit_date <= "2021-12-31" & admit_date >= "2021-12-11")
+  filter(admit_date <= "2021-12-31" & admit_date >= "2021-12-01")
 
 # count daily hospitalisation
 nsw_daily_admit <- as.data.frame(table(nsw_clinic_linelist_calculation_period$admit_date),
@@ -64,7 +64,7 @@ nsw_daily_admit <- as.data.frame(table(nsw_clinic_linelist_calculation_period$ad
 
 #get daily infection from local cases input
 nsw_daily_infect <- read_csv("outputs/local_cases_input.csv") %>% 
-  filter(date_onset <= "2021-12-21" & date_onset >= "2021-12-01", state == "NSW")
+  filter(date_onset <= "2021-12-31" & date_onset >= "2021-12-01", state == "NSW")
 
 
 nsw_daily_combined <- cbind(nsw_daily_infect,nsw_daily_admit$count_admit) %>% 
@@ -72,7 +72,7 @@ nsw_daily_combined <- cbind(nsw_daily_infect,nsw_daily_admit$count_admit) %>%
 nsw_daily_combined$ratio <- nsw_daily_combined$count/nsw_daily_combined$count_admit
 mean(nsw_daily_combined$ratio)
 
-nsw_daily_combined$date_num <- seq(1,21)
+nsw_daily_combined$date_num <- seq(1,31)
 
 
 m <- glm(count ~ offset(log(count_admit)) + date_num, family = stats::poisson, data = nsw_daily_combined)
