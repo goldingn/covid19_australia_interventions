@@ -4878,12 +4878,12 @@ get_vic_linelist <- function(file) {
           #SymptomsOnsetDate = col_date(format = "%d/%m/%Y"),
           LGA = col_character(),
           Acquired = col_character(),
-          FirstSpecimenPositiveDate = col_date(format = ""),
-          Classification = col_character()# not backwards compatible for the moment, will do a proper fix later
+          FirstSpecimenPositiveDate = col_date(format = "")#,
+          #Classification = col_character()# not backwards compatible for the moment, will do a proper fix later
           #FirstSpecimenPositiveDate = col_date(format = "%d/%m/%Y")
         ),
         na = "NA"
-      ) %>% filter(Classification == "Confirmed"|FirstSpecimenPositiveDate > "2021-12-25") %>%
+      ) %>% #filter(Classification == "Confirmed"|FirstSpecimenPositiveDate > "2021-12-25") %>%
     # read_excel(
     #   col_types = c("numeric", "date", "date", "text", "text", "date"),
     #   na = "NA"
