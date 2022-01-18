@@ -278,7 +278,7 @@ data_shifted <- data %>%
 # hospitalisation rate will be a mix of two, for two different variants
 admission_prob_model <- data_shifted %>%
   filter(
-    day >= 436 & day <= 456
+    date >= "2021-12-01" & date <= "2021-12-21"
   ) %>%
   glm(
     cbind(admissions_deconvolved, infections - admissions_deconvolved)  ~ day,
