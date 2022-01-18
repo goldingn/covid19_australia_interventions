@@ -4640,14 +4640,24 @@ get_nndss_linelist <- function(
     col_types <- col_types_5
   }
   
-  #read the xls format starting from 06-01-2022
+  
   if (ll_date < "2022-01-06"|ll_date > "2022-01-07") {
-    dat <- readxl::read_xlsx(
-      data$file,
-      col_types = col_types,
-      na = "NULL" # usually turn this off
-    )
-  } else {
+    if (length(readxl::excel_sheets(data$file)) == 1) { #handle multiple sheets
+      dat <- readxl::read_xlsx(
+        data$file,
+        col_types = col_types,
+        na = "NULL" # usually turn this off
+      )
+    } else { #deal with multiple sheets
+      sheets <- readxl::excel_sheets(data$file)
+      dat <- lapply(sheets, 
+                    function(X) readxl::read_xlsx(data$file,
+                                                  col_types = col_types,
+                                                  na = "NULL", 
+                                                  sheet = X)) 
+      dat <- dat %>% reduce(full_join)
+    }
+  } else { #read the xls format starting from 06-01-2022
     dat <- readr::read_csv(
       data$file,
       col_types = cols_only(
