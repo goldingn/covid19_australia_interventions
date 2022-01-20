@@ -4,7 +4,7 @@ green <- RColorBrewer::brewer.pal(8, "Set2")[1]
 
 # ------------------------ #
 
-the.date <- "11Jan2022"
+the.date <- "19Jan2022"
 vacc.start <- ymd("2021-02-22")
 
 omicron_no_vax <- read_csv(paste0("outputs/projection/omicron/r_eff_1_local_samples.csv"),
@@ -44,7 +44,7 @@ delta_vax <- read_csv(paste0("outputs/projection/delta_vax/r_eff_1_local_samples
                         )) 
 
 start.date <- ymd("2021-02-01")
-end.date <- ymd("2022-01-11")
+end.date <- ymd("2022-01-19")
 date.label.format <- "%b"
 n.week.labels.panel <- 1
 n.week.ticks <- "1 months"

@@ -195,7 +195,7 @@ local_cases <- tibble::tibble(
 
 
 lc_long <- local_cases %>%
-  filter(date_onset >"2021-10-31") %>%
+  filter(date_onset >"2021-11-30") %>%
   filter(detection_probability > 0.01) %>%
   select(-acquired_in_state) %>%
   mutate(projected_count = count/detection_probability) %>%
@@ -207,6 +207,13 @@ lc_long <- local_cases %>%
 prob_line <- lc_long %>%
   filter(type == "count") %>%
   filter(detection_probability >= 0.95) %>%
+  group_by(state) %>%
+  filter(detection_probability == min(detection_probability)) %>%
+  select(state,date_onset)
+
+prob_line_alt <- lc_long %>%
+  filter(type == "count") %>%
+  filter(detection_probability >= 0.9) %>%
   group_by(state) %>%
   filter(detection_probability == min(detection_probability)) %>%
   select(state,date_onset)
@@ -227,13 +234,19 @@ lc_long %>%
       xintercept = date_onset
     )
   ) +
+  geom_vline(
+    data = prob_line_alt,
+    aes(
+      xintercept = date_onset
+    )
+  ) +
   facet_wrap(
     facets = vars(state),
     ncol = 2,
     scales = "free_y"
   )
     
-ggsave("outputs/figures/watermelon.png")
+ggsave("outputs/figures/watermelon.png", bg = 'white')
 
 linelist %>%
   filter(
