@@ -4577,6 +4577,51 @@ get_nndss_linelist <- function(
       "date"
     )
     
+    col_types_5 <- c( #same as 4 but postcode in lower case
+      STATE = "text",
+      Postcode = "numeric",
+      CONFIRMATION_STATUS = "text",
+      TRUE_ONSET_DATE = "date",
+      SPECIMEN_DATE = "date",
+      NOTIFICATION_DATE = "date",
+      NOTIFICATION_RECEIVE_DATE = "date",
+      Diagnosis_Date = "date",
+      AGE_AT_ONSET = "numeric",
+      SEX = "numeric",
+      DIED = "numeric",
+      PLACE_OF_ACQUISITION = "text",
+      HOSPITALISED = "numeric",
+      CV_ICU = "numeric",
+      CV_VENTILATED = "numeric",
+      OUTBREAK_REF = "text",
+      CASE_FOUND_BY = "numeric",
+      CV_SYMPTOMS = "text",
+      CV_OTHER_SYMPTOMS = "text",
+      CV_COMORBIDITIES = "text",
+      CV_OTHER_COMORBIDITIES = "text",
+      CV_GESTATION = "numeric",
+      #CV_CLOSE_CONTACT = "numeric"
+      CV_EXPOSURE_SETTING = "numeric",
+      CV_SOURCE_INFECTION = "numeric",
+      CV_SYMPTOMS_REPORTED = "numeric",
+      CV_QUARANTINE_STATUS = "numeric",
+      CV_DATE_ENTERED_QUARANTINE = "date",
+      "numeric",
+      "text",
+      "date",
+      "numeric",
+      "text",
+      "date",
+      "numeric",
+      "text",
+      "date",
+      "numeric",
+      "text",
+      "date",
+      "numeric",
+      "text",
+      "date"
+    )
   }
   
   
@@ -4589,18 +4634,30 @@ get_nndss_linelist <- function(
     col_types <- col_types_2
   } else if (ll_date < "2021-12-02") {
     col_types <- col_types_3
-  } else {
+  } else if (ll_date < "2022-01-06") {
     col_types <- col_types_4
+  } else {
+    col_types <- col_types_5
   }
   
-  #read the xls format starting from 06-01-2022
+  
   if (ll_date < "2022-01-06"|ll_date > "2022-01-07") {
-    dat <- readxl::read_xlsx(
-      data$file,
-      col_types = col_types,
-      na = "NULL" # usually turn this off
-    )
-  } else {
+    if (length(readxl::excel_sheets(data$file)) == 1) { #handle multiple sheets
+      dat <- readxl::read_xlsx(
+        data$file,
+        col_types = col_types,
+        na = "NULL" # usually turn this off
+      )
+    } else { #deal with multiple sheets
+      sheets <- readxl::excel_sheets(data$file)
+      dat <- lapply(sheets, 
+                    function(X) readxl::read_xlsx(data$file,
+                                                  col_types = col_types,
+                                                  na = "NULL", 
+                                                  sheet = X)) 
+      dat <- dat %>% reduce(full_join)
+    }
+  } else { #read the xls format starting from 06-01-2022
     dat <- readr::read_csv(
       data$file,
       col_types = cols_only(
@@ -4643,6 +4700,11 @@ get_nndss_linelist <- function(
       )
   }
   
+  if(ll_date > "2022-01-07"){ #fix changed postcode colname
+    dat <- dat %>%
+      rename(POSTCODE = Postcode) %>% 
+      mutate(POSTCODE = as.numeric(POSTCODE)) #not sure why this breaks down
+  }
   
   if (is.numeric(dat$POSTCODE)) {
     dat <- dat %>%
@@ -4666,7 +4728,12 @@ get_nndss_linelist <- function(
       NOTIFICATION_RECEIVE_DATE = clean_date(NOTIFICATION_RECEIVE_DATE),
       SPECIMEN_DATE = clean_date(SPECIMEN_DATE),
       CV_DATE_ENTERED_QUARANTINE = clean_date(CV_DATE_ENTERED_QUARANTINE)
-    ) %>%
+    ) %>% 
+    mutate( #tidy up PoA codes - maybe fixed at some point
+      PLACE_OF_ACQUISITION = ifelse(nchar(PLACE_OF_ACQUISITION) == 5, 
+                                    paste0("000",PLACE_OF_ACQUISITION),
+                                    PLACE_OF_ACQUISITION)
+    ) %>% 
     mutate(
       import_status = case_when(
         # return "ERROR" if place of acquisition and cv_source_infection
@@ -4811,12 +4878,12 @@ get_vic_linelist <- function(file) {
           #SymptomsOnsetDate = col_date(format = "%d/%m/%Y"),
           LGA = col_character(),
           Acquired = col_character(),
-          FirstSpecimenPositiveDate = col_date(format = ""),
-          Classification = col_character()# not backwards compatible for the moment, will do a proper fix later
+          FirstSpecimenPositiveDate = col_date(format = "")#,
+          #Classification = col_character()# not backwards compatible for the moment, will do a proper fix later
           #FirstSpecimenPositiveDate = col_date(format = "%d/%m/%Y")
         ),
         na = "NA"
-      ) %>% filter(Classification == "Confirmed"|FirstSpecimenPositiveDate > "2021-12-25") %>%
+      ) %>% #filter(Classification == "Confirmed"|FirstSpecimenPositiveDate > "2021-12-25") %>%
     # read_excel(
     #   col_types = c("numeric", "date", "date", "text", "text", "date"),
     #   na = "NA"
@@ -5170,7 +5237,8 @@ hotel_quarantine_spillover_data <- function() {
 reff_model_data <- function(
   linelist_raw = load_linelist(),
   n_weeks_ahead = 6,
-  inducing_gap = 3
+  inducing_gap = 3,
+  detection_cutoff = 0.95
 ) {
   
   linelist_date <- max(linelist_raw$date_linelist)
@@ -5220,7 +5288,7 @@ reff_model_data <- function(
   )
   
   # subset to dates with reasonably high detection probabilities in some states
-  detectable <- detection_prob_mat >= 0.9
+  detectable <- detection_prob_mat >= detection_cutoff
   
   # the last date with infection data we include
   last_detectable_idx <- which(!apply(detectable, 1, any))[1]
@@ -9773,10 +9841,20 @@ load_air_data <- function(
       )
     )
   
-  df_1014 <- df %>%
-    filter(age_class == "12-15") %>%
+  df_59 <- df %>%
+    filter(age_class == "5-11") %>%
     mutate(
-      count = 0.75 * count,
+      count = 5/7 * count,
+      age_class = "5-9"
+    )
+  
+  df_1014 <- df %>%
+    filter(age_class == "12-15" | age_class == "5-11") %>%
+    mutate(
+      count = case_when(
+        age_class == "12-15" ~ 0.75 * count,
+        TRUE ~ 2/7 * count
+      ),
       age_class = "10-14"
     )
   
@@ -9792,7 +9870,8 @@ load_air_data <- function(
   
   df2 <- bind_rows(
     df %>%
-      filter(age_class != "12-15", age_class != "16-19"),
+      filter(age_class != "12-15", age_class != "16-19", age_class != "5-11"),
+    df_59,
     df_1014,
     df_1519
   ) %>%
