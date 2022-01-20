@@ -5287,7 +5287,7 @@ reff_model_data <- function(
   )
   
   # subset to dates with reasonably high detection probabilities in some states
-  detectable <- detection_prob_mat >= 0.9
+  detectable <- detection_prob_mat >= 0.95
   
   # the last date with infection data we include
   last_detectable_idx <- which(!apply(detectable, 1, any))[1]
@@ -9840,10 +9840,20 @@ load_air_data <- function(
       )
     )
   
-  df_1014 <- df %>%
-    filter(age_class == "12-15") %>%
+  df_59 <- df %>%
+    filter(age_class == "5-11") %>%
     mutate(
-      count = 0.75 * count,
+      count = 5/7 * count,
+      age_class = "5-9"
+    )
+  
+  df_1014 <- df %>%
+    filter(age_class == "12-15" | age_class == "5-11") %>%
+    mutate(
+      count = case_when(
+        age_class == "12-15" ~ 0.75 * count,
+        TRUE ~ 2/7 * count
+      ),
       age_class = "10-14"
     )
   
@@ -9859,7 +9869,8 @@ load_air_data <- function(
   
   df2 <- bind_rows(
     df %>%
-      filter(age_class != "12-15", age_class != "16-19"),
+      filter(age_class != "12-15", age_class != "16-19", age_class != "5-11"),
+    df_59,
     df_1014,
     df_1519
   ) %>%
