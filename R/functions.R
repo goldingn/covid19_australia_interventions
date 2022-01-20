@@ -5237,7 +5237,8 @@ hotel_quarantine_spillover_data <- function() {
 reff_model_data <- function(
   linelist_raw = load_linelist(),
   n_weeks_ahead = 6,
-  inducing_gap = 3
+  inducing_gap = 3,
+  detection_cutoff = 0.95
 ) {
   
   linelist_date <- max(linelist_raw$date_linelist)
@@ -5287,7 +5288,7 @@ reff_model_data <- function(
   )
   
   # subset to dates with reasonably high detection probabilities in some states
-  detectable <- detection_prob_mat >= 0.95
+  detectable <- detection_prob_mat >= detection_cutoff
   
   # the last date with infection data we include
   last_detectable_idx <- which(!apply(detectable, 1, any))[1]
