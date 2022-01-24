@@ -339,70 +339,76 @@ vaccine_cohorts_now <- get_vaccine_cohorts_at_date(
   target_date = target_date
 )
 
-dir <- get_quantium_data_dir(date = NULL)
-lookups <- get_quantium_lookups(dir = dir)
-
-state_age_fractions <- lookups$age %>%
-  select(age_band) %>%
-  mutate(
-    lower = sub(
-      pattern = "\\-.*",
-      replacement = "",
-      x = age_band
-    ) %>%
-      sub(
-        pattern = "\\+",
-        replacement = "",
-        x = .
-      ) %>%
-      as.numeric,
-    upper = sub(
-      pattern = ".*\\-",
-      replacement = "",
-      x = age_band
-    ) %>%
-      sub(
-        pattern = ".*\\+",
-        replacement = "Inf",
-        x = .
-      ) %>%
-      as.numeric
-  ) %>%
-  rename(classes = age_band) %>%
-  get_age_distribution_by_state(ages = .)
+add_missing_age_cohorts <- function(vaccine_cohorts){
+  dir <- get_quantium_data_dir(date = NULL)
+  lookups <- get_quantium_lookups(dir = dir)
   
-# add in 0-4 yo cohort which is missing
-age_class_state_scenario <- expand_grid(
-  state_age_fractions %>%
-    select(state, age_class),
-  scenario = unique(vaccine_cohorts_now$scenario)
-)
-
-vaccine_cohorts_now_all <- age_class_state_scenario %>%
-  full_join(
-    y = vaccine_cohorts_now,
-    by = c("scenario", "state", "age_class" = "age_band")
-  ) %>%
-  left_join(
-    state_age_fractions,
-    by = c("state", "age_class")
-  ) %>%
-  group_by(
-    state, scenario
-  ) %>%
-  mutate(
-    qspop = sum(num_people, na.rm = TRUE),
-    qpop = qspop / (1 - fraction),
-    num_people = if_else(
-      age_class == "0-4",
-      fraction * qpop,
-      num_people
-    )
-  ) %>%
-  rename(age_band = age_class) %>%
-  select(
-    scenario, state, age_band, num_people, immunity, days_ago
+  state_age_fractions <- lookups$age %>%
+    select(age_band) %>%
+    mutate(
+      lower = sub(
+        pattern = "\\-.*",
+        replacement = "",
+        x = age_band
+      ) %>%
+        sub(
+          pattern = "\\+",
+          replacement = "",
+          x = .
+        ) %>%
+        as.numeric,
+      upper = sub(
+        pattern = ".*\\-",
+        replacement = "",
+        x = age_band
+      ) %>%
+        sub(
+          pattern = ".*\\+",
+          replacement = "Inf",
+          x = .
+        ) %>%
+        as.numeric
+    ) %>%
+    rename(classes = age_band) %>%
+    get_age_distribution_by_state(ages = .)
+  
+  # add in 0-4 yo cohort which is missing
+  age_class_state_scenario <- expand_grid(
+    state_age_fractions %>%
+      select(state, age_class),
+    scenario = unique(vaccine_cohorts$scenario)
   )
+  
+  vaccine_cohorts_all <- age_class_state_scenario %>%
+    full_join(
+      y = vaccine_cohorts,
+      by = c("scenario", "state", "age_class" = "age_band")
+    ) %>%
+    left_join(
+      state_age_fractions,
+      by = c("state", "age_class")
+    ) %>%
+    group_by(
+      state, scenario
+    ) %>%
+    mutate(
+      qspop = sum(num_people, na.rm = TRUE),
+      qpop = qspop / (1 - fraction),
+      num_people = if_else(
+        age_class == "0-4",
+        fraction * qpop,
+        num_people
+      )
+    ) %>%
+    rename(age_band = age_class) %>%
+    select(
+      scenario, state, age_band, num_people, immunity, days_ago
+    )
+  
+  return(vaccine_cohorts_all)
+}
+
+vaccine_cohorts_now_all <- add_missing_age_cohorts(vaccine_cohorts_now)
   
 
 get_coverage <- function(vaccine_cohorts) {
@@ -868,3 +874,132 @@ vaccine_transmission_effects_now <- get_vaccine_transmission_effects(
   coverage = coverage_now_all
 )
 
+ve_tables <- tibble(
+  date = seq.Date(
+    from = as.Date("2021-02-22"),
+    to = Sys.Date() + weeks(7),
+    by = "1 week"
+  )
+) %>%
+  #filter(date < "2021-03-02") %>%
+  mutate(
+    cohorts = map(
+      .x = date,
+      .f = get_vaccine_cohorts_at_date,
+      vaccine_scenarios = vaccine_state
+    ),
+    cohorts_all = map(
+      .x = cohorts,
+      .f = add_missing_age_cohorts
+    ),
+    coverage = map(
+      .x = cohorts_all,
+      .f = get_coverage
+    ),
+    ves = map(
+      .x = cohorts_all,
+      .f = get_vaccine_efficacies
+    ),
+    vaccine_transmission_effects = map2(
+      .x = ves,
+      .y = coverage,
+      .f = get_vaccine_transmission_effects
+    )
+  )
+  
+ve_waning <- ve_tables %>%
+  select(date, vaccine_transmission_effects) %>%
+  unnest(vaccine_transmission_effects) %>%
+  filter(omicron_scenario == "intermediate", scenario == "81") %>%
+  select(date, state, variant, vaccination_effect) %>%
+  mutate(
+    effect_multiplier = 1 - vaccination_effect
+  )
+
+
+ve_old <- read_csv("outputs/vaccine_effect_timeseries_2022-01-23.csv")
+
+ve_compare <- bind_rows(
+  ve_old %>%
+    select(-percent_reduction) %>%
+    mutate(
+      variant = "Delta",
+      estimate = "Old"
+    ),
+  ve_waning %>%
+    select(state, date, effect = effect_multiplier, variant) %>%
+    mutate(estimate = "New")
+)
+
+
+dpi <- 150
+font_size <- 12
+ggplot(ve_compare) +
+ geom_line(
+  aes(
+    x = date,
+    y = effect,
+    colour = state,
+    linetype = variant,
+    alpha = estimate
+  ),
+  size = 1.5
+) +
+  theme_classic() +
+  labs(
+    x = NULL,
+    y = "Change in transmission potential",
+    col = "State"
+  ) +
+  scale_x_date(
+    breaks = "1 month",
+    date_labels = "%b %Y"
+  ) +
+  ggtitle(
+    label = "Vaccination effect",
+    subtitle = "Change in transmission potential due to vaccination"
+  ) +
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  theme(
+    strip.background = element_blank(),
+    axis.title.y.right = element_text(vjust = 0.5, angle = 90, size = font_size),
+    #legend.position = c(0.02, 0.135),
+    legend.position = c(0.02, 0.25),
+    legend.text = element_text(size = font_size),
+    axis.text = element_text(size = font_size),
+    plot.title = element_text(size = font_size + 8),
+    plot.subtitle = element_text(size = font_size)
+  ) +
+  scale_colour_manual(
+    values = c(
+      "darkgray",
+      "cornflowerblue",
+      "chocolate1",
+      "violetred4",
+      "red1",
+      "darkgreen",
+      "darkblue",
+      "gold1"
+    )
+  ) +
+  scale_y_continuous(
+    position = "right",
+    limits = c(0, 1),
+    breaks = seq(0, 1, by = 0.1)
+  ) +
+  scale_alpha_manual(values = c(1, 0.6)) +
+  geom_vline(
+    aes(
+      xintercept = Sys.Date()
+    )
+  )
+
+ggsave(
+  filename = "outputs/figures/vaccination_effect_comparison.png",
+  dpi = dpi,
+  width = 1500 / dpi,
+  height = 1250 / dpi,
+  scale = 1.2,
+  bg = "white"
+)
