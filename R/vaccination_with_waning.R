@@ -68,10 +68,9 @@ sort_age_groups <- function(age_groups) {
 }
 
 
-read_quantium_vaccination_data <- function(
+get_quantium_data_dir <- function(
   date = NULL
 ){
-  
   # get most recent forecast
   dir_dates <- list.dirs(
     path = "~/not_synced/vaccination/quantium_forecasts/",
@@ -95,6 +94,15 @@ read_quantium_vaccination_data <- function(
     recursive = FALSE
   )[dir_index]
   
+  return(dir)
+  
+}
+
+read_quantium_vaccination_data <- function(
+  date = NULL
+){
+  
+  dir <- get_quantium_data_dir(date)
   
   # load all vaccine data
   vaccines <- read_csv(
@@ -331,6 +339,72 @@ vaccine_cohorts_now <- get_vaccine_cohorts_at_date(
   target_date = target_date
 )
 
+dir <- get_quantium_data_dir(date = NULL)
+lookups <- get_quantium_lookups(dir = dir)
+
+state_age_fractions <- lookups$age %>%
+  select(age_band) %>%
+  mutate(
+    lower = sub(
+      pattern = "\\-.*",
+      replacement = "",
+      x = age_band
+    ) %>%
+      sub(
+        pattern = "\\+",
+        replacement = "",
+        x = .
+      ) %>%
+      as.numeric,
+    upper = sub(
+      pattern = ".*\\-",
+      replacement = "",
+      x = age_band
+    ) %>%
+      sub(
+        pattern = ".*\\+",
+        replacement = "Inf",
+        x = .
+      ) %>%
+      as.numeric
+  ) %>%
+  rename(classes = age_band) %>%
+  get_age_distribution_by_state(ages = .)
+  
+# add in 0-4 yo cohort which is missing
+age_class_state_scenario <- expand_grid(
+  state_age_fractions %>%
+    select(state, age_class),
+  scenario = unique(vaccine_cohorts_now$scenario)
+)
+
+vaccine_cohorts_now_all <- age_class_state_scenario %>%
+  full_join(
+    y = vaccine_cohorts_now,
+    by = c("scenario", "state", "age_class" = "age_band")
+  ) %>%
+  left_join(
+    state_age_fractions,
+    by = c("state", "age_class")
+  ) %>%
+  group_by(
+    state, scenario
+  ) %>%
+  mutate(
+    qspop = sum(num_people, na.rm = TRUE),
+    qpop = qspop / (1 - fraction),
+    num_people = if_else(
+      age_class == "0-4",
+      fraction * qpop,
+      num_people
+    )
+  ) %>%
+  rename(age_band = age_class) %>%
+  select(
+    scenario, state, age_band, num_people, immunity, days_ago
+  )
+  
+
 get_coverage <- function(vaccine_cohorts) {
   
   # get current coverage with any dose in each age band, for each scenario
@@ -339,7 +413,7 @@ get_coverage <- function(vaccine_cohorts) {
       immune = !is.na(immunity)
     ) %>%
     group_by(
-      scenario, age_band
+      scenario, state, age_band
     ) %>%
     summarise(
       coverage = weighted.mean(immune, num_people),
@@ -349,7 +423,7 @@ get_coverage <- function(vaccine_cohorts) {
 }
 
 
-coverage_now <- get_coverage(vaccine_cohorts_now)
+coverage_now_all <- get_coverage(vaccine_cohorts_now_all)
 
 get_omicron_params_wide <- function() {
   read_csv(
@@ -675,14 +749,38 @@ get_vaccine_efficacies <- function(vaccine_cohorts) {
 }
 
 
-ves_now <- get_vaccine_efficacies(vaccine_cohorts_now)
+ves_now_all <- get_vaccine_efficacies(vaccine_cohorts_now_all)
 
-et_vaccine_transmission_effects <- function(ves, coverage) {
+
+get_vaccine_transmission_effects <- function(ves, coverage) {
   
-  lookups <- get_quantium_lookups()
+  
+  # load quantium lookup tables
+  dir <- get_quantium_data_dir()
+  lookups <- get_quantium_lookups(dir = dir)
+  
+  age_breaks_quantium <-lookups$age %>%
+    mutate(
+      brk = sub(
+        pattern = "\\-.*",
+        replacement = "",
+        x = age_band
+      ) %>%
+        sub(
+          pattern = "\\+",
+          replacement = "",
+          x = .
+        ) %>%
+        as.numeric
+    ) %>%
+    pull(brk)
+  
+  labq <- length(age_breaks_quantium)
+  
+  age_breaks_quantium[labq + 1] <- Inf
   
   # get a conmat NGM for Australia
-  australia_ngm <- get_ngm()
+  australia_ngm <- baseline_matrix(age_breaks = age_breaks_quantium)
   
   # combine coverage and VEs to get transmission reduction for each rollout
   # scenario, and omicron scenario
@@ -690,6 +788,7 @@ et_vaccine_transmission_effects <- function(ves, coverage) {
     # add back in the younger age_groups
     complete(
       scenario,
+      state,
       omicron_scenario,
       variant,
       outcome,
@@ -708,6 +807,7 @@ et_vaccine_transmission_effects <- function(ves, coverage) {
     ) %>%
     group_by(
       scenario,
+      state,
       omicron_scenario,
       variant
     ) %>%
@@ -718,7 +818,7 @@ et_vaccine_transmission_effects <- function(ves, coverage) {
     # join on coverages
     left_join(
       coverage,
-      by = c("scenario", "age_band")
+      by = c("scenario", "age_band", "state")
     ) %>%
     # compute percentage reduction in acquisition and transmission in each age group
     mutate(
@@ -746,6 +846,7 @@ et_vaccine_transmission_effects <- function(ves, coverage) {
     ) %>%
     group_by(
       scenario,
+      state,
       omicron_scenario,
       variant
     ) %>%
@@ -762,9 +863,8 @@ et_vaccine_transmission_effects <- function(ves, coverage) {
   
 }
 
-
 vaccine_transmission_effects_now <- get_vaccine_transmission_effects(
-  ves = ves_now,
-  coverage = coverage_now
+  ves = ves_now_all,
+  coverage = coverage_now_all
 )
 

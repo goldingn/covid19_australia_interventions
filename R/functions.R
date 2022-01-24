@@ -9074,7 +9074,7 @@ polymod_model <- function(){
   
 }
 
-australia_ngm_unscaled <- function(){
+australia_ngm_unscaled <- function(age_breaks = NULL){
   
   file <- "outputs/aus_ngm_unscaled.RDS"
   
@@ -9092,11 +9092,14 @@ australia_ngm_unscaled <- function(){
     
     model <- polymod_model()
     
-    age_breaks_5y <- c(seq(0, 80, by = 5), Inf)
+    if(is.null(age_breaks)){
+      age_breaks <- c(seq(0, 80, by = 5), Inf)
+    }
+    
     
     ngm_unscaled <- get_australia_ngm_unscaled(
       model = model,
-      age_breaks = age_breaks_5y
+      age_breaks = age_breaks
     )
     
     saveRDS(
@@ -9109,7 +9112,7 @@ australia_ngm_unscaled <- function(){
   return(ngm_unscaled)
 }
 
-baseline_matrix <- function(R0 = 3, final_age_bin = 80) {
+baseline_matrix <- function(R0 = 3, final_age_bin = 80, age_breaks = NULL) {
   # # construct a next generation matrix for Australia from Prem matrix
   # 
   # # Prem 2017 contact matrix
@@ -9187,7 +9190,7 @@ baseline_matrix <- function(R0 = 3, final_age_bin = 80) {
   
   # construct ngm for australia using conmat and davies estimates
   
-  ngm_unscaled <- australia_ngm_unscaled()
+  ngm_unscaled <- australia_ngm_unscaled(age_breaks)
 
   m <- find_m(
     R_target = R0,
@@ -10357,21 +10360,24 @@ age_lookup <- tibble::tribble(
 get_age_distribution_by_state <- function(
   final_age_bin = 80,
   by = 5,
-  population_total = 25693000
+  population_total = 25693000,
+  ages = NULL
 ) {
   
-  # check the final age bin in sensible
-  if (final_age_bin > 85) {
-    stop(
-      "No age-specific population data for ages greater than 85",
-      call. = TRUE
+  if(is.null(ages)){
+    # check the final age bin in sensible
+    if (final_age_bin > 85) {
+      stop(
+        "No age-specific population data for ages greater than 85",
+        call. = TRUE
+      )
+    }
+    
+    ages <- age_classes(
+      final_age_bin = final_age_bin,
+      by = by
     )
   }
-  
-  ages <- age_classes(
-    final_age_bin = final_age_bin,
-    by = by
-  )
   
   # Age structure of the Australian population by year of age, up to 100+
   # This is a "standard" distribution data frame but old population size data
