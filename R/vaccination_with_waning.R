@@ -333,11 +333,11 @@ get_vaccine_cohorts_at_date <- function(vaccine_scenarios, target_date) {
   
 }
 
-target_date <- as.Date("2022-01-01")
-vaccine_cohorts_now <- get_vaccine_cohorts_at_date(
-  vaccine_scenarios = vaccine_state,
-  target_date = target_date
-)
+# target_date <- as.Date("2022-01-01")
+# vaccine_cohorts_now <- get_vaccine_cohorts_at_date(
+#   vaccine_scenarios = vaccine_state,
+#   target_date = target_date
+# )
 
 add_missing_age_cohorts <- function(vaccine_cohorts){
   dir <- get_quantium_data_dir(date = NULL)
@@ -408,7 +408,7 @@ add_missing_age_cohorts <- function(vaccine_cohorts){
   return(vaccine_cohorts_all)
 }
 
-vaccine_cohorts_now_all <- add_missing_age_cohorts(vaccine_cohorts_now)
+#vaccine_cohorts_now_all <- add_missing_age_cohorts(vaccine_cohorts_now)
   
 
 get_coverage <- function(vaccine_cohorts) {
@@ -429,15 +429,16 @@ get_coverage <- function(vaccine_cohorts) {
 }
 
 
-coverage_now_all <- get_coverage(vaccine_cohorts_now_all)
+#coverage_now_all <- get_coverage(vaccine_cohorts_now_all)
 
 get_omicron_params_wide <- function() {
   read_csv(
     "outputs/scenario_parameters_omicron.csv",
     col_types = cols(
       parameter = col_character(),
-      intermediate = col_double(),
-      optimistic = col_double(),
+      # intermediate = col_double(),
+      # optimistic = col_double(),
+      estimate = col_double(),
       pessimistic = col_double()
     )
   ) %>%
@@ -665,8 +666,9 @@ get_vaccine_efficacies <- function(vaccine_cohorts) {
     full_join(
       tibble(
         omicron_scenario = c(
-          "intermediate",
-          "optimistic",
+          # "intermediate",
+          # "optimistic",
+          "estimate",
           "pessimistic"
         )
       ),
@@ -755,7 +757,7 @@ get_vaccine_efficacies <- function(vaccine_cohorts) {
 }
 
 
-ves_now_all <- get_vaccine_efficacies(vaccine_cohorts_now_all)
+#ves_now_all <- get_vaccine_efficacies(vaccine_cohorts_now_all)
 
 
 get_vaccine_transmission_effects <- function(ves, coverage) {
@@ -869,10 +871,10 @@ get_vaccine_transmission_effects <- function(ves, coverage) {
   
 }
 
-vaccine_transmission_effects_now <- get_vaccine_transmission_effects(
-  ves = ves_now_all,
-  coverage = coverage_now_all
-)
+# vaccine_transmission_effects_now <- get_vaccine_transmission_effects(
+#   ves = ves_now_all,
+#   coverage = coverage_now_all
+# )
 
 ve_tables <- tibble(
   date = seq.Date(
@@ -906,16 +908,53 @@ ve_tables <- tibble(
       .f = get_vaccine_transmission_effects
     )
   )
-  
+
+date_state_variant_table <- expand_grid(
+  date = seq.Date(
+    from = min(ve_tables$date),
+    to = max(ve_tables$date),
+    by = 1
+  ),
+  state = unique(ve_tables$vaccine_transmission_effects[[1]]$state),
+  variant = unique(ve_tables$vaccine_transmission_effects[[1]]$variant)
+)
+
 ve_waning <- ve_tables %>%
   select(date, vaccine_transmission_effects) %>%
   unnest(vaccine_transmission_effects) %>%
-  filter(omicron_scenario == "intermediate", scenario == "81") %>%
+  #filter(omicron_scenario == "intermediate", scenario == "81") %>%
+  filter(omicron_scenario == "estimate", scenario == "82") %>%
   select(date, state, variant, vaccination_effect) %>%
   mutate(
     effect_multiplier = 1 - vaccination_effect
-  )
+  ) %>%
+  full_join(
+  y = date_state_variant_table,
+  by = c("state", "date", "variant")
+) %>%
+  arrange(state, variant, date) %>%
+  group_by(state, variant) %>%
+  rename(effect = effect_multiplier) %>%
+  mutate(
+    effect = ifelse(
+      is.na(effect),
+      approx(date, effect, date)$y,
+      effect
+    ),
+    percent_reduction = 100 * (1 - effect)
+  ) %>%
+  ungroup %>%
+  select(-vaccination_effect)
 
+write_csv(
+  ve_waning,
+  file = "outputs/vaccine_effect_timeseries.csv"
+)
+
+saveRDS(
+  ve_waning,
+  file = "outputs/vaccine_effect_timeseries.RDS"
+)
 
 ve_old <- read_csv("outputs/vaccine_effect_timeseries_2022-01-23.csv")
 
@@ -1002,4 +1041,10 @@ ggsave(
   height = 1250 / dpi,
   scale = 1.2,
   bg = "white"
+)
+
+
+write_csv(
+  ve_compare,
+  file = "outputs/ve_timeseries_comparison.csv"
 )
