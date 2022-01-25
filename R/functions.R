@@ -2517,7 +2517,16 @@ prop_variant_dates <- function(){
     "SA",   "2021-06-07",        0,           0,           1,             0,
     "TAS",  "2021-06-07",        0,           0,           1,             0,
     "VIC",  "2021-06-07",        0,           0,           1,             0,
-    "WA",   "2021-06-07",        0,           0,           1,             0
+    "WA",   "2021-06-07",        0,           0,           1,             0,
+    
+    "ACT",  "2021-12-01",        0,           0,           0,             1,
+    "NSW",  "2021-12-01",        0,           0,           0,             1,
+    "NT",   "2021-12-01",        0,           0,           0,             1,
+    "QLD",  "2021-12-01",        0,           0,           0,             1,
+    "SA",   "2021-12-01",        0,           0,           0,             1,
+    "TAS",  "2021-12-01",        0,           0,           0,             1,
+    "VIC",  "2021-12-01",        0,           0,           0,             1,
+    "WA",   "2021-12-01",        0,           0,           0,             1
   ) %>%
     mutate(
       date = as.Date(date)
@@ -4579,13 +4588,13 @@ get_nndss_linelist <- function(
     
     col_types_5 <- c( #same as 4 but postcode in lower case
       STATE = "text",
-      Postcode = "numeric",
       CONFIRMATION_STATUS = "text",
+      Postcode = "numeric",
       TRUE_ONSET_DATE = "date",
       SPECIMEN_DATE = "date",
       NOTIFICATION_DATE = "date",
       NOTIFICATION_RECEIVE_DATE = "date",
-      Diagnosis_Date = "date",
+      `DIAGNOSIS DATE` = "date",
       AGE_AT_ONSET = "numeric",
       SEX = "numeric",
       DIED = "numeric",
@@ -4641,19 +4650,41 @@ get_nndss_linelist <- function(
   }
   
   
-  if (ll_date < "2022-01-06"|ll_date > "2022-01-07") {
+  if (ll_date == "2022-01-25") {
+    
+    sheets <- readxl::excel_sheets(data$file)
+    dat <- lapply(sheets, 
+                  function(X) readxl::read_xlsx(data$file,
+                                                #col_types = col_types,
+                                                #na = "NULL", 
+                                                sheet = X)) 
+    dat <- dat %>% reduce(full_join)
+    
+    
+    dat <- dat %>%
+      mutate(
+        Postcode = as.numeric(Postcode),
+        TRUE_ONSET_DATE = as.Date(TRUE_ONSET_DATE, format = "%d/%m/%Y"),
+        SPECIMEN_DATE  = as.Date(SPECIMEN_DATE, format = "%d/%m/%Y"),
+        NOTIFICATION_DATE  = as.Date(NOTIFICATION_DATE, format = "%d/%m/%Y"),
+        NOTIFICATION_RECEIVE_DATE = as.Date(NOTIFICATION_DATE, format = "%d/%m/%Y"),
+        CV_DATE_ENTERED_QUARANTINE  = as.Date(CV_DATE_ENTERED_QUARANTINE, format = "%d/%m/%Y"),
+        CV_SOURCE_INFECTION = as.numeric(CV_SOURCE_INFECTION)
+      )
+    
+  } else if (ll_date < "2022-01-06"|ll_date > "2022-01-07") {
     if (length(readxl::excel_sheets(data$file)) == 1) { #handle multiple sheets
       dat <- readxl::read_xlsx(
         data$file,
-        col_types = col_types,
-        na = "NULL" # usually turn this off
+        col_types = col_types#,
+        #na = "NULL" # usually turn this off
       )
     } else { #deal with multiple sheets
       sheets <- readxl::excel_sheets(data$file)
       dat <- lapply(sheets, 
                     function(X) readxl::read_xlsx(data$file,
                                                   col_types = col_types,
-                                                  na = "NULL", 
+                                                  #na = "NULL", 
                                                   sheet = X)) 
       dat <- dat %>% reduce(full_join)
     }
@@ -5355,12 +5386,20 @@ reff_model_data <- function(
   
   vaccine_effect_timeseries <- readRDS("outputs/vaccine_effect_timeseries.RDS")
   
-  vaccine_effect_matrix <- vaccine_effect_timeseries %>%
+  ve_omicron <- vaccine_effect_timeseries %>%
+    filter(variant == "Omicron") %>%
+    select(date, state, effect)
+  
+  ve_delta <- vaccine_effect_timeseries %>%
+    filter(variant == "Delta") %>%
+    select(date, state, effect)
+  
+  vaccine_effect_matrix_delta <- ve_delta %>%
     pivot_wider(
       names_from = state,
       values_from = effect
     ) %>%
-    full_join(
+    right_join(
       y = tibble(date = dates_project)
     ) %>%
     arrange(date) %>%
@@ -5370,6 +5409,31 @@ reff_model_data <- function(
     ) %>%
     dplyr::select(-date) %>%
     as.matrix
+  
+  vaccine_effect_matrix_omicron <- ve_omicron %>%
+    pivot_wider(
+      names_from = state,
+      values_from = effect
+    ) %>%
+    right_join(
+      y = tibble(date = dates_project)
+    ) %>%
+    arrange(date) %>%
+    tidyr::fill(
+      everything(),
+      .direction = "updown"
+    ) %>%
+    dplyr::select(-date) %>%
+    as.matrix
+  
+  
+  omicron_matrix <- prop_variant(dates_project)$prop_omicron
+  
+  omicron_index <- which(omicron_matrix == 1)
+  
+  vaccine_effect_matrix <- vaccine_effect_matrix_delta
+  
+  vaccine_effect_matrix[omicron_index] <- vaccine_effect_matrix_omicron[omicron_index]
   
   vaccine_dates <- unique(vaccine_effect_timeseries$date)
   
@@ -6818,7 +6882,8 @@ load_linelist <- function(date = NULL,
     vic_linelist <- linelist$date_linelist[1] %>%
       format(format = "%Y%m%d") %>%
       paste0("~/not_synced/vic/", ., "_linelist_reff.csv") %>%
-      get_vic_linelist()
+      get_vic_linelist() %>%
+      filter(!is.na(date_confirmation))
     
     vic_ll_date <- vic_linelist$date_linelist[1]
     vic_ll_start <- min(vic_linelist$date_confirmation)
