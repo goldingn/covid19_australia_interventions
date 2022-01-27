@@ -2654,7 +2654,7 @@ distancing_effect_model <- function(
   
   phi_alpha       <- normal(1.454, 0.055, truncation = c(0, Inf))
   phi_delta_alpha <- normal(1.421, 0.033, truncation = c(0, Inf))
-  phi_omicron <- 1.645
+  phi_omicron <- 2.347662
   
   phi_delta <- phi_alpha * phi_delta_alpha
   
@@ -6994,9 +6994,12 @@ load_linelist <- function(date = NULL,
   
 }
 
-write_linelist <- function(dir = "outputs"){
+write_linelist <- function(linelist = linelist,
+                           dir = "outputs"){
   
-  linelist <- load_linelist()
+  if (is.null(linelist)) {
+    linelist <- load_linelist()
+  }
   
   ll_date <- linelist$date_linelist[1]
   
@@ -10081,7 +10084,7 @@ simulate_variant <- function(
   
   phi_alpha       <- normal(1.454, 0.055, truncation = c(0, Inf))
   phi_delta_alpha <- normal(1.421, 0.033, truncation = c(0, Inf))
-  phi_omicron <- 1.645
+  phi_omicron <- 2.347662
   
   phi_delta <- phi_alpha * phi_delta_alpha
   
