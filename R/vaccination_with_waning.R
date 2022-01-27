@@ -966,7 +966,7 @@ ve_compare <- bind_rows(
       estimate = "Old"
     ),
   ve_waning %>%
-    select(state, date, effect = effect_multiplier, variant) %>%
+    select(state, date, effect, variant) %>%
     mutate(estimate = "New")
 )
 
@@ -1047,4 +1047,87 @@ ggsave(
 write_csv(
   ve_compare,
   file = "outputs/ve_timeseries_comparison.csv"
+)
+
+
+ve_compare_with_percent <- bind_rows(
+  ve_old %>%
+    mutate(
+      variant = "Delta",
+      estimate = "Old"
+    ),
+  ve_waning  %>%
+    mutate(estimate = "New")
+) 
+ve_compare_with_percent %>%
+  group_by(state,variant,estimate) %>%
+  mutate(
+    delta_week = slider::slide(
+      .x = -percent_reduction,
+      .f = function(x){
+        x[1] - x[7]
+      },
+      .before = 7
+    ) %>%
+      unlist
+  ) %>%
+  ggplot() +
+  geom_line(
+    aes(
+      x = date,
+      y = delta_week,
+      col = state,
+      linetype = variant,
+      alpha = estimate
+    ),
+    size = 2
+  ) +
+  theme_classic() +
+  labs(
+    x = NULL,
+    y = "Change in percentage reduction of transmission potential",
+    col = "State"
+  ) +
+  scale_x_date(
+    breaks = "1 month",
+    date_labels = "%b %Y"
+  ) +
+  ggtitle(
+    label = "Vaccination effect",
+    subtitle = "Change in weekly average percentage reduction in transmission potential due to vaccination"
+  ) +
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  theme(
+    strip.background = element_blank(),
+    strip.text = element_text(hjust = 0, face = "bold"),
+    axis.title.y.right = element_text(vjust = 0.5, angle = 90),
+    panel.spacing = unit(1.2, "lines")
+  ) +
+  scale_colour_manual(
+    values = c(
+      "darkgray",
+      "cornflowerblue",
+      "chocolate1",
+      "violetred4",
+      "red1",
+      "darkgreen",
+      "darkblue",
+      "gold1"
+    )
+  ) +
+  scale_alpha_manual(values = c(1, 0.6)) +
+  geom_vline(
+    aes(
+      xintercept = Sys.Date()
+    )
+  )
+
+
+ggsave(
+  filename = "outputs/figures/vaccination_weekly_percent_change_in_tp.png",
+  dpi = dpi,
+  width = 1500 / dpi,
+  height = 1250 / dpi,
+  scale = 1.2
 )
