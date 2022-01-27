@@ -1125,6 +1125,155 @@ ve_compare_with_percent %>%
 
 
 ggsave(
+  filename = "outputs/figures/comapre_vaccination_weekly_percent_change_in_tp.png",
+  dpi = dpi,
+  width = 1500 / dpi,
+  height = 1250 / dpi,
+  scale = 1.2
+)
+
+
+# plotting ----------------------------------------------------------------
+
+
+dpi <- 150
+font_size <- 12
+ggplot(ve_waning) +
+  geom_line(
+    aes(
+      x = date,
+      y = effect,
+      colour = state,
+      linetype = variant
+    ),
+    size = 1.5
+  ) +
+  theme_classic() +
+  labs(
+    x = NULL,
+    y = "Change in transmission potential",
+    col = "State"
+  ) +
+  scale_x_date(
+    breaks = "1 month",
+    date_labels = "%b %Y"
+  ) +
+  ggtitle(
+    label = "Vaccination effect",
+    subtitle = "Change in transmission potential due to vaccination"
+  ) +
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  theme(
+    strip.background = element_blank(),
+    axis.title.y.right = element_text(vjust = 0.5, angle = 90, size = font_size),
+    #legend.position = c(0.02, 0.135),
+    legend.position = c(0.02, 0.25),
+    legend.text = element_text(size = font_size),
+    axis.text = element_text(size = font_size),
+    plot.title = element_text(size = font_size + 8),
+    plot.subtitle = element_text(size = font_size)
+  ) +
+  scale_colour_manual(
+    values = c(
+      "darkgray",
+      "cornflowerblue",
+      "chocolate1",
+      "violetred4",
+      "red1",
+      "darkgreen",
+      "darkblue",
+      "gold1"
+    )
+  ) +
+  scale_y_continuous(
+    position = "right",
+    limits = c(0, 1),
+    breaks = seq(0, 1, by = 0.1)
+  ) +
+  geom_vline(
+    aes(
+      xintercept = Sys.Date()
+    )
+  )
+
+ggsave(
+  filename = "outputs/figures/vaccination_effect.png",
+  dpi = dpi,
+  width = 1500 / dpi,
+  height = 1250 / dpi,
+  scale = 1.2,
+  bg = "white"
+)
+
+ve_waning %>%
+  group_by(state,variant) %>%
+  mutate(
+    delta_week = slider::slide(
+      .x = -percent_reduction,
+      .f = function(x){
+        x[1] - x[7]
+      },
+      .before = 7
+    ) %>%
+      unlist
+  ) %>%
+  ggplot() +
+  geom_line(
+    aes(
+      x = date,
+      y = delta_week,
+      col = state,
+      linetype = variant
+    ),
+    size = 2
+  ) +
+  theme_classic() +
+  labs(
+    x = NULL,
+    y = "Change in percentage reduction of transmission potential",
+    col = "State"
+  ) +
+  scale_x_date(
+    breaks = "1 month",
+    date_labels = "%b %Y"
+  ) +
+  ggtitle(
+    label = "Vaccination effect",
+    subtitle = "Change in weekly average percentage reduction in transmission potential due to vaccination"
+  ) +
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  theme(
+    strip.background = element_blank(),
+    strip.text = element_text(hjust = 0, face = "bold"),
+    axis.title.y.right = element_text(vjust = 0.5, angle = 90),
+    panel.spacing = unit(1.2, "lines")
+  ) +
+  scale_colour_manual(
+    values = c(
+      "darkgray",
+      "cornflowerblue",
+      "chocolate1",
+      "violetred4",
+      "red1",
+      "darkgreen",
+      "darkblue",
+      "gold1"
+    )
+  ) +
+  geom_vline(
+    aes(
+      xintercept = Sys.Date()
+    )
+    ) + 
+  geom_hline(
+    aes(yintercept = 0)
+    )
+  
+
+
+ggsave(
   filename = "outputs/figures/vaccination_weekly_percent_change_in_tp.png",
   dpi = dpi,
   width = 1500 / dpi,

@@ -127,26 +127,26 @@ reff_plotting(
 simulate_variant(variant = "wt")
 simulate_variant(variant = "alpha")
 simulate_variant(variant = "delta")
+simulate_variant(variant = "omicron")
 
-simulate_variant(
-  variant = "omicron"
-)
 
-vaccine_effect_timeseries_omicron <- vaccine_effect_timeseries %>%
-  mutate(
-    effect = if_else(is.na(effect), 1, effect),
-    effect = 1 - (1 - effect) * 0.546 # static multiplier based on current difference will need updating
-  )
+#simulate variant with vax effect
 
 simulate_variant(
   variant = "omicron",
   subdir = "omicron_vax",
-  vax_effect = vaccine_effect_timeseries_omicron
+  vax_effect = vaccine_effect_timeseries %>% 
+    filter(variant == "Omicron", 
+           date <= max(fitted_model$data$dates$infection_project)) %>% 
+    select(-variant,-percent_reduction)
 )
 
 
 simulate_variant(
   variant = "delta",
   subdir = "delta_vax",
-  vax_effect = vaccine_effect_timeseries
+  vax_effect = vaccine_effect_timeseries %>% 
+    filter(variant == "Delta", 
+           date <= max(fitted_model$data$dates$infection_project)) %>% 
+    select(-variant,-percent_reduction)
 )
