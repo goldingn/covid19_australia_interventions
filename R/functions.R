@@ -4651,44 +4651,15 @@ get_nndss_linelist <- function(
   
   
   if (ll_date == "2022-01-25") {
+    #try csv
+    # sheets <- readxl::excel_sheets(data$file)
+    # dat <- lapply(sheets, 
+    #               function(X) readxl::read_xlsx(data$file,
+    #                                             col_types = col_types,
+    #                                             #na = "NULL", 
+    #                                             sheet = X)) 
+    # dat <- dat %>% reduce(full_join)
     
-    sheets <- readxl::excel_sheets(data$file)
-    dat <- lapply(sheets, 
-                  function(X) readxl::read_xlsx(data$file,
-                                                #col_types = col_types,
-                                                #na = "NULL", 
-                                                sheet = X)) 
-    dat <- dat %>% reduce(full_join)
-    
-    
-    dat <- dat %>%
-      mutate(
-        Postcode = as.numeric(Postcode),
-        TRUE_ONSET_DATE = as.Date(TRUE_ONSET_DATE, format = "%d/%m/%Y"),
-        SPECIMEN_DATE  = as.Date(SPECIMEN_DATE, format = "%d/%m/%Y"),
-        NOTIFICATION_DATE  = as.Date(NOTIFICATION_DATE, format = "%d/%m/%Y"),
-        NOTIFICATION_RECEIVE_DATE = as.Date(NOTIFICATION_DATE, format = "%d/%m/%Y"),
-        CV_DATE_ENTERED_QUARANTINE  = as.Date(CV_DATE_ENTERED_QUARANTINE, format = "%d/%m/%Y"),
-        CV_SOURCE_INFECTION = as.numeric(CV_SOURCE_INFECTION)
-      )
-    
-  } else if (ll_date < "2022-01-06"|ll_date > "2022-01-07") {
-    if (length(readxl::excel_sheets(data$file)) == 1) { #handle multiple sheets
-      dat <- readxl::read_xlsx(
-        data$file,
-        col_types = col_types#,
-        #na = "NULL" # usually turn this off
-      )
-    } else { #deal with multiple sheets
-      sheets <- readxl::excel_sheets(data$file)
-      dat <- lapply(sheets, 
-                    function(X) readxl::read_xlsx(data$file,
-                                                  col_types = col_types,
-                                                  #na = "NULL", 
-                                                  sheet = X)) 
-      dat <- dat %>% reduce(full_join)
-    }
-  } else { #read the xls format starting from 06-01-2022
     dat <- readr::read_csv(
       data$file,
       col_types = cols_only(
@@ -4720,9 +4691,72 @@ get_nndss_linelist <- function(
         CV_SYMPTOMS_REPORTED = col_double(),
         CV_QUARANTINE_STATUS = col_double(),
         CV_DATE_ENTERED_QUARANTINE = col_date(format = "%d/%m/%Y")),
-      na = "NULL" # usually turn this off
+      na = c("", "NULL") # usually turn this off
     ) %>% rename(POSTCODE = Postcode)
+    
+    # dat <- dat %>%
+    #   mutate(
+    #     Postcode = as.numeric(Postcode),
+    #     TRUE_ONSET_DATE = as.Date(TRUE_ONSET_DATE, format = "%d/%m/%Y"),
+    #     SPECIMEN_DATE  = as.Date(SPECIMEN_DATE, format = "%d/%m/%Y"),
+    #     NOTIFICATION_DATE  = as.Date(NOTIFICATION_DATE, format = "%d/%m/%Y"),
+    #     NOTIFICATION_RECEIVE_DATE = as.Date(NOTIFICATION_DATE, format = "%d/%m/%Y"),
+    #     CV_DATE_ENTERED_QUARANTINE  = as.Date(CV_DATE_ENTERED_QUARANTINE, format = "%d/%m/%Y"),
+    #     CV_SOURCE_INFECTION = as.numeric(CV_SOURCE_INFECTION)
+    #   )
+    
+  } else if (ll_date < "2022-01-06"|ll_date > "2022-01-07" & ll_date != "2022-01-25") {
+    if (length(readxl::excel_sheets(data$file)) == 1) { #handle multiple sheets
+      dat <- readxl::read_xlsx(
+        data$file,
+        col_types = col_types#,
+        #na = "NULL" # usually turn this off
+      )
+    } else { #deal with multiple sheets
+      sheets <- readxl::excel_sheets(data$file)
+      dat <- lapply(sheets, 
+                    function(X) readxl::read_xlsx(data$file,
+                                                  col_types = col_types,
+                                                  #na = "NULL", 
+                                                  sheet = X)) 
+      dat <- dat %>% reduce(full_join)
+    }
   }
+  # } else { #read the xls format starting from 06-01-2022
+  #   dat <- readr::read_csv(
+  #     data$file,
+  #     col_types = cols_only(
+  #       STATE = col_character(),
+  #       Postcode = col_double(),
+  #       CONFIRMATION_STATUS = col_character(),
+  #       TRUE_ONSET_DATE = col_date(format = "%d/%m/%Y"),
+  #       SPECIMEN_DATE = col_date(format = "%d/%m/%Y"),
+  #       NOTIFICATION_DATE = col_date(format = "%d/%m/%Y"),
+  #       NOTIFICATION_RECEIVE_DATE = col_date(format = "%d/%m/%Y"),
+  #       'DIAGNOSIS DATE' = col_date(format = "%d/%m/%Y"),
+  #       AGE_AT_ONSET = col_double(),
+  #       SEX = col_double(),
+  #       DIED = col_double(),
+  #       PLACE_OF_ACQUISITION = col_character(),
+  #       HOSPITALISED = col_double(),
+  #       CV_ICU = col_double(),
+  #       CV_VENTILATED = col_double(),
+  #       OUTBREAK_REF = col_character(),
+  #       CASE_FOUND_BY = col_double(),
+  #       CV_SYMPTOMS = col_character(),
+  #       CV_OTHER_SYMPTOMS = col_character(),
+  #       CV_COMORBIDITIES = col_character(),
+  #       CV_OTHER_COMORBIDITIES = col_character(),
+  #       CV_GESTATION = col_double(),
+  #       #CV_CLOSE_CONTACT = "numeric"
+  #       CV_EXPOSURE_SETTING = col_double(),
+  #       CV_SOURCE_INFECTION = col_double(),
+  #       CV_SYMPTOMS_REPORTED = col_double(),
+  #       CV_QUARANTINE_STATUS = col_double(),
+  #       CV_DATE_ENTERED_QUARANTINE = col_date(format = "%d/%m/%Y")),
+  #     na = "NULL" # usually turn this off
+  #   ) %>% rename(POSTCODE = Postcode)
+  # }
   
   if(ll_date < "2021-03-08"){
     dat <- dat %>%
@@ -4731,11 +4765,11 @@ get_nndss_linelist <- function(
       )
   }
   
-  if(ll_date > "2022-01-07"){ #fix changed postcode colname
-    dat <- dat %>%
-      rename(POSTCODE = Postcode) %>% 
-      mutate(POSTCODE = as.numeric(POSTCODE)) #not sure why this breaks down
-  }
+  # if(ll_date > "2022-01-07"){ #fix changed postcode colname
+  #   dat <- dat %>%
+  #     rename(POSTCODE = Postcode) %>% 
+  #     mutate(POSTCODE = as.numeric(POSTCODE)) #not sure why this breaks down
+  # }
   
   if (is.numeric(dat$POSTCODE)) {
     dat <- dat %>%
@@ -5973,12 +6007,17 @@ constrain_run_length <- function(x, min_run_length = 7) {
 
 reff_plotting_sims <- function(
   fitted_model,
-  vaccine_timeseries = vaccine_effect_timeseries,
+  #vaccine_timeseries = vaccine_effect_timeseries,
   nsim = 10000
 ){
   # add counterfactuals to the model object:
   # add fitted_model_extended obect because fitted_model is modified
   fitted_model_extended <- fitted_model
+  
+  vaccine_timeseries <- as_tibble(fitted_model$data$vaccine_effect_matrix) %>%
+    mutate(date = fitted_model$data$dates$infection_project) %>%
+    pivot_longer(cols = -date, names_to = "state", values_to = "effect")
+  
   # Reff for locals component 1 under
   # only micro/macro/surveillance improvements
   fitted_model_extended$greta_arrays <- c(
@@ -10674,13 +10713,17 @@ write_reff_sims_vax <- function(
 
 
 write_reff_sims_novax <- function(
-  fitted_model,
-  vaccine_timeseries
+  fitted_model#,
+  #vaccine_timeseries
 ){
   
   # removes vaccination effect from C1 if fitted with it
   
   fitted_model_extended <- fitted_model
+  
+  vaccine_timeseries <- as_tibble(fitted_model$data$vaccine_effect_matrix) %>%
+    mutate(date = fitted_model$data$dates$infection_project) %>%
+    pivot_longer(cols = -date, names_to = "state", values_to = "effect")
   
   fitted_model_extended$greta_arrays <- c(
     fitted_model$greta_arrays,
@@ -10705,7 +10748,6 @@ write_reff_sims_novax <- function(
     write_csv(
       file.path("outputs/projection/", "r_eff_1_local_without_vaccine_samples.csv")
     )
-  
   
 }
 

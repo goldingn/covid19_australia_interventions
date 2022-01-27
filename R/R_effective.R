@@ -43,8 +43,8 @@ vaccine_effect_timeseries <- readRDS(file = "outputs/vaccine_effect_timeseries.R
 
 # write sims of C1 without vaccine effect
 write_reff_sims_novax(
-  fitted_model,
-  vaccine_timeseries = vaccine_effect_timeseries
+  fitted_model#,
+  #vaccine_timeseries = vaccine_effect_timeseries
 )
 
 # generatge sims for plotting
