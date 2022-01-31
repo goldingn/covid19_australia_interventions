@@ -18,28 +18,29 @@ source("R/mobility_change.R")
 
 # 2. Vaccination effect
 # [~ 3 min]
-source("R/vacccination_effect.R")
+source("R/vacccination_with_waning.R")
 # -- Figs into dropbox / to Freya
 # -- vaccination_effect_timeseries_<date>.csv to dropbox and mediaflux
 # -- effective_dose_data_<date>.csv to mediaflux
 
 # Section B) Dependent on NNDSS data update:
 source("R/check_linelist.R")
-#  produces object `linelist_check`
-# explore `linelist_check %>% print(n=1500)` to check for cases missing 
-# acquisition information or other oddities
-# may be most useful to filter for or against NSW to check through
-# --  pass on summary to forecasting channel
-# -- check if missing_location_assumption in get_nndss_linelist needs to be altered
+#  produces notification date by state plots for the most recent 28 days
+# optionally, produce NINDSS only watermelon plot
 
 # 3. Run surveillance effect models and output figures (surveillance_effect.png
 # and notification_delays.png) and model objects (delay_from_onset_cdfs.RDS)
 # [~60s]
+
+#overall linelist read line
+linelist <- load_linelist()
+
+
 source("R/rolling_delays.R")
 #  -- figs to dropbox / to Freya
 
 # 4. TTIQ and Isolation effect
-source("R/isolation_effect.R")
+#source("R/isolation_effect.R")
 # -- figs and ttiq_effect.csv to dropbox / to Freya
 
 # 5. Sync NNDSS data and write out case data (local_cases.csv) for Monash (Rob Hyndman/Mitch)
@@ -48,7 +49,7 @@ source("R/isolation_effect.R")
 # whilst waiting [~60s]
 set.seed(2020-04-29)
 sync_nndss() # this line probably not necessary for HPC / widows, but shoudn't break aything
-data <- reff_model_data()
+data <- reff_model_data(linelist_raw = linelist)
 data$dates$linelist  # check it synced properly
 # -- is this date the correct linelist date?
 write_local_cases(data)
@@ -56,7 +57,7 @@ write_local_cases(data)
 
 # Check no entries classed as "ERROR" (i.e. conflicting PLACE_OF_ACQUISITION and CV_SOURCE_INFECTION)
 # if OK will only list "imported" and "local"
-load_linelist() %>%
+linelist %>%
   pull(import_status) %>%
   table
 

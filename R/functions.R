@@ -4427,8 +4427,136 @@ sync_nndss <- function(mount_dir = "~/Mounts/nndss", storage_dir = "~/not_synced
   }
 }
 
-# read in the latest linelist and format for analysis
+# process the read-in nndss linelist 
 get_nndss_linelist <- function(
+  date = NULL,
+  dir = "~/not_synced/nndss",
+  strict = TRUE,
+  #missing_location_assumption = "imported"
+  missing_location_assumption = "local",
+  #missing_location_assumption = "missing",
+  location_conflict_assumption = "local",
+  preprocessed = NULL
+) {
+  
+  if (is.null(preprocessed)) {
+    
+    preprocessed <- preprocess_nndss_linelist(
+      date = date,
+      dir = dir,
+      strict = strict,
+      #missing_location_assumption = "imported"
+      missing_location_assumption = missing_location_assumption,
+      #missing_location_assumption = "missing",
+      location_conflict_assumption = location_conflict_assumption)
+    
+    dat <- preprocessed$dat
+    if (is.null(date)) {
+      date <- preprocessed$data$date_time
+    }
+    
+  } else {
+      if (!is.null(date)) {
+        #when both preprocessed and date are supplied, check if it is correct
+        if (preprocessed$data$date_time != date) {
+          stop ("proprocessed data date and argument date don't match", call. = FALSE)
+        }
+      } else { #when preprocessed data is read in but date not supplied, read in date
+        date <- preprocessed$data$date_time
+      }
+    dat <- preprocessed$dat
+  }
+  
+  # record state of acquisition, and residence
+  dat <- dat %>%
+    # fill in missing places of acquisition with correct code
+    mutate(
+      PLACE_OF_ACQUISITION = ifelse(
+        is.na(PLACE_OF_ACQUISITION),
+        "00038888",
+        PLACE_OF_ACQUISITION)
+    ) %>%
+    mutate(
+      postcode_of_acquisition = substr(PLACE_OF_ACQUISITION, 5, 8),
+      postcode_of_residence = replace_na(POSTCODE, "8888"),
+      state_of_residence = postcode_to_state(postcode_of_residence)
+    ) %>%
+    rowwise %>%
+    mutate(
+      state_of_acquisition = postcode_to_state(postcode_of_acquisition),
+      .after = postcode_of_residence
+    ) %>% 
+    ungroup %>%
+    mutate(
+      interstate_import_cvsi = case_when(
+        CV_SOURCE_INFECTION == 4 ~ TRUE,
+        CV_SOURCE_INFECTION == 7 ~ TRUE,
+        TRUE ~ FALSE
+      )
+    )
+  
+  
+  
+  # Generate linelist data
+  linelist <- dat %>%
+    # notification receive date seems buggy, and is sometimes before the
+    # notification date and specimen collection date
+    mutate(
+      date_confirmation = pmax(NOTIFICATION_RECEIVE_DATE,
+                               NOTIFICATION_DATE,
+                               na.rm = TRUE),
+    ) %>%
+    select(
+      date_onset = TRUE_ONSET_DATE,
+      date_detection = SPECIMEN_DATE,
+      date_confirmation,
+      date_quarantine = CV_DATE_ENTERED_QUARANTINE,
+      state = STATE,
+      import_status,
+      postcode_of_acquisition,
+      postcode_of_residence,
+      state_of_acquisition,
+      state_of_residence,
+      interstate_import_cvsi
+    ) %>%
+    mutate(
+      report_delay = as.numeric(date_confirmation - date_onset),
+      date_linelist = as.Date(date, tz = "Australia/Canberra"),
+      state = as.factor(state)
+    ) %>%
+    
+    # Remove those with onset date after confirmation date
+    # only keep individuals with date of confirmation after onset date if less than 2 days (inclusive) because
+    # we assume some individuals tested via contact tracing will test positive before symptom onset and therefore plausible
+    # (noting that reporting delay distribution only calculated from positive differences)
+    # also remove any individuals with NA for both notification and symptom onset dates
+    # filter(
+    #   date_confirmation >= (date_onset - 2) | is.na(date_confirmation) | is.na(date_onset)
+    # ) %>%
+    filter(
+      !(is.na(date_confirmation) & is.na(date_onset))
+    ) %>%
+    mutate_at(
+      vars(starts_with("date_")),
+      ~as.Date(.)
+    ) %>%
+    # for cases missing a date of detection, assume it's the day before the date
+    # of confirmation (1 days is the median and mode of this delay distribution)
+    mutate(
+      date_detection = case_when(
+        is.na(date_detection) ~ date_confirmation - 1,
+        TRUE ~ date_detection
+      )
+    )
+  
+  linelist
+  
+}
+  
+
+
+# read in the latest linelist and format for analysis
+preprocess_nndss_linelist <- function(
   date = NULL,
   dir = "~/not_synced/nndss",
   strict = TRUE,
@@ -4437,7 +4565,7 @@ get_nndss_linelist <- function(
   #missing_location_assumption = "missing",
   location_conflict_assumption = "local"
 ) {
-  
+
   data <- linelist_date_times(dir)
   
   # subset to this date
@@ -4650,7 +4778,7 @@ get_nndss_linelist <- function(
   }
   
   
-  if (ll_date == "2022-01-25") {
+  if (ll_date >= "2022-01-25") {
     #try csv
     # sheets <- readxl::excel_sheets(data$file)
     # dat <- lapply(sheets, 
@@ -4705,7 +4833,7 @@ get_nndss_linelist <- function(
     #     CV_SOURCE_INFECTION = as.numeric(CV_SOURCE_INFECTION)
     #   )
     
-  } else if (ll_date < "2022-01-06"|ll_date > "2022-01-07" & ll_date != "2022-01-25") {
+  } else if (ll_date < "2022-01-06"|ll_date > "2022-01-07" & ll_date < "2022-01-25") {
     if (length(readxl::excel_sheets(data$file)) == 1) { #handle multiple sheets
       dat <- readxl::read_xlsx(
         data$file,
@@ -4838,89 +4966,8 @@ get_nndss_linelist <- function(
       import_status = ifelse(import_status == "ERROR", location_conflict_assumption, import_status)
     )
   
-  # record state of acquisition, and residence
-  dat <- dat %>%
-    # fill in missing places of acquisition with correct code
-    mutate(
-      PLACE_OF_ACQUISITION = ifelse(
-        is.na(PLACE_OF_ACQUISITION),
-        "00038888",
-        PLACE_OF_ACQUISITION)
-    ) %>%
-    mutate(
-      postcode_of_acquisition = substr(PLACE_OF_ACQUISITION, 5, 8),
-      postcode_of_residence = replace_na(POSTCODE, "8888"),
-      state_of_residence = postcode_to_state(postcode_of_residence)
-    ) %>%
-    rowwise %>%
-    mutate(
-      state_of_acquisition = postcode_to_state(postcode_of_acquisition),
-      .after = postcode_of_residence
-    ) %>% 
-    ungroup %>%
-    mutate(
-      interstate_import_cvsi = case_when(
-        CV_SOURCE_INFECTION == 4 ~ TRUE,
-        CV_SOURCE_INFECTION == 7 ~ TRUE,
-        TRUE ~ FALSE
-      )
-    )
-  
-
-  
-  # Generate linelist data
-  linelist <- dat %>%
-    # notification receive date seems buggy, and is sometimes before the
-    # notification date and specimen collection date
-    mutate(
-      date_confirmation = pmax(NOTIFICATION_RECEIVE_DATE,
-                               NOTIFICATION_DATE,
-                               na.rm = TRUE),
-    ) %>%
-    select(
-      date_onset = TRUE_ONSET_DATE,
-      date_detection = SPECIMEN_DATE,
-      date_confirmation,
-      date_quarantine = CV_DATE_ENTERED_QUARANTINE,
-      state = STATE,
-      import_status,
-      postcode_of_acquisition,
-      postcode_of_residence,
-      state_of_acquisition,
-      state_of_residence,
-      interstate_import_cvsi
-    ) %>%
-    mutate(
-      report_delay = as.numeric(date_confirmation - date_onset),
-      date_linelist = as.Date(data$date_time, tz = "Australia/Canberra"),
-      state = as.factor(state)
-    ) %>%
-    
-    # Remove those with onset date after confirmation date
-    # only keep individuals with date of confirmation after onset date if less than 2 days (inclusive) because
-    # we assume some individuals tested via contact tracing will test positive before symptom onset and therefore plausible
-    # (noting that reporting delay distribution only calculated from positive differences)
-    # also remove any individuals with NA for both notification and symptom onset dates
-    # filter(
-    #   date_confirmation >= (date_onset - 2) | is.na(date_confirmation) | is.na(date_onset)
-    # ) %>%
-    filter(
-      !(is.na(date_confirmation) & is.na(date_onset))
-    ) %>%
-    mutate_at(
-      vars(starts_with("date_")),
-      ~as.Date(.)
-    ) %>%
-    # for cases missing a date of detection, assume it's the day before the date
-    # of confirmation (1 days is the median and mode of this delay distribution)
-    mutate(
-      date_detection = case_when(
-        is.na(date_detection) ~ date_confirmation - 1,
-        TRUE ~ date_detection
-      )
-    )
-  
-  linelist
+  return(list(data = data,
+              dat = dat))
   
 }
 
