@@ -4,281 +4,143 @@ source("R/lib.R")
 
 source("R/functions.R")
 
-#library(dplyr)
-#library(readxl)
+dat <- preprocess_nndss_linelist()
+
+filter_date <- dat$data$date_time - lubridate::days(28)
+
+check_dat <- dat$dat %>%
+  filter(NOTIFICATION_RECEIVE_DATE >= filter_date)
+
+check_dat %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = NOTIFICATION_RECEIVE_DATE,
+    ),
+    stat = "count"
+  ) + 
+  geom_vline(aes(xintercept = ll_date)) +
+  facet_wrap(
+    facets = vars(STATE),
+    ncol = 2,
+    scales = "free_y"
+  ) 
+
+ggsave("outputs/figures/NR_date_count.png")
 
 
-dir <- "~/not_synced/nndss"
-  
-data <- linelist_date_times(dir) %>%
-    filter(date_time == max(date_time, na.rm = TRUE))
-  
-strict <- TRUE
-
-  col_types <- NULL
-  if (strict) {
-    col_types_1 <- c(
-      STATE = "text",
-      POSTCODE = "numeric",
-      CONFIRMATION_STATUS = "numeric",
-      TRUE_ONSET_DATE = "date",
-      SPECIMEN_DATE = "date",
-      NOTIFICATION_DATE = "date",
-      NOTIFICATION_RECEIVE_DATE = "date",
-      Diagnosis_Date = "date",
-      AGE_AT_ONSET = "numeric",
-      SEX = "numeric",
-      DIED = "numeric",
-      PLACE_OF_ACQUISITION = "text",
-      HOSPITALISED = "numeric",
-      CV_ICU = "numeric",
-      CV_VENTILATED = "numeric",
-      OUTBREAK_REF = "text",
-      CASE_FOUND_BY = "numeric",
-      CV_SYMPTOMS = "text",
-      CV_OTHER_SYMPTOMS = "text",
-      CV_COMORBIDITIES = "text",
-      CV_OTHER_COMORBIDITIES = "text",
-      CV_GESTATION = "numeric",
-      CV_CLOSE_CONTACT = "numeric"
-      #CV_EXPOSURE_SETTING = "numeric",
-      #CV_SOURCE_INFECTION = "numeric"
-    )
-    
-    
-    col_types_2 <- c(
-      STATE = "text",
-      POSTCODE = "numeric",
-      CONFIRMATION_STATUS = "numeric",
-      TRUE_ONSET_DATE = "date",
-      SPECIMEN_DATE = "date",
-      NOTIFICATION_DATE = "date",
-      NOTIFICATION_RECEIVE_DATE = "date",
-      Diagnosis_Date = "date",
-      AGE_AT_ONSET = "numeric",
-      SEX = "numeric",
-      DIED = "numeric",
-      PLACE_OF_ACQUISITION = "text",
-      HOSPITALISED = "numeric",
-      CV_ICU = "numeric",
-      CV_VENTILATED = "numeric",
-      OUTBREAK_REF = "text",
-      CASE_FOUND_BY = "numeric",
-      CV_SYMPTOMS = "text",
-      CV_OTHER_SYMPTOMS = "text",
-      CV_COMORBIDITIES = "text",
-      CV_OTHER_COMORBIDITIES = "text",
-      CV_GESTATION = "numeric",
-      #CV_CLOSE_CONTACT = "numeric"
-      CV_EXPOSURE_SETTING = "numeric",
-      CV_SOURCE_INFECTION = "numeric"
-    )
-    
-    col_types_3 <- c(
-      STATE = "text",
-      POSTCODE = "numeric",
-      CONFIRMATION_STATUS = "text",
-      TRUE_ONSET_DATE = "date",
-      SPECIMEN_DATE = "date",
-      NOTIFICATION_DATE = "date",
-      NOTIFICATION_RECEIVE_DATE = "date",
-      Diagnosis_Date = "date",
-      AGE_AT_ONSET = "numeric",
-      SEX = "numeric",
-      DIED = "numeric",
-      PLACE_OF_ACQUISITION = "text",
-      HOSPITALISED = "numeric",
-      CV_ICU = "numeric",
-      CV_VENTILATED = "numeric",
-      OUTBREAK_REF = "text",
-      CASE_FOUND_BY = "numeric",
-      CV_SYMPTOMS = "text",
-      CV_OTHER_SYMPTOMS = "text",
-      CV_COMORBIDITIES = "text",
-      CV_OTHER_COMORBIDITIES = "text",
-      CV_GESTATION = "numeric",
-      #CV_CLOSE_CONTACT = "numeric"
-      CV_EXPOSURE_SETTING = "numeric",
-      CV_SOURCE_INFECTION = "numeric",
-      CV_SYMPTOMS_REPORTED = "numeric",
-      CV_QUARANTINE_STATUS = "numeric",
-      CV_DATE_ENTERED_QUARANTINE = "date"
-    )
-    
-    col_types_4 <- c(
-      STATE = "text",
-      POSTCODE = "numeric",
-      CONFIRMATION_STATUS = "text",
-      TRUE_ONSET_DATE = "date",
-      SPECIMEN_DATE = "date",
-      NOTIFICATION_DATE = "date",
-      NOTIFICATION_RECEIVE_DATE = "date",
-      Diagnosis_Date = "date",
-      AGE_AT_ONSET = "numeric",
-      SEX = "numeric",
-      DIED = "numeric",
-      PLACE_OF_ACQUISITION = "text",
-      HOSPITALISED = "numeric",
-      CV_ICU = "numeric",
-      CV_VENTILATED = "numeric",
-      OUTBREAK_REF = "text",
-      CASE_FOUND_BY = "numeric",
-      CV_SYMPTOMS = "text",
-      CV_OTHER_SYMPTOMS = "text",
-      CV_COMORBIDITIES = "text",
-      CV_OTHER_COMORBIDITIES = "text",
-      CV_GESTATION = "numeric",
-      #CV_CLOSE_CONTACT = "numeric"
-      CV_EXPOSURE_SETTING = "numeric",
-      CV_SOURCE_INFECTION = "numeric",
-      CV_SYMPTOMS_REPORTED = "numeric",
-      CV_QUARANTINE_STATUS = "numeric",
-      CV_DATE_ENTERED_QUARANTINE = "date",
-      "numeric",
-      "text",
-      "date",
-      "numeric",
-      "text",
-      "date",
-      "numeric",
-      "text",
-      "date",
-      "numeric",
-      "text",
-      "date",
-      "numeric",
-      "text",
-      "date"
-    )
-    
-  }
-  
-  
-ll_date <- data$date_time[[1]]
-  
-  
-if (ll_date < "2021-03-08") {
-  col_types <- col_types_1
-} else if (ll_date < "2021-11-08") {
-  col_types <- col_types_2
-} else if (ll_date < "2021-12-02") {
-  col_types <- col_types_3
-} else {
-  col_types <- col_types_4
-}
+# linelist_check <- df %>%
+#   dplyr::select(
+#     STATE,
+#     NOTIFICATION_DATE,
+#     NOTIFICATION_RECEIVE_DATE,
+#     AGE_AT_ONSET,
+#     SEX,
+#     PLACE_OF_ACQUISITION,
+#     CV_SOURCE_INFECTION,
+#     import_status
+#   ) %>% 
+#   dplyr::arrange(STATE, desc(NOTIFICATION_RECEIVE_DATE)) %>%
+#   print(n = 100)
 
 
-#read the xls format starting from 06-01-2022
-if (ll_date < "2022-01-06") {
-  dat <- readxl::read_xlsx(
-    data$file,
-    col_types = col_types,
-    na = "NULL" # usually turn this off
-  )
-} else {
-  dat <- readr::read_csv(
-    data$file,
-    col_types = cols_only(
-      STATE = col_character(),
-      Postcode = col_double(),
-      CONFIRMATION_STATUS = col_character(),
-      TRUE_ONSET_DATE = col_date(format = "%d/%m/%Y"),
-      SPECIMEN_DATE = col_date(format = "%d/%m/%Y"),
-      NOTIFICATION_DATE = col_date(format = "%d/%m/%Y"),
-      NOTIFICATION_RECEIVE_DATE = col_date(format = "%d/%m/%Y"),
-      'DIAGNOSIS DATE' = col_date(format = "%d/%m/%Y"),
-      AGE_AT_ONSET = col_double(),
-      SEX = col_double(),
-      DIED = col_double(),
-      PLACE_OF_ACQUISITION = col_character(),
-      HOSPITALISED = col_double(),
-      CV_ICU = col_double(),
-      CV_VENTILATED = col_double(),
-      OUTBREAK_REF = col_character(),
-      CASE_FOUND_BY = col_double(),
-      CV_SYMPTOMS = col_character(),
-      CV_OTHER_SYMPTOMS = col_character(),
-      CV_COMORBIDITIES = col_character(),
-      CV_OTHER_COMORBIDITIES = col_character(),
-      CV_GESTATION = col_double(),
-      #CV_CLOSE_CONTACT = "numeric"
-      CV_EXPOSURE_SETTING = col_double(),
-      CV_SOURCE_INFECTION = col_double(),
-      CV_SYMPTOMS_REPORTED = col_double(),
-      CV_QUARANTINE_STATUS = col_double(),
-      CV_DATE_ENTERED_QUARANTINE = col_date(format = "%d/%m/%Y")),
-    na = "NULL" # usually turn this off
-  ) %>% rename(POSTCODE = Postcode)
-}
-  
-filter_date <- ll_date - lubridate::days(28)
+# # watermelon --------------------------------------------------------------
+# # takes time to run, probably should not source
+# 
+# set.seed(2020-04-29)
+# 
+# get_nndss_start <- Sys.time()
+# 
+# linelist <- get_nndss_linelist(preprocessed = dat)
+# 
+# Sys.time()-get_nndss_start
+# 
+# #quick fix for interstate import
+# # flag whether each case is an interstate import
+# linelist <- linelist %>%
+#   mutate(
+#     interstate_import = case_when(
+#       state == "ACT" ~ interstate_import_cvsi,
+#       # ACT have indicated that CV_SOURCE_INFECTION is a reliable indicator for their territory
+#       # whereas postcodes in ACT may also cover NSW so postcodes are less reliable
+#       state != state_of_acquisition ~ TRUE,
+#       TRUE ~ FALSE
+#     )
+#   ) %>% 
+#   select(-interstate_import_cvsi)
+# 
+# 
+# reff_model_data_start <- Sys.time()
+# 
+# # prepare data for Reff modelling
+# model_data <- reff_model_data(linelist_raw = linelist)
+# 
+# Sys.time()-reff_model_data_start
+# 
+# local_cases <- tibble::tibble(
+#   date_onset = rep(model_data$dates$onset, model_data$n_states),
+#   detection_probability = as.vector(model_data$detection_prob_mat),
+#   state = rep(model_data$states, each = model_data$n_dates),
+#   count = as.vector(model_data$local$cases_infectious),
+#   acquired_in_state = as.vector(model_data$local$cases)
+# ) 
+# 
+# 
+# 
+# lc_long <- local_cases %>%
+#   filter(date_onset >"2021-11-30") %>%
+#   filter(detection_probability > 0.01) %>%
+#   select(-acquired_in_state) %>%
+#   mutate(projected_count = count/detection_probability) %>%
+#   group_by(state, date_onset) %>%
+#   mutate(proj = projected_count - count) %>%
+#   select(-projected_count) %>%
+#   pivot_longer(cols = c("count", "proj"), names_to = "type", values_to = "count")
+# 
+# prob_line_95 <- lc_long %>%
+#   filter(type == "count") %>%
+#   filter(detection_probability >= 0.95) %>%
+#   group_by(state) %>%
+#   filter(detection_probability == min(detection_probability)) %>%
+#   select(state,date_onset)
+# 
+# prob_line_90 <- lc_long %>%
+#   filter(type == "count") %>%
+#   filter(detection_probability >= 0.9) %>%
+#   group_by(state) %>%
+#   filter(detection_probability == min(detection_probability)) %>%
+#   select(state,date_onset)
+# 
+# lc_long %>%
+#   ggplot() +
+#   geom_bar(
+#     aes(
+#       x = date_onset,
+#       y = count,
+#       fill = type
+#     ),
+#     stat = "identity"
+#   ) +
+#   geom_vline(
+#     data = prob_line_95,
+#     aes(
+#       xintercept = date_onset
+#     )
+#   ) +
+#   geom_vline(
+#     data = prob_line_90,
+#     aes(
+#       xintercept = date_onset
+#     )
+#   ) +
+#   facet_wrap(
+#     facets = vars(state),
+#     ncol = 2,
+#     scales = "free_y"
+#   )
+# 
+# ggsave("outputs/figures/watermelon_NINDSS_only.png", bg = 'white')
 
 
 
-#missing_location_assumption <- "local"
-#missing_location_assumption <- "imported"
-missing_location_assumption <- "missing"
-
-df <- dat %>%
-  filter(NOTIFICATION_RECEIVE_DATE >= filter_date) %>%
-  mutate(
-    check = case_when(
-      is.na(PLACE_OF_ACQUISITION) ~ TRUE,
-      is.na(CV_SOURCE_INFECTION) ~ TRUE,
-      grepl("^1101|^00038888", PLACE_OF_ACQUISITION) ~ TRUE,
-      CV_SOURCE_INFECTION != 1 ~ TRUE,
-      TRUE ~ FALSE
-    )
-  ) %>%
-  filter(check) %>%
-  mutate(
-    import_status = case_when(
-      # return "ERROR" if place of acquisition and cv_source_infection
-      # indicate opposite import statuses
-      grepl("^1101", PLACE_OF_ACQUISITION) & CV_SOURCE_INFECTION == 1 ~ "ERROR",
-      !is.na(PLACE_OF_ACQUISITION) & 
-        !grepl("^1101|^00038888", PLACE_OF_ACQUISITION) &
-        CV_SOURCE_INFECTION == 2 ~ "ERROR",
-      !is.na(PLACE_OF_ACQUISITION) & 
-        !grepl("^1101|^00038888", PLACE_OF_ACQUISITION) &
-        CV_SOURCE_INFECTION == 3 ~ "ERROR",
-      !is.na(PLACE_OF_ACQUISITION) & 
-        !grepl("^1101|^00038888", PLACE_OF_ACQUISITION) &
-        CV_SOURCE_INFECTION == 4 ~ "ERROR",
-      # where source known us that
-      grepl("^1101", PLACE_OF_ACQUISITION) ~ "local",
-      CV_SOURCE_INFECTION == 1 ~ "imported",
-      CV_SOURCE_INFECTION == 2 ~ "local",
-      CV_SOURCE_INFECTION == 3 ~ "local",
-      CV_SOURCE_INFECTION == 4 ~ "local",
-      CV_SOURCE_INFECTION == 6 ~ "local",
-      CV_SOURCE_INFECTION == 7 ~ "local",
-      # otherwise impute it
-      CV_SOURCE_INFECTION == 5 ~ missing_location_assumption,
-      grepl("^00038888", PLACE_OF_ACQUISITION) ~ missing_location_assumption,
-      !is.na(PLACE_OF_ACQUISITION) ~ "imported",
-      is.na(PLACE_OF_ACQUISITION) ~ missing_location_assumption,
-      is.na(CV_SOURCE_INFECTION) ~ missing_location_assumption
-    )#,
-    # import_status = case_when(
-    #   import_status == "missing" & STATE == "WA" ~ "local",
-    #   import_status == "missing" & STATE != "WA" ~ "imported",
-    #   TRUE ~ import_status
-    # )
-  )
-
-
-linelist_check <- df %>%
-  dplyr::select(
-    STATE,
-    NOTIFICATION_DATE,
-    NOTIFICATION_RECEIVE_DATE,
-    AGE_AT_ONSET,
-    SEX,
-    PLACE_OF_ACQUISITION,
-    CV_SOURCE_INFECTION,
-    import_status
-  ) %>% 
-  dplyr::arrange(STATE, desc(NOTIFICATION_RECEIVE_DATE)) %>%
-  print(n = 100)
 
