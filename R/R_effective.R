@@ -10,7 +10,11 @@ source("R/functions.R")
 sync_nndss()
 
 # prepare data for Reff modelling
-data <- reff_model_data()
+
+#quick check if reff data is already loaded
+if (length(data) != 12) {
+  data <- reff_model_data() 
+}
 
 data$dates$linelist
 
