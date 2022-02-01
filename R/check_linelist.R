@@ -19,7 +19,7 @@ check_dat %>%
     ),
     stat = "count"
   ) + 
-  geom_vline(aes(xintercept = ll_date)) +
+  geom_vline(aes(xintercept = as_date(dat$data$date_time))) +
   facet_wrap(
     facets = vars(STATE),
     ncol = 2,
