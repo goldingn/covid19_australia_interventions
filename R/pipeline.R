@@ -63,7 +63,7 @@ linelist %>%
 
 # write linelist format for UoAdelaide (Tobin/Josh) if necessary
 # usually unnecessary unless edits to raw linelist
-write_linelist()
+write_linelist(linelist = linelist)
 
 # Section C) Dependent on survey data update (the numbered file must be manually
 # copied to data/survey_raw):

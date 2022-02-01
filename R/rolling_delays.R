@@ -88,43 +88,43 @@ save_ggplot("notification_delays.png", multi = TRUE)
 #onset missingness plot
 
 week_grid <- linelist %>%
-  filter(import_status == "local") %>%
+  filter(import_status == "local", date_confirmation >= (max(date_confirmation) - months(6))) %$%
   expand_grid(
     state = unique(.$state),
-    month = .$date_confirmation %>%
-      format("%Y-%m") %>%
+    week = .$date_confirmation %>%
+      cut.Date(breaks = "1 week", labels = NULL) %>% 
+      #arrange %>%
       unique
   )
 
 missingness <- linelist %>%
-  filter(import_status == "local") %>%
+  filter(import_status == "local", date_confirmation >= (max(date_confirmation) - months(6))) %>%
   mutate(
-    month = format(date_confirmation, "%Y-%m")
+    week = cut.Date(date_confirmation, breaks = "1 week", labels = NULL)
   ) %>%
   group_by(
     state,
-    month
+    week
   ) %>%
   summarise(
     n_cases = n(),
     prop_onset = sum(!is.na(date_onset))/n(),
-    prop_quarantine = sum(!is.na(date_quarantine))/n(),
     .groups = "drop"
   ) %>%
   full_join(
-    month_grid
+    week_grid
   ) %>%
   mutate(
     n_cases = ifelse(is.na(n_cases), 0, n_cases)
   ) %>%
-  arrange(month, state)
+  arrange(week, state)
 
 
 missingness %>%
   ggplot() +
   geom_point(
     aes(
-      x = month,
+      x = week,
       y = prop_onset,
       size = log10(n_cases)
     ),
@@ -142,7 +142,7 @@ missingness %>%
   ) +
   ggtitle(
     label = "Proportion symptom onset dates",
-    subtitle = "Proportion of local cases in NINDSS with symptom onset dates recorded, by month"
+    subtitle = "Proportion of local cases with symptom onset dates recorded, by week"
   ) +
   cowplot::theme_cowplot() +
   cowplot::panel_border(remove = TRUE) +
