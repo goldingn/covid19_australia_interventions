@@ -15,7 +15,7 @@ sync_nndss()
 if (length(data) != 12) {
   data <- reff_model_data() 
 }
-
+saveRDS(data, "outputs/pre_loaded_reff_data.RDS")
 data$dates$linelist
 
 # save the key dates for Freya and David to read in, and tabulated local cases
