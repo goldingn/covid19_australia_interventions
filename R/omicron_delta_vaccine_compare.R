@@ -108,12 +108,12 @@ ggplot() +
   geom_line(data = r2.post %>% filter(state %in% subset.states), aes(x = date, y = L90), col = col2, alpha = line.alpha) +
   geom_line(data = r2.post %>% filter(state %in% subset.states), aes(x = date, y = U90), col = col2, alpha = line.alpha) +
   
-  geom_vline(
-    data = prop_variant_dates() %>% filter(state %in% subset.states),
-    aes(xintercept = date),
-    colour = "firebrick1",
-    linetype = 5
-  ) +
+  # geom_vline(
+  #   data = prop_variant_dates() %>% filter(state %in% subset.states),
+  #   aes(xintercept = date),
+  #   colour = "firebrick1",
+  #   linetype = 5
+  # ) +
   
   geom_vline(xintercept = vacc.start, colour = "steelblue3", linetype = 5) +
   
@@ -197,12 +197,12 @@ ggplot() +
   geom_line(data = r2.post %>% filter(state %in% subset.states), aes(x = date, y = L90), col = col2, alpha = line.alpha) +
   geom_line(data = r2.post %>% filter(state %in% subset.states), aes(x = date, y = U90), col = col2, alpha = line.alpha) +
   
-  geom_vline(
-    data = prop_variant_dates() %>% filter(state %in% subset.states),
-    aes(xintercept = date),
-    colour = "firebrick1",
-    linetype = 5
-  ) +
+  # geom_vline(
+  #   data = prop_variant_dates() %>% filter(state %in% subset.states),
+  #   aes(xintercept = date),
+  #   colour = "firebrick1",
+  #   linetype = 5
+  # ) +
   
   geom_vline(xintercept = vacc.start, colour = "steelblue3", linetype = 5) +
   
@@ -279,12 +279,12 @@ ggplot() +
   geom_line(data = r2.post %>% filter(state %in% subset.states), aes(x = date, y = L90), col = col2, alpha = line.alpha) +
   geom_line(data = r2.post %>% filter(state %in% subset.states), aes(x = date, y = U90), col = col2, alpha = line.alpha) +
   
-  geom_vline(
-    data = prop_variant_dates() %>% filter(state %in% subset.states),
-    aes(xintercept = date),
-    colour = "firebrick1",
-    linetype = 5
-  ) +
+  # geom_vline(
+  #   data = prop_variant_dates() %>% filter(state %in% subset.states),
+  #   aes(xintercept = date),
+  #   colour = "firebrick1",
+  #   linetype = 5
+  # ) +
   
   geom_vline(xintercept = vacc.start, colour = "steelblue3", linetype = 5) +
   
