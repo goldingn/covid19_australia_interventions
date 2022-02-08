@@ -29,7 +29,7 @@ library(rvest)
 library(magrittr)
 library(conmat)
 library(bayesplot)
-
+library(gaussquad)
 
 
 # read in and tidy up Facebook movement data
@@ -348,7 +348,7 @@ append_google_data <- function(mobility_data, url = tidycovid_url) {
     dowload_tidycovid()
   }
   tmp <- readRDS(file)
-
+  
   
   # get the previous data in the same format
   previous_data <- tmp$country_region %>%
@@ -573,7 +573,7 @@ interventions <- function(
           "2021-07-28", "SA" # restrictions eased from 28th https://www.sahealth.sa.gov.au/wps/wcm/connect/public+content/sa+health+internet/about+us/news+and+media/all+media+releases/covid-19+update+28+july+2021
         )
       )
-
+    
     tas_interventions <-  tas_interventions %>%
       bind_rows(
         tibble::tribble(
@@ -648,7 +648,7 @@ quarantine_dates <- function() {
   expand_grid(
     date = c("2020-03-15", "2020-03-28"),
     state = c("ACT", "NSW", "NT", "QLD", "SA", "TAS", 
-      "VIC", "WA")
+              "VIC", "WA")
   ) %>%
     mutate(
       date = as.Date(date),
@@ -831,7 +831,7 @@ download_holiday_dates <- function(destination) {
     select(state, date, name) %>%
     write_csv(destination)
 }
-    
+
 # dates of public holidays by state, from:
 # https://data.gov.au/dataset/ds-dga-b1bc6077-dadd-4f61-9f8c-002ab2cdff10/details?q=
 holiday_dates <- function(holiday_file = "data/holidays/public_holidays.csv") {
@@ -848,7 +848,7 @@ holiday_dates <- function(holiday_file = "data/holidays/public_holidays.csv") {
       name = col_character()
     )
   )
-
+  
 }
 
 lockdown_lgas <- function() {
@@ -1614,7 +1614,7 @@ plot_trend <- function(
     x_text_vjust <- 0.5
   }
   
-
+  
   
   # date_breaks <- ifelse(
   #   length(unique(df$date)) < 200,
@@ -1735,16 +1735,16 @@ plot_trend <- function(
 # was intended as alternative to plot_trend with wider x-axis for longer timeseries
 # still may be useful and need updating in that case to include voc
 plot_trend_long <- function(simulations,
-                       data,
-                       base_colour = grey(0.4),
-                       multistate = FALSE,
-                       hline_at = 1,
-                       ylim = c(0, 4),
-                       intervention_at = interventions(),
-                       projection_at = NA,
-                       keep_only_rows = NULL,
-                       max_date = data$dates$latest_mobility,
-                       min_date = as.Date("2020-03-01")) {
+                            data,
+                            base_colour = grey(0.4),
+                            multistate = FALSE,
+                            hline_at = 1,
+                            ylim = c(0, 4),
+                            intervention_at = interventions(),
+                            projection_at = NA,
+                            keep_only_rows = NULL,
+                            max_date = data$dates$latest_mobility,
+                            min_date = as.Date("2020-03-01")) {
   
   mean <- colMeans(simulations)
   ci_90 <- apply(simulations, 2, quantile, c(0.05, 0.95))
@@ -2545,7 +2545,7 @@ prop_variant <- function(dates){
     arrange(state, date) %>%
     tidyr::fill(everything()) %>%
     filter(date %in% dates) # account for "2020-01-01" start date may not be in dates
-    
+  
   prop_wt <- df %>%
     dplyr::select(state, date, prop_wt) %>%
     pivot_wider(
@@ -2659,7 +2659,7 @@ distancing_effect_model <- function(
   phi_delta <- phi_alpha * phi_delta_alpha
   
   phi_star <- prop_wt * 1 + prop_alpha * phi_alpha + prop_delta * phi_delta + prop_omicron * phi_omicron
-
+  
   p_star <- p ^ phi_star
   
   
@@ -3053,7 +3053,7 @@ microdistancing_model <- function(data, parameters) {
   denominators <- next_column(inflections_long) - inflections_long
   numerators <- sweep(-inflections_long, 1, data$time, FUN = "+")
   inflection_shape <- cbind(ones(length(data$state)), numerators / denominators)
-
+  
   # masking columns to create weights matrix
   null1 <- (sign(inflection_shape) + 1) / 2
   null2 <- next_column(1 - null1)
@@ -3125,7 +3125,7 @@ macrodistancing_model <- function(data, parameters) {
   # average daily number of contacts
   log_mean_daily_contacts <- log(parameters$OC_0) + log_change_contacts
   mean_daily_contacts <- exp(log_mean_daily_contacts)
-
+  
   # model the fraction of contacts falling on each day of the week via a multilogit model
   n <- nrow(log_mean_daily_contacts)
   X <- cbind(ones(n), log_mean_daily_contacts)
@@ -3143,7 +3143,7 @@ macrodistancing_model <- function(data, parameters) {
   # this equivalent to:
   #   log_fraction_weekly_contacts_wday <- eta[idx] - log_sum_exp(eta)
   # but shouldn't be much different speed-wise
-
+  
   # use this to apply the weekday effect
   log_mean_weekly_contacts <- log_mean_daily_contacts + log(7)
   log_mean_daily_contacts_wday <- log_mean_weekly_contacts + log_fraction_weekly_contacts
@@ -3193,10 +3193,10 @@ macrodistancing_null <- function(data, log_fraction_weekly_contacts_mean) {
     ) %>%
     select(wave_id, state_id) %>%
     as.matrix()
-    
+  
   n_waves <- length(wave_dates)
   n_states <- length(states)
-
+  
   # hierarchical model for the average number of contacts per survey/state
   log_contacts_mean <- normal(0, 10)
   log_contacts_sd <- normal(0, 1, truncation = c(0, Inf))
@@ -3225,7 +3225,7 @@ macrodistancing_null <- function(data, log_fraction_weekly_contacts_mean) {
   
   # because mean = exp(meanlog + (sdlog ^ 2) / 2)
   meanlog <- log_predicted_contacts - (sdlog ^ 2) / 2
-
+  
   distribution(data$contacts$contact_num) <- discrete_lognormal(
     meanlog = meanlog,
     sdlog = sdlog,
@@ -3647,7 +3647,7 @@ macrodistancing_params <- function(baseline_contact_params) {
   # coefficients for the fraction of weekly contacts that are on weekends, as a
   # function of the log diffference in contacts
   weekday_coefs <- normal(0, 1, dim = c(2, 6))
-
+  
   list(
     OC_0 = OC_0,
     mobility_coefs = mobility_coefs,
@@ -3702,7 +3702,7 @@ right_aggregated_negative_binomial_distribution <- R6Class(
         # size parameter, so we sum over the PMF in the uncensored range instead
         integers <- tf$range(fl(0), fl(self$max_count + 1))
         integer_log_densities <- distribution$log_prob(integers)
-    
+        
         # compute the log-probability of *not* exceeding max_count
         # do reduce_log_sum_exp to get log of sum over PMFs
         log_p_not_excess <- tf$reduce_logsumexp(
@@ -3714,7 +3714,7 @@ right_aggregated_negative_binomial_distribution <- R6Class(
         # compute the log-probability of being in excess
         # log(1 - exp(log_p_not_excess))
         log_p_excess <- log(-tf$math$expm1(log_p_not_excess))
-          
+        
         # get the point densities of all counts        
         log_density_integers <- distribution$log_prob(x)
         
@@ -3722,7 +3722,7 @@ right_aggregated_negative_binomial_distribution <- R6Class(
         # recomputing
         # set the excess counts to 0 for now
         # x_clean <- tf$where(excess_count, fl(0), x)
-
+        
         # find the counts exceeding max_count
         excess_count <- x > fl(self$max_count)
         
@@ -3864,8 +3864,8 @@ discrete_lognormal <- function(meanlog, sdlog, breaks, dim = NULL) {
 lognormal_params <- function(mean, sd) {
   var <- sd ^ 2
   list(
-       meanlog = log((mean ^ 2) / sqrt(var + mean ^ 2)),
-       sdlog = sqrt(log(1 + var / (mean ^ 2)))
+    meanlog = log((mean ^ 2) / sqrt(var + mean ^ 2)),
+    sdlog = sqrt(log(1 + var / (mean ^ 2)))
   )
 }
 
@@ -3888,7 +3888,7 @@ macrodistancing_likelihood <- function(predictions, data) {
   
   # because mean = exp(meanlog + (sdlog ^ 2) / 2)
   meanlog <- log_predicted_contacts - (sdlog ^ 2) / 2
-
+  
   distribution(data$contacts$contact_num) <- discrete_lognormal(
     meanlog = meanlog,
     sdlog = sdlog,
@@ -3960,7 +3960,7 @@ microdistancing_params <- function(n_locations = 8, n_inflections = 1, inflectio
   inflection_scaled <- sweep(inflection_raw, 2, inflection_sds, FUN = "*")
   inflection_centred <- sweep(inflection_raw, 2, inflection_means, FUN = "+")
   inflections <- ilogit(inflection_centred)
-
+  
   height_means <- normal(0, 10, dim = n_inflections + 1)
   height_sds <- normal(0, 0.5, truncation = c(0, Inf), dim = n_inflections + 1)
   height_raw <- normal(0, 1, dim = c(n_locations, n_inflections + 1))
@@ -4140,7 +4140,7 @@ ttd_survival <- function(days, dates, target_state, cdfs = NULL) {
   
   # will need to line up dates, but shouldn't need to line up days_idx (ecdf()
   # will take care of it)
-
+  
   # load empirical CDFs of delay from onset to notificiation (aggregated from
   # date of onset) over time
   if (is.null(cdfs)) {
@@ -4160,7 +4160,7 @@ ttd_survival <- function(days, dates, target_state, cdfs = NULL) {
   # negative)
   days_onset <- days - 5
   days_onset_list <- lapply(days_onset, list)
-
+  
   # apply relevant CDF to each number of days
   ecdfs <- cdfs$ecdf[dates_idx]
   cdf_vec <- mapply(do.call, ecdfs, days_onset_list)
@@ -4456,14 +4456,14 @@ get_nndss_linelist <- function(
     }
     
   } else {
-      if (!is.null(date)) {
-        #when both preprocessed and date are supplied, check if it is correct
-        if (preprocessed$data$date_time != date) {
-          stop ("proprocessed data date and argument date don't match", call. = FALSE)
-        }
-      } else { #when preprocessed data is read in but date not supplied, read in date
-        date <- preprocessed$data$date_time
+    if (!is.null(date)) {
+      #when both preprocessed and date are supplied, check if it is correct
+      if (preprocessed$data$date_time != date) {
+        stop ("proprocessed data date and argument date don't match", call. = FALSE)
       }
+    } else { #when preprocessed data is read in but date not supplied, read in date
+      date <- preprocessed$data$date_time
+    }
     dat <- preprocessed$dat
   }
   
@@ -4552,7 +4552,7 @@ get_nndss_linelist <- function(
   linelist
   
 }
-  
+
 
 
 # read in the latest linelist and format for analysis
@@ -4565,7 +4565,7 @@ preprocess_nndss_linelist <- function(
   #missing_location_assumption = "missing",
   location_conflict_assumption = "local"
 ) {
-
+  
   data <- linelist_date_times(dir)
   
   # subset to this date
@@ -4979,23 +4979,23 @@ get_vic_linelist <- function(file) {
     substr(1, 8) %>%
     as.Date(format = "%Y%m%d")
   
-
+  
   file %>%
-      read_csv(
-        col_types = cols(
-          CaseNumber = col_double(),
-          DiagnosisDate = col_date(format = ""),
-          #DiagnosisDate = col_date(format = "%d/%m/%Y"),
-          SymptomsOnsetDate = col_date(format = ""),
-          #SymptomsOnsetDate = col_date(format = "%d/%m/%Y"),
-          LGA = col_character(),
-          Acquired = col_character(),
-          FirstSpecimenPositiveDate = col_date(format = "")#,
-          #Classification = col_character()# not backwards compatible for the moment, will do a proper fix later
-          #FirstSpecimenPositiveDate = col_date(format = "%d/%m/%Y")
-        ),
-        na = "NA"
-      ) %>% #filter(Classification == "Confirmed"|FirstSpecimenPositiveDate > "2021-12-25") %>%
+    read_csv(
+      col_types = cols(
+        CaseNumber = col_double(),
+        DiagnosisDate = col_date(format = ""),
+        #DiagnosisDate = col_date(format = "%d/%m/%Y"),
+        SymptomsOnsetDate = col_date(format = ""),
+        #SymptomsOnsetDate = col_date(format = "%d/%m/%Y"),
+        LGA = col_character(),
+        Acquired = col_character(),
+        FirstSpecimenPositiveDate = col_date(format = "")#,
+        #Classification = col_character()# not backwards compatible for the moment, will do a proper fix later
+        #FirstSpecimenPositiveDate = col_date(format = "%d/%m/%Y")
+      ),
+      na = "NA"
+    ) %>% #filter(Classification == "Confirmed"|FirstSpecimenPositiveDate > "2021-12-25") %>%
     # read_excel(
     #   col_types = c("numeric", "date", "date", "text", "text", "date"),
     #   na = "NA"
@@ -5107,8 +5107,8 @@ get_sa_linelist <- function(file = "~/not_synced/sa/SA_linelist_25July2021.csv")
       symptom_onset = lubridate::dmy(symptom_onset) + t_offset,
       notification_date = lubridate::dmy(notification_date) + t_offset,
       likely_infection_date = lubridate::dmy(likely_infection_date) + t_offset) %>%
-  
-  mutate(
+    
+    mutate(
       date_onset = case_when(!is.na(likely_infection_date) ~ likely_infection_date + 5,
                              T                             ~ symptom_onset),
       date_detection = NA,
@@ -5272,7 +5272,7 @@ get_nsw_linelist <- function (
   }
   
   return(nsw_linelist)
-
+  
 }
 
 # given a date-by-state matrix of case counts by date of infection,
@@ -5302,12 +5302,12 @@ gi_convolution <- function(
     # use Nishiura's serial interval as a generation interval
     # gi_cdf <- nishiura_cdf()
     gi_mat <- gi_matrix(
-        gi_cdf = gi_cdf,
-        dates = dates,
-        state = states[i],
-        gi_bounds = gi_bounds#,
-        # ttd_cdfs = ttd_cdfs
-      )
+      gi_cdf = gi_cdf,
+      dates = dates,
+      state = states[i],
+      gi_bounds = gi_bounds#,
+      # ttd_cdfs = ttd_cdfs
+    )
     
     convolved[, i] <- gi_mat %*% cases[, i]
     
@@ -5320,7 +5320,7 @@ gi_convolution <- function(
 
 # cases of spillover (import-local transmission) in during mandatory hotel quarantine
 hotel_quarantine_spillover_data <- function() {
-
+  
   tibble::tribble(
     ~earliest_date, ~latest_date, ~state, ~infectee, ~information_source,
     "2020-05-01", "2020-05-14", "VIC", "quarantine security guard (Rydges Hotel)",
@@ -5342,7 +5342,7 @@ hotel_quarantine_spillover_data <- function() {
       c("earliest_date", "latest_date"),
       as.Date
     )
-    
+  
 }
 
 # given a raw (unimputed) linelist, prepare all the data needed for modelling
@@ -5420,7 +5420,7 @@ reff_model_data <- function(
       region_type = "state",
       case_type = "local"
     )
-
+  
   # those imported (only considered infectious, but with a different Reff)
   imported_cases <- linelist %>%
     infections_by_region(
@@ -5453,7 +5453,7 @@ reff_model_data <- function(
     states = states,
     gi_cdf = gi_cdf#,
   )
-
+  
   # elements to exclude due to a lack of infectiousness
   local_valid <- is.finite(local_infectiousness) & local_infectiousness > 0
   import_valid <- is.finite(imported_infectiousness) & imported_infectiousness > 0
@@ -5567,14 +5567,14 @@ reff_model <- function(data) {
     cdf = gi_cdf,
     states = data$states
   )
-
+  
   
   # extra_isolation_local_reduction <- extra_isolation_effect(
   #   dates = data$dates$infection_project,
   #   cdf = gi_cdf,
   #   states = data$states
   # )
-
+  
   
   # the reduction from R0 down to R_eff for imported cases due to different
   # quarantine measures each measure applied during a different period. Q_t is
@@ -5609,15 +5609,15 @@ reff_model <- function(data) {
   # pull out R_t component due to distancing for locally-acquired cases, and
   # extend to correct length
   R_eff_loc_1_no_surv <- extend(distancing_effect$R_t, data$n_dates_project)
-    
+  
   # pull out vaccination effect
   vax_effect <- data$vaccine_effect_matrix
   
   # multiply by the surveillance and vaccination effects
   R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_reff_local_reduction * vax_effect #*
-    #extra_isolation_local_reduction
-
-
+  #extra_isolation_local_reduction
+  
+  
   log_R_eff_loc_1 <- log(R_eff_loc_1)
   
   # extract R0 from this model and estimate R_t component due to quarantine for
@@ -5630,10 +5630,10 @@ reff_model <- function(data) {
   sigma <- normal(0, 0.5, truncation = c(0, Inf))
   sigma_state <- sigma * ones(data$n_states)
   var <- sigma ^ 2
-
+  
   # hierarchical prior mean on log(Reff12) by state
   mu_prior <- log_R_eff_loc_1 - var
-
+  
   # temporally correlated errors in R_eff for local cases - representing all the
   # stochastic transmission dynamics in the community, such as outbreaks in
   # communities with higher or lower tranmission rates
@@ -5651,10 +5651,10 @@ reff_model <- function(data) {
     sigma_state = sigma_state,
     kernel = kernel_L
   )
-
+  
   # add the prior mean back on to re-centre the posterior  
   log_R_eff_loc <- mu_prior + epsilon_L
-
+  
   # expand out the Reff for locals
   log_R_eff_imp <- sweep(
     zeros(data$n_date_nums, data$n_states),
@@ -5705,7 +5705,7 @@ reff_model <- function(data) {
   distribution(data$local$cases[valid]) <- negative_binomial(size, prob_trunc)
   
   m <- model(expected_infections_vec)
-
+  
   list(
     greta_model = m,
     greta_arrays = module(
@@ -6274,7 +6274,7 @@ reff_plotting <- function(
   
   save_ggplot("R_eff_12_1_ratio.png", dir, subdir)
   
-
+  
   # vaccine effect only
   plot_trend(sims$R_eff_loc_1_vaccine_only, 
              data = fitted_model$data,
@@ -6294,7 +6294,7 @@ reff_plotting <- function(
   
   save_ggplot("R_eff_1_vaccine_only.png", dir, subdir, multi = TRUE)
   
-    # vaccine effect out of C1
+  # vaccine effect out of C1
   plot_trend(
     sims$R_eff_loc_1_without_vaccine,
     data = fitted_model$data,
@@ -6993,13 +6993,13 @@ load_linelist <- function(date = NULL,
             import_status == "local" &
             date_detection >= as.Date("2021-07-19") & 
             date_detection < as.Date("2021-07-26")
-          )
+        )
       ) %>%
       
       bind_rows(
         get_sa_linelist()
       )
-     
+    
   }
   
   if (use_nsw) {
@@ -8577,7 +8577,7 @@ plot_delays <- function(
   base_colour = yellow
 ) {
   
-
+  
   # mutate to output quantiles and then plot them
   quantiles <- delay_distributions %>%
     # plot it as the date of infection, not date of onset!
@@ -8685,7 +8685,7 @@ plot_delays <- function(
           axis.title.y.right = element_text(vjust = 0.5, angle = 90),
           panel.spacing = unit(1.2, "lines"),
           axis.text.x = element_text(size = 8)
-          )
+    )
   
   p
   
@@ -8743,16 +8743,16 @@ predict_mobility_trend <- function(
     #     date = as.Date("2021-01-12"),
     #     state = "QLD"
     #   ),
-    #   tibble(
-    #     date = as.Date("2021-02-05"),
-    #     state = "WA"
-    #   ),
-    #   tibble(
-    #     date = as.Date("2021-02-18"),
-    #     state = "VIC"
-    #   )
-    # ) %>% # this code now superceded by end_dates = TRUE
-    filter(date <= max_data_date) %>%
+  #   tibble(
+  #     date = as.Date("2021-02-05"),
+  #     state = "WA"
+  #   ),
+  #   tibble(
+  #     date = as.Date("2021-02-18"),
+  #     state = "VIC"
+  #   )
+  # ) %>% # this code now superceded by end_dates = TRUE
+  filter(date <= max_data_date) %>%
     mutate(
       intervention_id = paste0(
         "intervention_",
@@ -8798,7 +8798,7 @@ predict_mobility_trend <- function(
       dow = as.character(dow)
     ) %>%
     filter(!is.na(trend))
-
+  
   library(mgcv)
   
   m <- gam(trend ~
@@ -8827,7 +8827,7 @@ predict_mobility_trend <- function(
   # compute mean and standard deviation of Gaussian observation model for fitted data
   fit <- predict(m, se.fit = TRUE)
   fit$sd <- sqrt(var(residuals(m)) + fit$se.fit ^ 2)
-
+  
   df_fitted <- df %>%
     # predict with fitted model (and get 90% CIs)
     mutate(
@@ -8911,7 +8911,7 @@ predict_mobility_trend <- function(
         ),
       by = c("state", "state_long", "date")
     )
-
+  
   pred_df
   
 }
@@ -9407,19 +9407,19 @@ baseline_matrix <- function(R0 = 3, final_age_bin = 80, age_breaks = NULL) {
   # )
   # 
   # contact_matrix_scaled * m
-
+  
   ######
   
   # construct ngm for australia using conmat and davies estimates
   
   ngm_unscaled <- australia_ngm_unscaled(age_breaks)
-
+  
   m <- find_m(
     R_target = R0,
     transition_matrix = ngm_unscaled
   )
-
-
+  
+  
   ngm_unscaled*m
   
 }
@@ -10113,7 +10113,7 @@ simulate_variant <- function(
   if(is.na(subdir)){
     subdir <- variant
   }
- 
+  
   data <- .fitted_model$data
   dates <- .fitted_model$data$dates$mobility
   
@@ -10799,16 +10799,942 @@ write_reff_sims_novax <- function(
       file.path("outputs/projection/", "r_eff_1_local_without_vaccine_samples.csv")
     )
   
+  
 }
 
 state_short_long_table <- tibble::tribble(
   ~state_short, ~state_long,
   "ACT", "Australian Capital Territory",
   "NSW", "New South Wales",
-   "NT", "Northern Territory",
+  "NT", "Northern Territory",
   "QLD", "Queensland",
-   "SA", "South Australia",
+  "SA", "South Australia",
   "TAS", "Tasmania",
   "VIC", "Victoria",
-   "WA", "Western Australia"
+  "WA", "Western Australia"
 )
+
+
+get_quantium_lookups <- function(dir) {
+  
+  lookups <- list(
+    age = read_csv(
+      sprintf(
+        "%s/dim_age_band.csv",
+        dir
+      ),
+      col_types = cols(
+        age_band_id = col_double(),
+        age_band = col_character()
+      )
+    ),
+    product = read_csv(
+      sprintf(
+        "%s/dim_vaccine.csv",
+        dir
+      ),
+      col_types = cols(
+        vaccine = col_double(),
+        name = col_character(),
+        short_name = col_character()
+      )
+    ),
+    date = read_csv(
+      sprintf(
+        "%s/dim_time.csv",
+        dir
+      ),
+      col_types = cols(
+        time = col_double(),
+        week_starting = col_date("%d/%m/%Y")
+      )
+    ),
+    scenario = read_csv(
+      sprintf(
+        "%s/dim_scenario.csv",
+        dir
+      ),
+      col_types = cols(
+        scenario = col_double(),
+        `5-11 uptake curve` = col_character(),
+        booster_shape = col_character(),
+        booster_scale_by_age = col_character(),
+        booster_uptake_terminal = col_double(),
+        booster_uptake_months = col_double()
+      )
+    ),
+    sa4 = read_csv(
+      sprintf(
+        "%s/dim_sa4.csv",
+        dir
+      )
+    )
+  )
+  
+  return(lookups)
+  
+}
+
+sort_age_groups <- function(age_groups) {
+  start <- str_split_fixed(age_groups, "-", 2)[, 1]
+  order <- str_order(start, numeric = TRUE)
+  age_groups[order]
+}
+
+
+get_quantium_data_dir <- function(
+  date = NULL
+){
+  # get most recent forecast
+  dir_dates <- list.dirs(
+    path = "~/not_synced/vaccination/quantium_forecasts/",
+    full.names = FALSE,
+    recursive = FALSE
+  ) %>%
+    as.Date
+  
+  if (is.null(date)) {
+    dir_index <- which.max(dir_dates)
+  } else {
+    dir_index <- which(dir_dates == date)
+    if (length(dir_index) != 1){
+      stop("Either no directory or too many directories match this date")
+    }
+  }
+  
+  dir <- list.dirs(
+    path = "~/not_synced/vaccination/quantium_forecasts/",
+    full.names = TRUE,
+    recursive = FALSE
+  )[dir_index]
+  
+  return(dir)
+  
+}
+
+read_quantium_vaccination_data <- function(
+  date = NULL
+){
+  
+  dir <- get_quantium_data_dir(date)
+  
+  # load all vaccine data
+  vaccines <- read_csv(
+    file = sprintf(
+      "%s/vaccines.csv",
+      dir
+    )
+  )
+  
+  # load quantium lookup tables
+  lookups <- get_quantium_lookups(dir = dir)
+  
+  # add on times, age bands, and products, and return
+  vaccine_data <- vaccines %>%
+    # join on the dates
+    ungroup() %>%
+    left_join(
+      lookups$date,
+      by = c(
+        "time_dose_1" = "time"
+      )
+    ) %>%
+    rename(
+      date_dose_1 = week_starting
+    ) %>%
+    left_join(
+      lookups$date,
+      by = c(
+        "time_dose_2" = "time"
+      )
+    ) %>%
+    rename(
+      date_dose_2 = week_starting
+    ) %>%
+    left_join(
+      lookups$date,
+      by = c(
+        "time_booster" = "time"
+      )
+    ) %>%
+    rename(
+      date_booster = week_starting
+    ) %>%
+    select(
+      -starts_with("time")
+    ) %>%
+    # join on the products
+    left_join(
+      lookups$product,
+      by = "vaccine"
+    ) %>%
+    select(
+      -vaccine,
+      -short_name
+    ) %>%
+    rename(
+      vaccine = name
+    ) %>%
+    left_join(
+      lookups$product,
+      by = c("vaccine_booster" = "vaccine")
+    ) %>%
+    select(
+      -vaccine_booster,
+      -short_name
+    ) %>%
+    rename(
+      vaccine_booster = name
+    ) %>%
+    # join on the age bands and convert to a factor
+    left_join(
+      lookups$age,
+      by = "age_band_id"
+    ) %>%
+    select(
+      -age_band_id
+    ) %>%
+    mutate(
+      age_band = factor(
+        age_band,
+        levels = sort_age_groups(unique(age_band))
+      )
+    ) %>%
+    left_join(
+      lookups$sa4,
+      by = "sa4_code16"
+    )
+  
+  return(vaccine_data)
+  
+}
+
+
+aggregate_quantium_vaccination_data_to_state <- function(data){
+  
+  data %>%
+    left_join(
+      state_short_long_table,
+      by = c("STE_NAME16" = "state_long")
+    ) %>%
+    group_by(
+      scenario,
+      date_dose_1,
+      date_dose_2,
+      date_booster,
+      vaccine,
+      vaccine_booster,
+      age_band,
+      state_short
+    ) %>%
+    summarise(
+      num_people = sum(num_people, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    rename(state = state_short) %>%
+    select(
+      scenario,
+      state,
+      age_band,
+      vaccine,
+      vaccine_booster,
+      date_dose_1,
+      date_dose_2,
+      date_booster,
+      num_people
+    ) %>%
+    arrange(
+      scenario,
+      state,
+      age_band,
+      vaccine,
+      vaccine_booster,
+      date_dose_1,
+      date_dose_2,
+    ) %>%
+    # excluding vaccinations outside of the 6 states or ACT and NT
+    filter(!is.na(state))
+  
+}
+
+
+get_vaccine_cohorts_at_date <- function(vaccine_scenarios, target_date) {
+  
+  # set future times to NA and collapse to get contemporary data
+  vaccine_scenarios %>%
+    mutate(
+      across(
+        starts_with("date"),
+        ~if_else(.x > target_date, as.Date(NA), .x)
+      )
+    ) %>%
+    group_by(
+      across(
+        -num_people
+      )
+    ) %>%
+    summarise(
+      num_people = sum(num_people),
+      .groups = "drop"
+    ) %>%
+    # compute most recent vaccines and how long ago they were for each cohort
+    mutate(
+      most_recent_dose = pmax(date_dose_1, date_dose_2, date_booster, na.rm = TRUE)
+    ) %>%
+    pivot_longer(
+      cols = starts_with("date"),
+      names_to = "dose",
+      values_to = "date",
+      names_prefix = "date_"
+    ) %>%
+    # keep only one of these entries
+    mutate(
+      keep = case_when(
+        is.na(date) ~ dose == "dose_1",
+        TRUE ~ date == most_recent_dose
+      )
+    ) %>%
+    filter(
+      keep
+    ) %>%
+    select(
+      -most_recent_dose,
+      -keep
+    ) %>%
+    mutate(
+      dose = if_else(is.na(date), NA_character_, dose),
+      # labelling all booster as boosters instead of by brand, thus assuming all boosters are mRNA
+      vaccine_booster = if_else(
+        !is.na(vaccine_booster),
+        "Booster",
+        NA_character_
+      ),
+      product = case_when(
+        dose == "booster" ~ vaccine_booster,
+        TRUE ~ vaccine
+      ),
+      # rename products to match VE model, recoding Moderna as Pfizer for now
+      # since there is not enough evidence on efficacy to distringuish it from
+      # Pfizer
+      product = case_when(
+        product == "Pfizer" ~ "Pf",
+        product == "AstraZeneca" ~ "AZ",
+        product == "Moderna" ~ "Pf",
+        product == "Booster" ~ "mRNA",
+        product == "Pfizer (5-11)" ~ "Pf"
+      ),
+      immunity = case_when(
+        !is.na(date) ~ paste(product, dose, sep = "_"),
+        TRUE ~ NA_character_
+      )
+    ) %>%
+    mutate(
+      days_ago = as.numeric(target_date - date)
+    ) %>%
+    select(
+      -starts_with("vaccine"),
+      -product,
+      -dose,
+      -date
+    )
+  
+}
+
+
+
+add_missing_age_cohorts <- function(vaccine_cohorts){
+  dir <- get_quantium_data_dir(date = NULL)
+  lookups <- get_quantium_lookups(dir = dir)
+  
+  state_age_fractions <- lookups$age %>%
+    select(age_band) %>%
+    mutate(
+      lower = sub(
+        pattern = "\\-.*",
+        replacement = "",
+        x = age_band
+      ) %>%
+        sub(
+          pattern = "\\+",
+          replacement = "",
+          x = .
+        ) %>%
+        as.numeric,
+      upper = sub(
+        pattern = ".*\\-",
+        replacement = "",
+        x = age_band
+      ) %>%
+        sub(
+          pattern = ".*\\+",
+          replacement = "Inf",
+          x = .
+        ) %>%
+        as.numeric
+    ) %>%
+    rename(classes = age_band) %>%
+    get_age_distribution_by_state(ages = .)
+  
+  # add in 0-4 yo cohort which is missing
+  age_class_state_scenario <- expand_grid(
+    state_age_fractions %>%
+      select(state, age_class),
+    scenario = unique(vaccine_cohorts$scenario)
+  )
+  
+  vaccine_cohorts_all <- age_class_state_scenario %>%
+    full_join(
+      y = vaccine_cohorts,
+      by = c("scenario", "state", "age_class" = "age_band")
+    ) %>%
+    left_join(
+      state_age_fractions,
+      by = c("state", "age_class")
+    ) %>%
+    group_by(
+      state, scenario
+    ) %>%
+    mutate(
+      qspop = sum(num_people, na.rm = TRUE),
+      qpop = qspop / (1 - fraction),
+      num_people = if_else(
+        age_class == "0-4",
+        fraction * qpop,
+        num_people
+      )
+    ) %>%
+    rename(age_band = age_class) %>%
+    select(
+      scenario, state, age_band, num_people, immunity, days_ago
+    )
+  
+  return(vaccine_cohorts_all)
+}
+
+add_missing_age_cohorts_nsw_sa4 <- function(vaccine_cohorts){
+  dir <- get_quantium_data_dir(date = NULL)
+  lookups <- get_quantium_lookups(dir = dir)
+  
+  state_age_fractions <- lookups$age %>%
+    select(age_band) %>%
+    mutate(
+      lower = sub(
+        pattern = "\\-.*",
+        replacement = "",
+        x = age_band
+      ) %>%
+        sub(
+          pattern = "\\+",
+          replacement = "",
+          x = .
+        ) %>%
+        as.numeric,
+      upper = sub(
+        pattern = ".*\\-",
+        replacement = "",
+        x = age_band
+      ) %>%
+        sub(
+          pattern = ".*\\+",
+          replacement = "Inf",
+          x = .
+        ) %>%
+        as.numeric
+    ) %>%
+    rename(classes = age_band) %>%
+    get_age_distribution_by_state(ages = .) %>%
+    ungroup %>%
+    filter(state == "NSW") %>%
+    select(-state)
+  
+  # add in 0-4 yo cohort which is missing
+  age_class_state_scenario <- expand_grid(
+    state_age_fractions %>%
+      select(age_class),
+    state = unique(vaccine_cohorts$state),
+    scenario = unique(vaccine_cohorts$scenario)
+  )
+  
+  vaccine_cohorts_all <- age_class_state_scenario %>%
+    full_join(
+      y = vaccine_cohorts,
+      by = c("scenario", "state", "age_class" = "age_band")
+    ) %>%
+    left_join(
+      state_age_fractions,
+      by = c("age_class")
+    ) %>%
+    group_by(
+      state, scenario
+    ) %>%
+    mutate(
+      qspop = sum(num_people, na.rm = TRUE),
+      qpop = qspop / (1 - fraction),
+      num_people = if_else(
+        age_class == "0-4",
+        fraction * qpop,
+        num_people
+      )
+    ) %>%
+    rename(age_band = age_class) %>%
+    select(
+      scenario, state, age_band, num_people, immunity, days_ago, qpop, qspop, fraction
+    )
+  
+  return(vaccine_cohorts_all)
+}
+
+
+get_coverage <- function(vaccine_cohorts) {
+  
+  # get current coverage with any dose in each age band, for each scenario
+  coverage <- vaccine_cohorts %>%
+    mutate(
+      immune = !is.na(immunity)
+    ) %>%
+    group_by(
+      scenario, state, age_band
+    ) %>%
+    summarise(
+      coverage = weighted.mean(immune, num_people),
+      .groups = "drop"
+    )
+  
+}
+
+get_omicron_params_wide <- function() {
+  read_csv(
+    "outputs/scenario_parameters_omicron.csv",
+    col_types = cols(
+      parameter = col_character(),
+      # intermediate = col_double(),
+      # optimistic = col_double(),
+      estimate = col_double(),
+      pessimistic = col_double()
+    )
+  ) %>%
+    pivot_longer(
+      cols = c(-parameter),
+      names_to = "omicron_scenario",
+      values_to = "value"
+    ) %>%
+    pivot_wider(
+      names_from = parameter,
+      values_from = value
+    )
+}
+
+log10_neut_over_time <- function (time, maximum_log10_neut, decay){
+  # equivalent to: log10(10 ^ maximum_log10_neut * exp(-decay * time))
+  maximum_log10_neut - decay * time / log(10)
+}
+
+ve_from_mean_log10_neut <- function(
+  mean_log10_neut_vec,
+  sd_log10_neut,
+  log_k,
+  c50_vec,
+  method = c("adaptive", "gaussian"),
+  lower = -10,
+  upper = 10
+) {
+  
+  # choose the method and dispatch to the appropriate integration function
+  method <- match.arg(method)
+  
+  integrator <- switch(
+    method,
+    adaptive = adaptive_ve_integrator,
+    gaussian = gaussian_ve_integrator
+  )
+  
+  integrals <- integrator(
+    c50_vec = c50_vec,
+    mean_log10_neut_vec = mean_log10_neut_vec,
+    sd_log10_neut = sd_log10_neut,
+    log_k = log_k,
+    lower = lower,
+    upper = upper
+  )
+  
+  integrals
+  
+}
+
+gaussian_ve_integrator <- function(
+  c50_vec,
+  mean_log10_neut_vec,
+  sd_log10_neut,
+  log_k,
+  lower,
+  upper
+) {
+  
+  # dimensions and quadrature rules
+  n_obs <- length(mean_log10_neut_vec)
+  quads <- get_quad_rules(n_obs, lower = lower, upper = upper)
+  n_quads <- length(quads$values)
+  
+  # expand out the vector parameters of the logit-normal density to matrices
+  if (is.vector(c50_vec) & is.vector(mean_log10_neut_vec)) {
+    c50_vec <- as.matrix(c50_vec)
+    mean_log10_neut_vec <- as.matrix(mean_log10_neut_vec)
+    vector_input <- TRUE
+  } else {
+    vector_input <- FALSE
+  }
+  
+  repeater <- rep(1, n_quads)
+  c50_mat <- c50_vec[, repeater]
+  mean_log10_neut_mat <- mean_log10_neut_vec[, repeater]
+  
+  # and expand out the integration points to match
+  values_matrix <- t(replicate(n_obs, quads$values))
+  
+  # get function values in matrix
+  function_values <- logit_normal_density(
+    x = values_matrix,
+    c50 = c50_mat,
+    mean_log10_neut = mean_log10_neut_mat,
+    sd_log10_neut = sd_log10_neut,
+    log_k = log_k
+  )
+  
+  weights <- quads$weights
+  
+  # if we're doing this with greta arrays, we need to work around an issue with
+  # greta checking matrix multiplly dimensions too early
+  if (inherits(function_values, "greta_array")) {
+    weights <- as_data(quads$weights)
+  }
+  
+  ves <- function_values %*% weights
+  
+  if(vector_input) {
+    dim(ves) <- NULL
+  }
+  
+  ves
+  
+}
+
+adaptive_ve_integrator <- function(
+  c50_vec,
+  mean_log10_neut_vec,
+  sd_log10_neut,
+  log_k,
+  lower,
+  upper
+) {
+  
+  
+  if (
+    inherits(c50_vec, "greta_array") |
+    inherits(mean_log10_neut_vec, "greta_array") |
+    inherits(sd_log10_neut, "greta_array") |
+    inherits(log_k, "greta_array")
+  ) {
+    stop ("adaptive integration can not be used with greta models")
+  }
+  
+  integrate_once <- function(c50, mean_log10_neut) {
+    integral <- integrate(
+      f = logit_normal_density,
+      c50 = c50,
+      mean_log10_neut = mean_log10_neut,
+      sd_log10_neut = sd_log10_neut,
+      log_k = log_k,
+      lower = lower,
+      upper = upper
+    )$value
+  }
+  
+  logit_normal_density(0, c50_vec[1], mean_log10_neut = mean_log10_neut_vec[1], sd_log10_neut = sd_log10_neut, log_k = log_k)
+  
+  integrals <- mapply(
+    integrate_once,
+    c50_vec,
+    mean_log10_neut_vec
+  )
+  
+  integrals
+  
+}
+
+get_quad_rules <- function(n_observations, lower = -3, upper = 3) {
+  
+  n_quads <- round(5 * (upper - lower))
+  
+  # get quadrature rules on (-1, 1)
+  quads <- gaussquad::legendre.quadrature.rules(n_quads)[[n_quads]]
+  
+  # transform them to (lower, upper) and return
+  lambda <- (upper - lower) / 2
+  mu <- (lower + upper) / 2
+  
+  list(
+    values = lambda * quads$x + mu,
+    weights = lambda * quads$w
+  )
+  
+}
+
+logit_normal_density <- function(x, c50, mean_log10_neut, sd_log10_neut, log_k) {
+  prob <- prob_avoid_outcome(log10_neut = x, log_k = log_k, c50 = c50)
+  dens <- log10_neut_density(x, mean_log10_neut, sd_log10_neut)
+  prob * dens
+}
+
+prob_avoid_outcome <- function(log10_neut, log_k, c50) {
+  1 / (1 + exp(-exp(log_k) * (log10_neut - c50)))
+}
+
+log10_neut_density <- function(x, mean, sd) {
+  
+  with_greta <- inherits(x, "greta_array") |
+    inherits(mean, "greta_array") |
+    inherits(sd, "greta_array")
+  
+  if (with_greta) {
+    normal_density(x, mean, sd)
+  } else {
+    dnorm(x, mean, sd)
+  }
+}
+
+
+get_vaccine_efficacies <- function(vaccine_cohorts) {
+  
+  # load omicron parameters in wide format and subset to different parameter sets
+  params_wide <- get_omicron_params_wide()
+  
+  neut_params_wide <- params_wide %>%
+    select(
+      omicron_scenario,
+      log10_mean_neut_AZ_dose_1,
+      log10_mean_neut_AZ_dose_2,
+      log10_mean_neut_Pfizer_dose_1,
+      log10_mean_neut_Pfizer_dose_2,
+      log10_mean_neut_mRNA_booster,
+      neut_decay
+    )
+  
+  ve_params_wide <- params_wide %>%
+    select(
+      omicron_scenario,
+      starts_with("c50"),
+      log_k,
+      sd_log10_neut_titres,
+      omicron_log10_neut_fold
+    )
+  
+  # compute the average neutralisation level (mean log10 neut fold of WT
+  # convalescent) in each age group, scenario, and omicron scenario
+  mean_neuts <- vaccine_cohorts %>%
+    filter(
+      !is.na(immunity)
+    ) %>%
+    full_join(
+      tibble(
+        omicron_scenario = c(
+          # "intermediate",
+          # "optimistic",
+          "estimate",
+          "pessimistic"
+        )
+      ),
+      by = character()
+    ) %>%
+    left_join(
+      neut_params_wide,
+      by = "omicron_scenario"
+    ) %>%
+    # compute the peak and waned log10 mean neuts for each cohort
+    mutate(
+      peak_neuts = case_when(
+        immunity == "AZ_dose_1" ~ log10_mean_neut_AZ_dose_1,
+        immunity == "AZ_dose_2" ~ log10_mean_neut_AZ_dose_2,
+        immunity == "Pf_dose_1" ~ log10_mean_neut_Pfizer_dose_1,
+        immunity == "Pf_dose_2" ~ log10_mean_neut_Pfizer_dose_2,
+        immunity == "mRNA_booster" ~ log10_mean_neut_mRNA_booster
+      )
+    ) %>%
+    mutate(
+      neuts = log10_neut_over_time(
+        time = days_ago,
+        maximum_log10_neut = peak_neuts,
+        decay = neut_decay
+      )
+    ) %>%
+    select(
+      -starts_with("log10_mean_neut"),
+      -peak_neuts,
+      -neut_decay
+    ) %>%
+    # average the mean neuts over cohorts and scenarios
+    group_by(
+      scenario, state, omicron_scenario, age_band
+    ) %>%
+    summarise(
+      neuts = weighted.mean(neuts, num_people),
+      .groups = "drop"
+    )
+  
+  # now compute VEs against each outcome, for Omicron and Delta
+  ves <- mean_neuts %>%
+    left_join(
+      ve_params_wide,
+      by = "omicron_scenario"
+    ) %>%
+    # for omicron, adjust down the neuts
+    full_join(
+      tibble(
+        variant = c("Delta", "Omicron")
+      ),
+      by = character()
+    ) %>%
+    mutate(
+      neuts = case_when(
+        variant == "Omicron" ~ neuts + omicron_log10_neut_fold,
+        TRUE ~ neuts
+      )
+    ) %>%
+    # compute all the VEs in one shot with Gaussian integration
+    pivot_longer(
+      cols = starts_with("c50"),
+      names_to = "outcome",
+      values_to = "c50",
+      names_prefix = "c50_"
+    ) %>%
+    mutate(
+      ve = ve_from_mean_log10_neut(
+        mean_log10_neut_vec = neuts,
+        sd_log10_neut = sd_log10_neut_titres,
+        log_k = log_k,
+        c50_vec = c50,
+        method = "gaussian"
+      )
+    ) %>%
+    select(
+      -neuts,
+      -log_k,
+      -sd_log10_neut_titres,
+      -omicron_log10_neut_fold,
+      -c50
+    )
+  
+  ves
+  
+}
+
+
+get_vaccine_transmission_effects <- function(ves, coverage) {
+  
+  
+  # load quantium lookup tables
+  dir <- get_quantium_data_dir()
+  lookups <- get_quantium_lookups(dir = dir)
+  
+  age_breaks_quantium <-lookups$age %>%
+    mutate(
+      brk = sub(
+        pattern = "\\-.*",
+        replacement = "",
+        x = age_band
+      ) %>%
+        sub(
+          pattern = "\\+",
+          replacement = "",
+          x = .
+        ) %>%
+        as.numeric
+    ) %>%
+    pull(brk)
+  
+  labq <- length(age_breaks_quantium)
+  
+  age_breaks_quantium[labq + 1] <- Inf
+  
+  # get a conmat NGM for Australia
+  australia_ngm <- baseline_matrix(age_breaks = age_breaks_quantium)
+  
+  # combine coverage and VEs to get transmission reduction for each rollout
+  # scenario, and omicron scenario
+  ves %>%
+    # add back in the younger age_groups
+    complete(
+      scenario,
+      state,
+      omicron_scenario,
+      variant,
+      outcome,
+      age_band = unique(lookups$age$age_band),
+      fill = list(
+        ve = 0
+      )
+    ) %>%
+    # get the two transmission VEs as columns
+    filter(
+      outcome %in% c("acquisition", "transmission")
+    ) %>%
+    pivot_wider(
+      names_from = outcome,
+      values_from = ve
+    ) %>%
+    group_by(
+      scenario,
+      state,
+      omicron_scenario,
+      variant
+    ) %>%
+    arrange(
+      age_band,
+      .by_group = TRUE
+    ) %>%
+    # join on coverages
+    left_join(
+      coverage,
+      by = c("scenario", "age_band", "state")
+    ) %>%
+    # compute percentage reduction in acquisition and transmission in each age group
+    mutate(
+      acquisition_multiplier = 1 - acquisition * coverage,
+      transmission_multiplier = 1 - transmission * coverage,
+    ) %>%
+    select(
+      -acquisition,
+      -transmission,
+      -coverage
+    ) %>%
+    # transform these into matrices of reduction in transmission, matching the NGM
+    summarise(
+      transmission_reduction_matrix =
+        list(
+          outer(
+            # 'to' groups are on the rows in conmat, and first element in outer is rows,
+            # so acquisition first
+            acquisition_multiplier,
+            transmission_multiplier,
+            FUN = "*"
+          )
+        ),
+      .groups = "drop"
+    ) %>%
+    group_by(
+      scenario,
+      state,
+      omicron_scenario,
+      variant
+    ) %>%
+    mutate(
+      ngm_unvaccinated = list(australia_ngm),
+      ngm_vaccinated = list(ngm_unvaccinated[[1]] * transmission_reduction_matrix[[1]]),
+      vaccination_effect = 1 - get_R(ngm_vaccinated[[1]]) / get_R(ngm_unvaccinated[[1]])
+    ) %>%
+    select(
+      -transmission_reduction_matrix,
+      -ngm_unvaccinated,
+      -ngm_vaccinated
+    )
+  
+}
