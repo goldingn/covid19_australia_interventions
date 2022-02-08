@@ -1,35 +1,53 @@
 source("R/functions.R")
 
-
+# find most recent data or specify date, check dir printed is sensible
 dir <- get_quantium_data_dir()
+dir
+
+# check dir date is sensible
+data_date <- sub(
+  pattern = ".*\\/",
+  replacement = "",
+  x = dir
+) %>%
+  as.Date
+
+data_date
+
+# reaad-in lookups
 lookups <- get_quantium_lookups(dir = dir)
 
+# read in and label data
 vaccine_raw <- read_quantium_vaccination_data()
 
+# check scenarios and assign appropriate one for use
+# currently only difference is 100% booster and 80% booster uptake in vaccinated
+unique(vaccine_raw$scenario)
+
+scenario_to_use <- 109
+
+# aggregate to state
 vaccine_state <- aggregate_quantium_vaccination_data_to_state(vaccine_raw)
 
 vaccine_state
 
 
+## tester code for single cohort date
 # target_date <- as.Date("2022-01-01")
 # vaccine_cohorts_now <- get_vaccine_cohorts_at_date(
 #   vaccine_scenarios = vaccine_state,
 #   target_date = target_date
 # )
-
 #vaccine_cohorts_now_all <- add_missing_age_cohorts(vaccine_cohorts_now)
-
 #coverage_now_all <- get_coverage(vaccine_cohorts_now_all)
-
-
-
 #ves_now_all <- get_vaccine_efficacies(vaccine_cohorts_now_all)
-
-
 # vaccine_transmission_effects_now <- get_vaccine_transmission_effects(
 #   ves = ves_now_all,
 #   coverage = coverage_now_all
 # )
+
+
+# process ves for each week since rollout began
 
 ve_tables <- tibble(
   date = seq.Date(
@@ -75,11 +93,12 @@ date_state_variant_table <- expand_grid(
   variant = unique(ve_tables$vaccine_transmission_effects[[1]]$variant)
 )
 
-ve_waning <- ve_tables %>%
+# get timeseries of 
+
+vaccination_effect_timeseries <- ve_tables %>%
   select(date, vaccine_transmission_effects) %>%
   unnest(vaccine_transmission_effects) %>%
-  #filter(omicron_scenario == "intermediate", scenario == "81") %>%
-  filter(omicron_scenario == "estimate", scenario == "109") %>%
+  filter(omicron_scenario == "estimate", scenario == scenario_to_use) %>%
   select(date, state, variant, vaccination_effect) %>%
   mutate(
     effect_multiplier = 1 - vaccination_effect
@@ -103,57 +122,42 @@ ve_waning <- ve_tables %>%
   select(-vaccination_effect)
 
 write_csv(
-  ve_waning,
-  file = "outputs/vaccine_effect_timeseries_2022-01-28.csv"
+  vaccination_effect_timeseries,
+  file = sprintf(
+    "outputs/vaccination_effect_%s.csv",
+    data_date
+  )
 )
 
 saveRDS(
-  ve_waning,
-  file = "outputs/vaccine_effect_timeseries.RDS"
+  vaccination_effect_timeseries,
+  file = sprintf(
+    "outputs/vaccination_effect_%s.RDS",
+    data_date
+  )
 )
 
-ve_old <- read_csv("outputs/vaccine_effect_timeseries_2022-01-23.csv")
-
-ve_compare <- bind_rows(
-  ve_old %>%
-    select(-percent_reduction) %>%
-    mutate(
-      variant = "Delta",
-      estimate = "Old"
-    ),
-  ve_waning %>%
-    select(state, date, effect = effect_multiplier, variant) %>%
-    mutate(estimate = "New")
-)
-
-ve_waning_old <- read_csv("outputs/vaccine_effect_timeseries_2022-01-28.csv")
-
-vew <- bind_rows(
-  ve_waning %>%
-    mutate(estimate = "new"),
-  ve_waning_old %>%
-    mutate(estimate = "old")
-)
+## plot vaccine_effect_timeseries
 
 dpi <- 150
 font_size <- 12
-ggplot(ve_waning) +
+ggplot(vaccination_effect_timeseries) +
  geom_line(
   aes(
     x = date,
     y = effect,
     colour = state,
-    linetype = variant#,
-    #alpha = estimate
+    #linetype = variant,
+    alpha = variant
   ),
-  size = 1.5
+  size = 1
 ) +
   theme_classic() +
   labs(
     x = NULL,
     y = "Change in transmission potential",
     col = "State",
-    lty = "Variant"
+    alpha = "Variant"
   ) +
   scale_x_date(
     breaks = "1 month",
@@ -187,20 +191,23 @@ ggplot(ve_waning) +
       "gold1"
     )
   ) +
+  scale_alpha_manual(values = c(0.6, 1)) +
   scale_y_continuous(
     position = "right",
     limits = c(0, 1),
     breaks = seq(0, 1, by = 0.1)
   ) +
-  scale_alpha_manual(values = c(1, 0.6)) +
   geom_vline(
     aes(
-      xintercept = Sys.Date()
+      xintercept = data_date
     )
-  ) 
+  )
 
 ggsave(
-  filename = "outputs/figures/vaccination_effect.png",
+  filename = sprintf(
+    "outputs/figures/vaccination_effect_%s.png",
+    data_date
+  ),
   dpi = dpi,
   width = 1500 / dpi,
   height = 1250 / dpi,
@@ -209,19 +216,7 @@ ggsave(
 )
 
 
-write_csv(
-  ve_waning,
-  file = "outputs/vaccine_effect_timeseries_2022-02-02.csv"
-)
-
-
-saveRDS(
-  ve_waning,
-  file = "outputs/vaccine_effect_timeseries_2022-02-02.RDS"
-)
-
-
-ve_waning %>%
+vaccination_effect_timeseries %>%
   group_by(state, variant) %>%
   mutate(
     delta_week = slider::slide(
@@ -277,12 +272,20 @@ ve_waning %>%
     )
   ) +
   facet_wrap(~variant, ncol = 1) +
-  geom_hline(aes(yintercept = 0)) +
-  geom_vline(aes(xintercept = Sys.Date()))
+  geom_hline(
+    aes(
+      yintercept = 0
+    ),
+    linetype = "dotted"
+  ) +
+  geom_vline(aes(xintercept = data_date))
 
 
 ggsave(
-  filename = "outputs/figures/vaccination_weekly_percent_change_in_tp.png",
+  filename = sprintf(
+    "outputs/figures/vaccination_weekly_percent_change_in_tp_%s.png",
+    data_date
+  ),
   dpi = dpi,
   width = 1500 / dpi,
   height = 1250 / dpi,
@@ -358,7 +361,10 @@ daily_population_mean_ve <- population_mean_ve %>%
 
 write_csv(
   x = daily_population_mean_ve,
-  fil = "outputs/daily_population_mean_transmission_acquisition.csv"
+  fil = sprintf(
+    "outputs/daily_population_mean_transmission_acquisition_%s.csv",
+    data_date
+  )
 )
 
 ggplot(daily_population_mean_ve) +
