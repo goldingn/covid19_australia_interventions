@@ -348,7 +348,7 @@ append_google_data <- function(mobility_data, url = tidycovid_url) {
     dowload_tidycovid()
   }
   tmp <- readRDS(file)
-
+  
   
   # get the previous data in the same format
   previous_data <- tmp$country_region %>%
@@ -573,7 +573,7 @@ interventions <- function(
           "2021-07-28", "SA" # restrictions eased from 28th https://www.sahealth.sa.gov.au/wps/wcm/connect/public+content/sa+health+internet/about+us/news+and+media/all+media+releases/covid-19+update+28+july+2021
         )
       )
-
+    
     tas_interventions <-  tas_interventions %>%
       bind_rows(
         tibble::tribble(
@@ -648,7 +648,7 @@ quarantine_dates <- function() {
   expand_grid(
     date = c("2020-03-15", "2020-03-28"),
     state = c("ACT", "NSW", "NT", "QLD", "SA", "TAS", 
-      "VIC", "WA")
+              "VIC", "WA")
   ) %>%
     mutate(
       date = as.Date(date),
@@ -831,7 +831,7 @@ download_holiday_dates <- function(destination) {
     select(state, date, name) %>%
     write_csv(destination)
 }
-    
+
 # dates of public holidays by state, from:
 # https://data.gov.au/dataset/ds-dga-b1bc6077-dadd-4f61-9f8c-002ab2cdff10/details?q=
 holiday_dates <- function(holiday_file = "data/holidays/public_holidays.csv") {
@@ -848,7 +848,7 @@ holiday_dates <- function(holiday_file = "data/holidays/public_holidays.csv") {
       name = col_character()
     )
   )
-
+  
 }
 
 lockdown_lgas <- function() {
@@ -1614,7 +1614,7 @@ plot_trend <- function(
     x_text_vjust <- 0.5
   }
   
-
+  
   
   # date_breaks <- ifelse(
   #   length(unique(df$date)) < 200,
@@ -1735,16 +1735,16 @@ plot_trend <- function(
 # was intended as alternative to plot_trend with wider x-axis for longer timeseries
 # still may be useful and need updating in that case to include voc
 plot_trend_long <- function(simulations,
-                       data,
-                       base_colour = grey(0.4),
-                       multistate = FALSE,
-                       hline_at = 1,
-                       ylim = c(0, 4),
-                       intervention_at = interventions(),
-                       projection_at = NA,
-                       keep_only_rows = NULL,
-                       max_date = data$dates$latest_mobility,
-                       min_date = as.Date("2020-03-01")) {
+                            data,
+                            base_colour = grey(0.4),
+                            multistate = FALSE,
+                            hline_at = 1,
+                            ylim = c(0, 4),
+                            intervention_at = interventions(),
+                            projection_at = NA,
+                            keep_only_rows = NULL,
+                            max_date = data$dates$latest_mobility,
+                            min_date = as.Date("2020-03-01")) {
   
   mean <- colMeans(simulations)
   ci_90 <- apply(simulations, 2, quantile, c(0.05, 0.95))
@@ -2545,7 +2545,7 @@ prop_variant <- function(dates){
     arrange(state, date) %>%
     tidyr::fill(everything()) %>%
     filter(date %in% dates) # account for "2020-01-01" start date may not be in dates
-    
+  
   prop_wt <- df %>%
     dplyr::select(state, date, prop_wt) %>%
     pivot_wider(
@@ -2654,12 +2654,12 @@ distancing_effect_model <- function(
   
   phi_alpha       <- normal(1.454, 0.055, truncation = c(0, Inf))
   phi_delta_alpha <- normal(1.421, 0.033, truncation = c(0, Inf))
-  phi_omicron <- 1.645
+  phi_omicron <- 2.347662
   
   phi_delta <- phi_alpha * phi_delta_alpha
   
   phi_star <- prop_wt * 1 + prop_alpha * phi_alpha + prop_delta * phi_delta + prop_omicron * phi_omicron
-
+  
   p_star <- p ^ phi_star
   
   
@@ -3053,7 +3053,7 @@ microdistancing_model <- function(data, parameters) {
   denominators <- next_column(inflections_long) - inflections_long
   numerators <- sweep(-inflections_long, 1, data$time, FUN = "+")
   inflection_shape <- cbind(ones(length(data$state)), numerators / denominators)
-
+  
   # masking columns to create weights matrix
   null1 <- (sign(inflection_shape) + 1) / 2
   null2 <- next_column(1 - null1)
@@ -3125,7 +3125,7 @@ macrodistancing_model <- function(data, parameters) {
   # average daily number of contacts
   log_mean_daily_contacts <- log(parameters$OC_0) + log_change_contacts
   mean_daily_contacts <- exp(log_mean_daily_contacts)
-
+  
   # model the fraction of contacts falling on each day of the week via a multilogit model
   n <- nrow(log_mean_daily_contacts)
   X <- cbind(ones(n), log_mean_daily_contacts)
@@ -3143,7 +3143,7 @@ macrodistancing_model <- function(data, parameters) {
   # this equivalent to:
   #   log_fraction_weekly_contacts_wday <- eta[idx] - log_sum_exp(eta)
   # but shouldn't be much different speed-wise
-
+  
   # use this to apply the weekday effect
   log_mean_weekly_contacts <- log_mean_daily_contacts + log(7)
   log_mean_daily_contacts_wday <- log_mean_weekly_contacts + log_fraction_weekly_contacts
@@ -3193,10 +3193,10 @@ macrodistancing_null <- function(data, log_fraction_weekly_contacts_mean) {
     ) %>%
     select(wave_id, state_id) %>%
     as.matrix()
-    
+  
   n_waves <- length(wave_dates)
   n_states <- length(states)
-
+  
   # hierarchical model for the average number of contacts per survey/state
   log_contacts_mean <- normal(0, 10)
   log_contacts_sd <- normal(0, 1, truncation = c(0, Inf))
@@ -3225,7 +3225,7 @@ macrodistancing_null <- function(data, log_fraction_weekly_contacts_mean) {
   
   # because mean = exp(meanlog + (sdlog ^ 2) / 2)
   meanlog <- log_predicted_contacts - (sdlog ^ 2) / 2
-
+  
   distribution(data$contacts$contact_num) <- discrete_lognormal(
     meanlog = meanlog,
     sdlog = sdlog,
@@ -3647,7 +3647,7 @@ macrodistancing_params <- function(baseline_contact_params) {
   # coefficients for the fraction of weekly contacts that are on weekends, as a
   # function of the log diffference in contacts
   weekday_coefs <- normal(0, 1, dim = c(2, 6))
-
+  
   list(
     OC_0 = OC_0,
     mobility_coefs = mobility_coefs,
@@ -3702,7 +3702,7 @@ right_aggregated_negative_binomial_distribution <- R6Class(
         # size parameter, so we sum over the PMF in the uncensored range instead
         integers <- tf$range(fl(0), fl(self$max_count + 1))
         integer_log_densities <- distribution$log_prob(integers)
-    
+        
         # compute the log-probability of *not* exceeding max_count
         # do reduce_log_sum_exp to get log of sum over PMFs
         log_p_not_excess <- tf$reduce_logsumexp(
@@ -3714,7 +3714,7 @@ right_aggregated_negative_binomial_distribution <- R6Class(
         # compute the log-probability of being in excess
         # log(1 - exp(log_p_not_excess))
         log_p_excess <- log(-tf$math$expm1(log_p_not_excess))
-          
+        
         # get the point densities of all counts        
         log_density_integers <- distribution$log_prob(x)
         
@@ -3722,7 +3722,7 @@ right_aggregated_negative_binomial_distribution <- R6Class(
         # recomputing
         # set the excess counts to 0 for now
         # x_clean <- tf$where(excess_count, fl(0), x)
-
+        
         # find the counts exceeding max_count
         excess_count <- x > fl(self$max_count)
         
@@ -3864,8 +3864,8 @@ discrete_lognormal <- function(meanlog, sdlog, breaks, dim = NULL) {
 lognormal_params <- function(mean, sd) {
   var <- sd ^ 2
   list(
-       meanlog = log((mean ^ 2) / sqrt(var + mean ^ 2)),
-       sdlog = sqrt(log(1 + var / (mean ^ 2)))
+    meanlog = log((mean ^ 2) / sqrt(var + mean ^ 2)),
+    sdlog = sqrt(log(1 + var / (mean ^ 2)))
   )
 }
 
@@ -3888,7 +3888,7 @@ macrodistancing_likelihood <- function(predictions, data) {
   
   # because mean = exp(meanlog + (sdlog ^ 2) / 2)
   meanlog <- log_predicted_contacts - (sdlog ^ 2) / 2
-
+  
   distribution(data$contacts$contact_num) <- discrete_lognormal(
     meanlog = meanlog,
     sdlog = sdlog,
@@ -3960,7 +3960,7 @@ microdistancing_params <- function(n_locations = 8, n_inflections = 1, inflectio
   inflection_scaled <- sweep(inflection_raw, 2, inflection_sds, FUN = "*")
   inflection_centred <- sweep(inflection_raw, 2, inflection_means, FUN = "+")
   inflections <- ilogit(inflection_centred)
-
+  
   height_means <- normal(0, 10, dim = n_inflections + 1)
   height_sds <- normal(0, 0.5, truncation = c(0, Inf), dim = n_inflections + 1)
   height_raw <- normal(0, 1, dim = c(n_locations, n_inflections + 1))
@@ -4140,7 +4140,7 @@ ttd_survival <- function(days, dates, target_state, cdfs = NULL) {
   
   # will need to line up dates, but shouldn't need to line up days_idx (ecdf()
   # will take care of it)
-
+  
   # load empirical CDFs of delay from onset to notificiation (aggregated from
   # date of onset) over time
   if (is.null(cdfs)) {
@@ -4160,7 +4160,7 @@ ttd_survival <- function(days, dates, target_state, cdfs = NULL) {
   # negative)
   days_onset <- days - 5
   days_onset_list <- lapply(days_onset, list)
-
+  
   # apply relevant CDF to each number of days
   ecdfs <- cdfs$ecdf[dates_idx]
   cdf_vec <- mapply(do.call, ecdfs, days_onset_list)
@@ -4427,8 +4427,136 @@ sync_nndss <- function(mount_dir = "~/Mounts/nndss", storage_dir = "~/not_synced
   }
 }
 
-# read in the latest linelist and format for analysis
+# process the read-in nndss linelist 
 get_nndss_linelist <- function(
+  date = NULL,
+  dir = "~/not_synced/nndss",
+  strict = TRUE,
+  #missing_location_assumption = "imported"
+  missing_location_assumption = "local",
+  #missing_location_assumption = "missing",
+  location_conflict_assumption = "local",
+  preprocessed = NULL
+) {
+  
+  if (is.null(preprocessed)) {
+    
+    preprocessed <- preprocess_nndss_linelist(
+      date = date,
+      dir = dir,
+      strict = strict,
+      #missing_location_assumption = "imported"
+      missing_location_assumption = missing_location_assumption,
+      #missing_location_assumption = "missing",
+      location_conflict_assumption = location_conflict_assumption)
+    
+    dat <- preprocessed$dat
+    if (is.null(date)) {
+      date <- preprocessed$data$date_time
+    }
+    
+  } else {
+    if (!is.null(date)) {
+      #when both preprocessed and date are supplied, check if it is correct
+      if (preprocessed$data$date_time != date) {
+        stop ("proprocessed data date and argument date don't match", call. = FALSE)
+      }
+    } else { #when preprocessed data is read in but date not supplied, read in date
+      date <- preprocessed$data$date_time
+    }
+    dat <- preprocessed$dat
+  }
+  
+  # record state of acquisition, and residence
+  dat <- dat %>%
+    # fill in missing places of acquisition with correct code
+    mutate(
+      PLACE_OF_ACQUISITION = ifelse(
+        is.na(PLACE_OF_ACQUISITION),
+        "00038888",
+        PLACE_OF_ACQUISITION)
+    ) %>%
+    mutate(
+      postcode_of_acquisition = substr(PLACE_OF_ACQUISITION, 5, 8),
+      postcode_of_residence = replace_na(POSTCODE, "8888"),
+      state_of_residence = postcode_to_state(postcode_of_residence)
+    ) %>%
+    rowwise %>%
+    mutate(
+      state_of_acquisition = postcode_to_state(postcode_of_acquisition),
+      .after = postcode_of_residence
+    ) %>% 
+    ungroup %>%
+    mutate(
+      interstate_import_cvsi = case_when(
+        CV_SOURCE_INFECTION == 4 ~ TRUE,
+        CV_SOURCE_INFECTION == 7 ~ TRUE,
+        TRUE ~ FALSE
+      )
+    )
+  
+  
+  
+  # Generate linelist data
+  linelist <- dat %>%
+    # notification receive date seems buggy, and is sometimes before the
+    # notification date and specimen collection date
+    mutate(
+      date_confirmation = pmax(NOTIFICATION_RECEIVE_DATE,
+                               NOTIFICATION_DATE,
+                               na.rm = TRUE),
+    ) %>%
+    select(
+      date_onset = TRUE_ONSET_DATE,
+      date_detection = SPECIMEN_DATE,
+      date_confirmation,
+      date_quarantine = CV_DATE_ENTERED_QUARANTINE,
+      state = STATE,
+      import_status,
+      postcode_of_acquisition,
+      postcode_of_residence,
+      state_of_acquisition,
+      state_of_residence,
+      interstate_import_cvsi
+    ) %>%
+    mutate(
+      report_delay = as.numeric(date_confirmation - date_onset),
+      date_linelist = as.Date(date, tz = "Australia/Canberra"),
+      state = as.factor(state)
+    ) %>%
+    
+    # Remove those with onset date after confirmation date
+    # only keep individuals with date of confirmation after onset date if less than 2 days (inclusive) because
+    # we assume some individuals tested via contact tracing will test positive before symptom onset and therefore plausible
+    # (noting that reporting delay distribution only calculated from positive differences)
+    # also remove any individuals with NA for both notification and symptom onset dates
+    # filter(
+    #   date_confirmation >= (date_onset - 2) | is.na(date_confirmation) | is.na(date_onset)
+    # ) %>%
+    filter(
+      !(is.na(date_confirmation) & is.na(date_onset))
+    ) %>%
+    mutate_at(
+      vars(starts_with("date_")),
+      ~as.Date(.)
+    ) %>%
+    # for cases missing a date of detection, assume it's the day before the date
+    # of confirmation (1 days is the median and mode of this delay distribution)
+    mutate(
+      date_detection = case_when(
+        is.na(date_detection) ~ date_confirmation - 1,
+        TRUE ~ date_detection
+      )
+    )
+  
+  linelist
+  
+}
+
+
+
+# read in the latest linelist and format for analysis
+preprocess_nndss_linelist <- function(
   date = NULL,
   dir = "~/not_synced/nndss",
   strict = TRUE,
@@ -4650,45 +4778,16 @@ get_nndss_linelist <- function(
   }
   
   
-  if (ll_date == "2022-01-25") {
+  if (ll_date >= "2022-01-25") {
+    #try csv
+    # sheets <- readxl::excel_sheets(data$file)
+    # dat <- lapply(sheets, 
+    #               function(X) readxl::read_xlsx(data$file,
+    #                                             col_types = col_types,
+    #                                             #na = "NULL", 
+    #                                             sheet = X)) 
+    # dat <- dat %>% reduce(full_join)
     
-    sheets <- readxl::excel_sheets(data$file)
-    dat <- lapply(sheets, 
-                  function(X) readxl::read_xlsx(data$file,
-                                                #col_types = col_types,
-                                                #na = "NULL", 
-                                                sheet = X)) 
-    dat <- dat %>% reduce(full_join)
-    
-    
-    dat <- dat %>%
-      mutate(
-        Postcode = as.numeric(Postcode),
-        TRUE_ONSET_DATE = as.Date(TRUE_ONSET_DATE, format = "%d/%m/%Y"),
-        SPECIMEN_DATE  = as.Date(SPECIMEN_DATE, format = "%d/%m/%Y"),
-        NOTIFICATION_DATE  = as.Date(NOTIFICATION_DATE, format = "%d/%m/%Y"),
-        NOTIFICATION_RECEIVE_DATE = as.Date(NOTIFICATION_DATE, format = "%d/%m/%Y"),
-        CV_DATE_ENTERED_QUARANTINE  = as.Date(CV_DATE_ENTERED_QUARANTINE, format = "%d/%m/%Y"),
-        CV_SOURCE_INFECTION = as.numeric(CV_SOURCE_INFECTION)
-      )
-    
-  } else if (ll_date < "2022-01-06"|ll_date > "2022-01-07") {
-    if (length(readxl::excel_sheets(data$file)) == 1) { #handle multiple sheets
-      dat <- readxl::read_xlsx(
-        data$file,
-        col_types = col_types#,
-        #na = "NULL" # usually turn this off
-      )
-    } else { #deal with multiple sheets
-      sheets <- readxl::excel_sheets(data$file)
-      dat <- lapply(sheets, 
-                    function(X) readxl::read_xlsx(data$file,
-                                                  col_types = col_types,
-                                                  #na = "NULL", 
-                                                  sheet = X)) 
-      dat <- dat %>% reduce(full_join)
-    }
-  } else { #read the xls format starting from 06-01-2022
     dat <- readr::read_csv(
       data$file,
       col_types = cols_only(
@@ -4720,9 +4819,72 @@ get_nndss_linelist <- function(
         CV_SYMPTOMS_REPORTED = col_double(),
         CV_QUARANTINE_STATUS = col_double(),
         CV_DATE_ENTERED_QUARANTINE = col_date(format = "%d/%m/%Y")),
-      na = "NULL" # usually turn this off
+      na = c("", "NULL") # usually turn this off
     ) %>% rename(POSTCODE = Postcode)
+    
+    # dat <- dat %>%
+    #   mutate(
+    #     Postcode = as.numeric(Postcode),
+    #     TRUE_ONSET_DATE = as.Date(TRUE_ONSET_DATE, format = "%d/%m/%Y"),
+    #     SPECIMEN_DATE  = as.Date(SPECIMEN_DATE, format = "%d/%m/%Y"),
+    #     NOTIFICATION_DATE  = as.Date(NOTIFICATION_DATE, format = "%d/%m/%Y"),
+    #     NOTIFICATION_RECEIVE_DATE = as.Date(NOTIFICATION_DATE, format = "%d/%m/%Y"),
+    #     CV_DATE_ENTERED_QUARANTINE  = as.Date(CV_DATE_ENTERED_QUARANTINE, format = "%d/%m/%Y"),
+    #     CV_SOURCE_INFECTION = as.numeric(CV_SOURCE_INFECTION)
+    #   )
+    
+  } else if (ll_date < "2022-01-06"|ll_date > "2022-01-07" & ll_date < "2022-01-25") {
+    if (length(readxl::excel_sheets(data$file)) == 1) { #handle multiple sheets
+      dat <- readxl::read_xlsx(
+        data$file,
+        col_types = col_types#,
+        #na = "NULL" # usually turn this off
+      )
+    } else { #deal with multiple sheets
+      sheets <- readxl::excel_sheets(data$file)
+      dat <- lapply(sheets, 
+                    function(X) readxl::read_xlsx(data$file,
+                                                  col_types = col_types,
+                                                  #na = "NULL", 
+                                                  sheet = X)) 
+      dat <- dat %>% reduce(full_join)
+    }
   }
+  # } else { #read the xls format starting from 06-01-2022
+  #   dat <- readr::read_csv(
+  #     data$file,
+  #     col_types = cols_only(
+  #       STATE = col_character(),
+  #       Postcode = col_double(),
+  #       CONFIRMATION_STATUS = col_character(),
+  #       TRUE_ONSET_DATE = col_date(format = "%d/%m/%Y"),
+  #       SPECIMEN_DATE = col_date(format = "%d/%m/%Y"),
+  #       NOTIFICATION_DATE = col_date(format = "%d/%m/%Y"),
+  #       NOTIFICATION_RECEIVE_DATE = col_date(format = "%d/%m/%Y"),
+  #       'DIAGNOSIS DATE' = col_date(format = "%d/%m/%Y"),
+  #       AGE_AT_ONSET = col_double(),
+  #       SEX = col_double(),
+  #       DIED = col_double(),
+  #       PLACE_OF_ACQUISITION = col_character(),
+  #       HOSPITALISED = col_double(),
+  #       CV_ICU = col_double(),
+  #       CV_VENTILATED = col_double(),
+  #       OUTBREAK_REF = col_character(),
+  #       CASE_FOUND_BY = col_double(),
+  #       CV_SYMPTOMS = col_character(),
+  #       CV_OTHER_SYMPTOMS = col_character(),
+  #       CV_COMORBIDITIES = col_character(),
+  #       CV_OTHER_COMORBIDITIES = col_character(),
+  #       CV_GESTATION = col_double(),
+  #       #CV_CLOSE_CONTACT = "numeric"
+  #       CV_EXPOSURE_SETTING = col_double(),
+  #       CV_SOURCE_INFECTION = col_double(),
+  #       CV_SYMPTOMS_REPORTED = col_double(),
+  #       CV_QUARANTINE_STATUS = col_double(),
+  #       CV_DATE_ENTERED_QUARANTINE = col_date(format = "%d/%m/%Y")),
+  #     na = "NULL" # usually turn this off
+  #   ) %>% rename(POSTCODE = Postcode)
+  # }
   
   if(ll_date < "2021-03-08"){
     dat <- dat %>%
@@ -4731,11 +4893,11 @@ get_nndss_linelist <- function(
       )
   }
   
-  if(ll_date > "2022-01-07"){ #fix changed postcode colname
-    dat <- dat %>%
-      rename(POSTCODE = Postcode) %>% 
-      mutate(POSTCODE = as.numeric(POSTCODE)) #not sure why this breaks down
-  }
+  # if(ll_date > "2022-01-07"){ #fix changed postcode colname
+  #   dat <- dat %>%
+  #     rename(POSTCODE = Postcode) %>% 
+  #     mutate(POSTCODE = as.numeric(POSTCODE)) #not sure why this breaks down
+  # }
   
   if (is.numeric(dat$POSTCODE)) {
     dat <- dat %>%
@@ -4804,89 +4966,8 @@ get_nndss_linelist <- function(
       import_status = ifelse(import_status == "ERROR", location_conflict_assumption, import_status)
     )
   
-  # record state of acquisition, and residence
-  dat <- dat %>%
-    # fill in missing places of acquisition with correct code
-    mutate(
-      PLACE_OF_ACQUISITION = ifelse(
-        is.na(PLACE_OF_ACQUISITION),
-        "00038888",
-        PLACE_OF_ACQUISITION)
-    ) %>%
-    mutate(
-      postcode_of_acquisition = substr(PLACE_OF_ACQUISITION, 5, 8),
-      postcode_of_residence = replace_na(POSTCODE, "8888"),
-      state_of_residence = postcode_to_state(postcode_of_residence)
-    ) %>%
-    rowwise %>%
-    mutate(
-      state_of_acquisition = postcode_to_state(postcode_of_acquisition),
-      .after = postcode_of_residence
-    ) %>% 
-    ungroup %>%
-    mutate(
-      interstate_import_cvsi = case_when(
-        CV_SOURCE_INFECTION == 4 ~ TRUE,
-        CV_SOURCE_INFECTION == 7 ~ TRUE,
-        TRUE ~ FALSE
-      )
-    )
-  
-
-  
-  # Generate linelist data
-  linelist <- dat %>%
-    # notification receive date seems buggy, and is sometimes before the
-    # notification date and specimen collection date
-    mutate(
-      date_confirmation = pmax(NOTIFICATION_RECEIVE_DATE,
-                               NOTIFICATION_DATE,
-                               na.rm = TRUE),
-    ) %>%
-    select(
-      date_onset = TRUE_ONSET_DATE,
-      date_detection = SPECIMEN_DATE,
-      date_confirmation,
-      date_quarantine = CV_DATE_ENTERED_QUARANTINE,
-      state = STATE,
-      import_status,
-      postcode_of_acquisition,
-      postcode_of_residence,
-      state_of_acquisition,
-      state_of_residence,
-      interstate_import_cvsi
-    ) %>%
-    mutate(
-      report_delay = as.numeric(date_confirmation - date_onset),
-      date_linelist = as.Date(data$date_time, tz = "Australia/Canberra"),
-      state = as.factor(state)
-    ) %>%
-    
-    # Remove those with onset date after confirmation date
-    # only keep individuals with date of confirmation after onset date if less than 2 days (inclusive) because
-    # we assume some individuals tested via contact tracing will test positive before symptom onset and therefore plausible
-    # (noting that reporting delay distribution only calculated from positive differences)
-    # also remove any individuals with NA for both notification and symptom onset dates
-    # filter(
-    #   date_confirmation >= (date_onset - 2) | is.na(date_confirmation) | is.na(date_onset)
-    # ) %>%
-    filter(
-      !(is.na(date_confirmation) & is.na(date_onset))
-    ) %>%
-    mutate_at(
-      vars(starts_with("date_")),
-      ~as.Date(.)
-    ) %>%
-    # for cases missing a date of detection, assume it's the day before the date
-    # of confirmation (1 days is the median and mode of this delay distribution)
-    mutate(
-      date_detection = case_when(
-        is.na(date_detection) ~ date_confirmation - 1,
-        TRUE ~ date_detection
-      )
-    )
-  
-  linelist
+  return(list(data = data,
+              dat = dat))
   
 }
 
@@ -4898,23 +4979,23 @@ get_vic_linelist <- function(file) {
     substr(1, 8) %>%
     as.Date(format = "%Y%m%d")
   
-
+  
   file %>%
-      read_csv(
-        col_types = cols(
-          CaseNumber = col_double(),
-          DiagnosisDate = col_date(format = ""),
-          #DiagnosisDate = col_date(format = "%d/%m/%Y"),
-          SymptomsOnsetDate = col_date(format = ""),
-          #SymptomsOnsetDate = col_date(format = "%d/%m/%Y"),
-          LGA = col_character(),
-          Acquired = col_character(),
-          FirstSpecimenPositiveDate = col_date(format = "")#,
-          #Classification = col_character()# not backwards compatible for the moment, will do a proper fix later
-          #FirstSpecimenPositiveDate = col_date(format = "%d/%m/%Y")
-        ),
-        na = "NA"
-      ) %>% #filter(Classification == "Confirmed"|FirstSpecimenPositiveDate > "2021-12-25") %>%
+    read_csv(
+      col_types = cols(
+        CaseNumber = col_double(),
+        DiagnosisDate = col_date(format = ""),
+        #DiagnosisDate = col_date(format = "%d/%m/%Y"),
+        SymptomsOnsetDate = col_date(format = ""),
+        #SymptomsOnsetDate = col_date(format = "%d/%m/%Y"),
+        LGA = col_character(),
+        Acquired = col_character(),
+        FirstSpecimenPositiveDate = col_date(format = "")#,
+        #Classification = col_character()# not backwards compatible for the moment, will do a proper fix later
+        #FirstSpecimenPositiveDate = col_date(format = "%d/%m/%Y")
+      ),
+      na = "NA"
+    ) %>% #filter(Classification == "Confirmed"|FirstSpecimenPositiveDate > "2021-12-25") %>%
     # read_excel(
     #   col_types = c("numeric", "date", "date", "text", "text", "date"),
     #   na = "NA"
@@ -5026,8 +5107,8 @@ get_sa_linelist <- function(file = "~/not_synced/sa/SA_linelist_25July2021.csv")
       symptom_onset = lubridate::dmy(symptom_onset) + t_offset,
       notification_date = lubridate::dmy(notification_date) + t_offset,
       likely_infection_date = lubridate::dmy(likely_infection_date) + t_offset) %>%
-  
-  mutate(
+    
+    mutate(
       date_onset = case_when(!is.na(likely_infection_date) ~ likely_infection_date + 5,
                              T                             ~ symptom_onset),
       date_detection = NA,
@@ -5191,7 +5272,7 @@ get_nsw_linelist <- function (
   }
   
   return(nsw_linelist)
-
+  
 }
 
 # given a date-by-state matrix of case counts by date of infection,
@@ -5221,12 +5302,12 @@ gi_convolution <- function(
     # use Nishiura's serial interval as a generation interval
     # gi_cdf <- nishiura_cdf()
     gi_mat <- gi_matrix(
-        gi_cdf = gi_cdf,
-        dates = dates,
-        state = states[i],
-        gi_bounds = gi_bounds#,
-        # ttd_cdfs = ttd_cdfs
-      )
+      gi_cdf = gi_cdf,
+      dates = dates,
+      state = states[i],
+      gi_bounds = gi_bounds#,
+      # ttd_cdfs = ttd_cdfs
+    )
     
     convolved[, i] <- gi_mat %*% cases[, i]
     
@@ -5239,7 +5320,7 @@ gi_convolution <- function(
 
 # cases of spillover (import-local transmission) in during mandatory hotel quarantine
 hotel_quarantine_spillover_data <- function() {
-
+  
   tibble::tribble(
     ~earliest_date, ~latest_date, ~state, ~infectee, ~information_source,
     "2020-05-01", "2020-05-14", "VIC", "quarantine security guard (Rydges Hotel)",
@@ -5261,7 +5342,7 @@ hotel_quarantine_spillover_data <- function() {
       c("earliest_date", "latest_date"),
       as.Date
     )
-    
+  
 }
 
 # given a raw (unimputed) linelist, prepare all the data needed for modelling
@@ -5339,7 +5420,7 @@ reff_model_data <- function(
       region_type = "state",
       case_type = "local"
     )
-
+  
   # those imported (only considered infectious, but with a different Reff)
   imported_cases <- linelist %>%
     infections_by_region(
@@ -5372,7 +5453,7 @@ reff_model_data <- function(
     states = states,
     gi_cdf = gi_cdf#,
   )
-
+  
   # elements to exclude due to a lack of infectiousness
   local_valid <- is.finite(local_infectiousness) & local_infectiousness > 0
   import_valid <- is.finite(imported_infectiousness) & imported_infectiousness > 0
@@ -5486,14 +5567,14 @@ reff_model <- function(data) {
     cdf = gi_cdf,
     states = data$states
   )
-
+  
   
   # extra_isolation_local_reduction <- extra_isolation_effect(
   #   dates = data$dates$infection_project,
   #   cdf = gi_cdf,
   #   states = data$states
   # )
-
+  
   
   # the reduction from R0 down to R_eff for imported cases due to different
   # quarantine measures each measure applied during a different period. Q_t is
@@ -5528,15 +5609,15 @@ reff_model <- function(data) {
   # pull out R_t component due to distancing for locally-acquired cases, and
   # extend to correct length
   R_eff_loc_1_no_surv <- extend(distancing_effect$R_t, data$n_dates_project)
-    
+  
   # pull out vaccination effect
   vax_effect <- data$vaccine_effect_matrix
   
   # multiply by the surveillance and vaccination effects
   R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_reff_local_reduction * vax_effect #*
-    #extra_isolation_local_reduction
-
-
+  #extra_isolation_local_reduction
+  
+  
   log_R_eff_loc_1 <- log(R_eff_loc_1)
   
   # extract R0 from this model and estimate R_t component due to quarantine for
@@ -5549,10 +5630,10 @@ reff_model <- function(data) {
   sigma <- normal(0, 0.5, truncation = c(0, Inf))
   sigma_state <- sigma * ones(data$n_states)
   var <- sigma ^ 2
-
+  
   # hierarchical prior mean on log(Reff12) by state
   mu_prior <- log_R_eff_loc_1 - var
-
+  
   # temporally correlated errors in R_eff for local cases - representing all the
   # stochastic transmission dynamics in the community, such as outbreaks in
   # communities with higher or lower tranmission rates
@@ -5570,10 +5651,10 @@ reff_model <- function(data) {
     sigma_state = sigma_state,
     kernel = kernel_L
   )
-
+  
   # add the prior mean back on to re-centre the posterior  
   log_R_eff_loc <- mu_prior + epsilon_L
-
+  
   # expand out the Reff for locals
   log_R_eff_imp <- sweep(
     zeros(data$n_date_nums, data$n_states),
@@ -5624,7 +5705,7 @@ reff_model <- function(data) {
   distribution(data$local$cases[valid]) <- negative_binomial(size, prob_trunc)
   
   m <- model(expected_infections_vec)
-
+  
   list(
     greta_model = m,
     greta_arrays = module(
@@ -5973,12 +6054,17 @@ constrain_run_length <- function(x, min_run_length = 7) {
 
 reff_plotting_sims <- function(
   fitted_model,
-  vaccine_timeseries = vaccine_effect_timeseries,
+  #vaccine_timeseries = vaccine_effect_timeseries,
   nsim = 10000
 ){
   # add counterfactuals to the model object:
   # add fitted_model_extended obect because fitted_model is modified
   fitted_model_extended <- fitted_model
+  
+  vaccine_timeseries <- as_tibble(fitted_model$data$vaccine_effect_matrix) %>%
+    mutate(date = fitted_model$data$dates$infection_project) %>%
+    pivot_longer(cols = -date, names_to = "state", values_to = "effect")
+  
   # Reff for locals component 1 under
   # only micro/macro/surveillance improvements
   fitted_model_extended$greta_arrays <- c(
@@ -6188,7 +6274,7 @@ reff_plotting <- function(
   
   save_ggplot("R_eff_12_1_ratio.png", dir, subdir)
   
-
+  
   # vaccine effect only
   plot_trend(sims$R_eff_loc_1_vaccine_only, 
              data = fitted_model$data,
@@ -6208,7 +6294,7 @@ reff_plotting <- function(
   
   save_ggplot("R_eff_1_vaccine_only.png", dir, subdir, multi = TRUE)
   
-    # vaccine effect out of C1
+  # vaccine effect out of C1
   plot_trend(
     sims$R_eff_loc_1_without_vaccine,
     data = fitted_model$data,
@@ -6907,13 +6993,13 @@ load_linelist <- function(date = NULL,
             import_status == "local" &
             date_detection >= as.Date("2021-07-19") & 
             date_detection < as.Date("2021-07-26")
-          )
+        )
       ) %>%
       
       bind_rows(
         get_sa_linelist()
       )
-     
+    
   }
   
   if (use_nsw) {
@@ -6955,9 +7041,12 @@ load_linelist <- function(date = NULL,
   
 }
 
-write_linelist <- function(dir = "outputs"){
+write_linelist <- function(linelist = linelist,
+                           dir = "outputs"){
   
-  linelist <- load_linelist()
+  if (is.null(linelist)) {
+    linelist <- load_linelist()
+  }
   
   ll_date <- linelist$date_linelist[1]
   
@@ -8488,7 +8577,7 @@ plot_delays <- function(
   base_colour = yellow
 ) {
   
-
+  
   # mutate to output quantiles and then plot them
   quantiles <- delay_distributions %>%
     # plot it as the date of infection, not date of onset!
@@ -8596,7 +8685,7 @@ plot_delays <- function(
           axis.title.y.right = element_text(vjust = 0.5, angle = 90),
           panel.spacing = unit(1.2, "lines"),
           axis.text.x = element_text(size = 8)
-          )
+    )
   
   p
   
@@ -8654,16 +8743,16 @@ predict_mobility_trend <- function(
     #     date = as.Date("2021-01-12"),
     #     state = "QLD"
     #   ),
-    #   tibble(
-    #     date = as.Date("2021-02-05"),
-    #     state = "WA"
-    #   ),
-    #   tibble(
-    #     date = as.Date("2021-02-18"),
-    #     state = "VIC"
-    #   )
-    # ) %>% # this code now superceded by end_dates = TRUE
-    filter(date <= max_data_date) %>%
+  #   tibble(
+  #     date = as.Date("2021-02-05"),
+  #     state = "WA"
+  #   ),
+  #   tibble(
+  #     date = as.Date("2021-02-18"),
+  #     state = "VIC"
+  #   )
+  # ) %>% # this code now superceded by end_dates = TRUE
+  filter(date <= max_data_date) %>%
     mutate(
       intervention_id = paste0(
         "intervention_",
@@ -8709,7 +8798,7 @@ predict_mobility_trend <- function(
       dow = as.character(dow)
     ) %>%
     filter(!is.na(trend))
-
+  
   library(mgcv)
   
   m <- gam(trend ~
@@ -8738,7 +8827,7 @@ predict_mobility_trend <- function(
   # compute mean and standard deviation of Gaussian observation model for fitted data
   fit <- predict(m, se.fit = TRUE)
   fit$sd <- sqrt(var(residuals(m)) + fit$se.fit ^ 2)
-
+  
   df_fitted <- df %>%
     # predict with fitted model (and get 90% CIs)
     mutate(
@@ -8822,7 +8911,7 @@ predict_mobility_trend <- function(
         ),
       by = c("state", "state_long", "date")
     )
-
+  
   pred_df
   
 }
@@ -9318,19 +9407,19 @@ baseline_matrix <- function(R0 = 3, final_age_bin = 80, age_breaks = NULL) {
   # )
   # 
   # contact_matrix_scaled * m
-
+  
   ######
   
   # construct ngm for australia using conmat and davies estimates
   
   ngm_unscaled <- australia_ngm_unscaled(age_breaks)
-
+  
   m <- find_m(
     R_target = R0,
     transition_matrix = ngm_unscaled
   )
-
-
+  
+  
   ngm_unscaled*m
   
 }
@@ -10024,7 +10113,7 @@ simulate_variant <- function(
   if(is.na(subdir)){
     subdir <- variant
   }
- 
+  
   data <- .fitted_model$data
   dates <- .fitted_model$data$dates$mobility
   
@@ -10042,7 +10131,7 @@ simulate_variant <- function(
   
   phi_alpha       <- normal(1.454, 0.055, truncation = c(0, Inf))
   phi_delta_alpha <- normal(1.421, 0.033, truncation = c(0, Inf))
-  phi_omicron <- 1.645
+  phi_omicron <- 2.347662
   
   phi_delta <- phi_alpha * phi_delta_alpha
   
@@ -10683,7 +10772,7 @@ write_reff_sims_novax <- function(
   fitted_model_extended <- fitted_model
   
   vaccine_timeseries <- as_tibble(fitted_model$data$vaccine_effect_matrix) %>%
-    mutate(date = fitted_model$data$dates_project) %>%
+    mutate(date = fitted_model$data$dates$infection_project) %>%
     pivot_longer(cols = -date, names_to = "state", values_to = "effect")
   
   fitted_model_extended$greta_arrays <- c(
