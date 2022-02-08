@@ -2,7 +2,7 @@
 
 source("R/functions.R")
 
-linelist <- load_linelist()
+#linelist <- load_linelist()
 linelist_date <- linelist$date_linelist[1]
 
 # get delays for locally-acquired infections, truncated differently for forward/backward delays 
@@ -84,3 +84,80 @@ p2 <- plot_delays(
 p2
 
 save_ggplot("notification_delays.png", multi = TRUE)
+
+#onset missingness plot
+
+week_grid <- linelist %>%
+  filter(import_status == "local", date_confirmation >= (max(date_confirmation) - months(6))) %$%
+  expand_grid(
+    state = unique(.$state),
+    week = .$date_confirmation %>%
+      cut.Date(breaks = "1 week", labels = NULL) %>% 
+      #arrange %>%
+      unique
+  )
+
+missingness <- linelist %>%
+  filter(import_status == "local", date_confirmation >= (max(date_confirmation) - months(6))) %>%
+  mutate(
+    week = cut.Date(date_confirmation, breaks = "1 week", labels = NULL)
+  ) %>%
+  group_by(
+    state,
+    week
+  ) %>%
+  summarise(
+    n_cases = n(),
+    prop_onset = sum(!is.na(date_onset))/n(),
+    .groups = "drop"
+  ) %>%
+  full_join(
+    week_grid
+  ) %>%
+  mutate(
+    n_cases = ifelse(is.na(n_cases), 0, n_cases)
+  ) %>%
+  arrange(week, state)
+
+
+missingness %>%
+  ggplot() +
+  geom_point(
+    aes(
+      x = week,
+      y = prop_onset,
+      size = log10(n_cases)
+    ),
+    col = "springgreen2"
+  ) +
+  facet_wrap(
+    ~ state,
+    ncol = 2
+  ) +
+  theme_classic() +
+  labs(
+    x = NULL,
+    y = "Proportion",
+    size = expression(Log["10"]~"(cases)")
+  ) +
+  ggtitle(
+    label = "Proportion symptom onset dates",
+    subtitle = "Proportion of local cases with symptom onset dates recorded, by week"
+  ) +
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  theme(
+    legend.position = "bottom",
+    strip.background = element_blank(),
+    strip.text = element_text(hjust = 0, face = "bold"),
+    axis.title.y.right = element_text(vjust = 0.5, angle = 90),
+    panel.spacing = unit(1, "lines"),
+    axis.text.x = element_text(size = 9, angle = 270)
+  ) +
+  scale_y_continuous(
+    position = "right",
+    limits = c(-0.2, 1.2),
+    breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)
+  ) 
+
+save_ggplot("proportion_with_onset_date.png", multi = TRUE)

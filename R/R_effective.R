@@ -10,8 +10,12 @@ source("R/functions.R")
 sync_nndss()
 
 # prepare data for Reff modelling
-data <- reff_model_data()
 
+#quick check if reff data is already loaded
+if (length(data) != 12) {
+  data <- reff_model_data() 
+}
+saveRDS(data, "outputs/pre_loaded_reff_data.RDS")
 data$dates$linelist
 
 # save the key dates for Freya and David to read in, and tabulated local cases
@@ -43,8 +47,8 @@ vaccine_effect_timeseries <- readRDS(file = "outputs/vaccine_effect_timeseries.R
 
 # write sims of C1 without vaccine effect
 write_reff_sims_novax(
-  fitted_model,
-  vaccine_timeseries = vaccine_effect_timeseries
+  fitted_model#,
+  #vaccine_timeseries = vaccine_effect_timeseries
 )
 
 # generatge sims for plotting
@@ -127,26 +131,26 @@ reff_plotting(
 simulate_variant(variant = "wt")
 simulate_variant(variant = "alpha")
 simulate_variant(variant = "delta")
+simulate_variant(variant = "omicron")
 
-simulate_variant(
-  variant = "omicron"
-)
 
-vaccine_effect_timeseries_omicron <- vaccine_effect_timeseries %>%
-  mutate(
-    effect = if_else(is.na(effect), 1, effect),
-    effect = 1 - (1 - effect) * 0.546 # static multiplier based on current difference will need updating
-  )
+#simulate variant with vax effect
 
 simulate_variant(
   variant = "omicron",
   subdir = "omicron_vax",
-  vax_effect = vaccine_effect_timeseries_omicron
+  vax_effect = vaccine_effect_timeseries %>% 
+    filter(variant == "Omicron", 
+           date <= max(fitted_model$data$dates$infection_project)) %>% 
+    select(-variant,-percent_reduction)
 )
 
 
 simulate_variant(
   variant = "delta",
   subdir = "delta_vax",
-  vax_effect = vaccine_effect_timeseries
+  vax_effect = vaccine_effect_timeseries %>% 
+    filter(variant == "Delta", 
+           date <= max(fitted_model$data$dates$infection_project)) %>% 
+    select(-variant,-percent_reduction)
 )

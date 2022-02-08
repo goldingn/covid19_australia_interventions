@@ -10806,12 +10806,12 @@ state_short_long_table <- tibble::tribble(
   ~state_short, ~state_long,
   "ACT", "Australian Capital Territory",
   "NSW", "New South Wales",
-   "NT", "Northern Territory",
+  "NT", "Northern Territory",
   "QLD", "Queensland",
-   "SA", "South Australia",
+  "SA", "South Australia",
   "TAS", "Tasmania",
   "VIC", "Victoria",
-   "WA", "Western Australia"
+  "WA", "Western Australia"
 )
 
 
