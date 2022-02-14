@@ -24,7 +24,7 @@ vaccine_raw <- read_quantium_vaccination_data()
 # currently only difference is 100% booster and 80% booster uptake in vaccinated
 unique(vaccine_raw$scenario)
 
-scenario_to_use <- 109
+scenario_to_use <- 114
 
 # aggregate to state
 vaccine_state <- aggregate_quantium_vaccination_data_to_state(vaccine_raw)
