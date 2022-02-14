@@ -33,7 +33,7 @@ source("R/check_linelist.R")
 # [~60s]
 
 #overall linelist read line
-linelist <- load_linelist()
+linelist <- load_linelist(use_vic = FALSE)#skip Vic when using commonwealth data
 
 
 source("R/rolling_delays.R")
