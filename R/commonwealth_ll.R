@@ -2,17 +2,19 @@ source("R/functions.R")
 
 #library(readxl); library(tidyverse); library(lubridate);library(rvest)
 
-test <- read_xlsx("~/not_synced/Combined RAT and PCR Notifications by Jurisdiction from 6 January 2022.xlsx",
-                  range = "B4:AC38",
+test <- read_xlsx("~/not_synced/PCR and RAT Breakdown (Power Query).xlsx",
+                  range = "B4:AC46",sheet = 2,
                   col_types = c("date",rep("numeric",27))) %>% 
   select(c(Date,starts_with("Total")))
 
-states <- names(read_xlsx("~/not_synced/Combined RAT and PCR Notifications by Jurisdiction from 6 January 2022.xlsx",
-                          range = "B3:AC3"))
+states <- names(read_xlsx("~/not_synced/PCR and RAT Breakdown (Power Query).xlsx",
+                          range = "B3:AC3",sheet = 2))
 states <- states[-grep("...",states,fixed = TRUE)]
 
 colnames(test)[2:10] <- states
 
+#remove total row
+test <- test[-1,]
 
 Jennie_ll <- test %>%
   select(-Australia) %>% 
@@ -65,6 +67,8 @@ linelist$interstate_import[is.na(linelist$interstate_import)] <- FALSE
 linelist$date_linelist[is.na(linelist$date_linelist)] <- as_date(Sys.Date())
 
 linelist$date_onset <- as_date(ifelse(linelist$date_onset < "2020-01-01",NA,linelist$date_onset))
+
+write_linelist(linelist = linelist)
 
 linelist <- linelist %>%
   impute_linelist(notification_delay_cdf = notification_delay_cdf)

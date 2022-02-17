@@ -2,12 +2,12 @@ source("R/functions.R")
 
 #library(readxl); library(tidyverse); library(lubridate);library(rvest)
 
-test <- read_xlsx("~/not_synced/Combined_RAT_and_PCR_Notifications_by_Jurisdiction_from_6_January_2022.xlsx",
-                  range = "B4:AC31",
+test <- read_xlsx("~/not_synced/Combined RAT and PCR Notifications by Jurisdiction from 6 January 2022.xlsx",
+                  range = "B4:AC38",
                   col_types = c("date",rep("numeric",27))) %>% 
   select(c(Date,starts_with("Total")))
 
-states <- names(read_xlsx("~/not_synced/Combined_RAT_and_PCR_Notifications_by_Jurisdiction_from_6_January_2022.xlsx",
+states <- names(read_xlsx("~/not_synced/Combined RAT and PCR Notifications by Jurisdiction from 6 January 2022.xlsx",
                           range = "B3:AC3"))
 states <- states[-grep("...",states,fixed = TRUE)]
 
@@ -32,7 +32,7 @@ Jennie_ll <- test %>%
   ) #%>% 
 #uncount(weights = daily_notification)
 
-Jennie_ll$source <- "Jennie"
+Jennie_ll$source <- "Commonwealth"
 #Jennie_ll$date_onset <- NA
 
 
@@ -103,6 +103,6 @@ combined %>% ggplot(aes(x = date_confirmation, y = daily_notification)) +
     facets = vars(state),
     ncol = 2,
     scales = "free_y"
-  ) + scale_fill_manual(values=c("#1b9e77", "#d95f02","#7570b3"))
+  ) + scale_fill_manual(values=c("#1b9e77", "#d95f02"))
 
 ggsave("outputs/figures/covidlive vs Jennie vs NINDSS_NCIMS_DHHS.png")
