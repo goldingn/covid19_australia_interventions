@@ -367,3 +367,187 @@ p
 
 save_ggplot("macrodistancing_effect_six_month.png")
 
+##### plot macro comparison between 20/21 and 21/22 holiday period
+
+simulations = pred_sim
+data <- plot_data
+#base_colour = grey(0.4)
+base_colour = "grey"
+ylim = c(0, 20)
+hline_at = NULL
+ybreaks = NULL
+intervention_at = interventions()
+max_date = as.Date(data$dates$latest_mobility)
+min_date = as.Date("2020-11-01")
+
+
+mean <- colMeans(simulations)
+ci_90 <- apply(simulations, 2, quantile, c(0.05, 0.95)) 
+ci_50 <- apply(simulations, 2, quantile, c(0.25, 0.75))
+
+
+states <- rep(data$states, each = data$n_dates_project)
+dates <- rep(data$dates$infection_project, data$n_states)
+
+
+df <- tibble(date = dates,
+             state = states,
+             mean = mean,
+             ci_50_lo = ci_50[1, ],
+             ci_50_hi = ci_50[2, ],
+             ci_90_lo = ci_90[1, ],
+             ci_90_hi = ci_90[2, ])
+
+
+df <- df %>%
+  filter(
+    date >= min_date,
+    date <= max_date
+  ) %>%
+  mutate(type = "Nowcast")
+
+
+if (length(unique(df$date)) >= 200){
+  date_breaks <- "3 month"
+  date_minor_breaks <- "1 month"
+  date_labels <- "%b %y"
+  x_text_angle <- 0
+  x_text_size <- 9
+  x_text_hjust <- 0.5
+  x_text_vjust <- 0.5
+} else if(length(unique(df$date)) < 50){
+  date_breaks <- "5 days"
+  date_minor_breaks <- "1 day"
+  date_labels <- "%e-%m"
+  x_text_angle <- 0
+  x_text_size <- 9
+  x_text_hjust <- 0.5
+  x_text_vjust <- 0.5
+} else {
+  date_breaks <- "1 month"
+  date_minor_breaks <- "2 weeks"
+  date_labels <- "%b"
+  x_text_angle <- 0
+  x_text_size <- 9
+  x_text_hjust <- 0.5
+  x_text_vjust <- 0.5
+}
+
+
+
+if (is.null(ybreaks)){
+  if(range(ylim)[2] - range(ylim)[1] >= 4 & range(ylim)[2] - range(ylim)[1] <= 10){
+    y_scale <- scale_y_continuous(position = "right", breaks = seq(from = ylim[1], to = ylim[2], by = 1))
+    
+  } else(
+    y_scale <- scale_y_continuous(position = "right")
+  )
+} else {
+  y_scale <- scale_y_continuous(position = "right", breaks = seq(from = ybreaks[1], to = ybreaks[2], by = 1))
+}
+
+df <- df %>%
+  mutate(
+    year = if_else(date < "2021-07-01", "20/21", "21/22"),
+    date = if_else(date >= "2021-07-01", date - years(1), date)
+  ) %>%
+  filter(
+    date <= Sys.Date()- years(1),
+    date >= "2020-11-01"
+  )
+
+survey_points <- survey_points %>% 
+  mutate(
+    year = if_else(wave_date < "2021-07-01", "20/21", "21/22"),
+    wave_date = if_else(wave_date >= "2021-07-01", wave_date - years(1), wave_date)
+  ) %>%
+  filter(
+    wave_date <= Sys.Date()- years(1),
+    wave_date >= "2020-11-01"
+  )
+
+p <- ggplot(df,mapping = aes(date, mean, colour = year, fill = year)) + 
+  
+  xlab(element_blank()) +
+  
+  coord_cartesian(ylim = ylim) +
+  y_scale +
+  scale_x_date(date_breaks = "2 week", date_labels = "%d/%m") +
+  scale_alpha(range = c(0, 0.5)) +
+  scale_fill_manual(values = c("grey","purple")) +
+  
+  
+  geom_vline(
+    aes(xintercept = date),
+    data = intervention_at,
+    colour = "grey75"
+  ) +
+  
+  geom_ribbon(aes(ymin = ci_90_lo,
+                  ymax = ci_90_hi),
+              alpha = 0.2) +
+  geom_ribbon(aes(ymin = ci_50_lo,
+                  ymax = ci_50_hi),
+              alpha = 0.5) +
+  geom_line(aes(y = ci_90_lo),
+            colour = base_colour,
+            alpha = 0.8) + 
+  geom_line(aes(y = ci_90_hi),
+            colour = base_colour,
+            alpha = 0.8) + 
+  
+  geom_hline(yintercept = hline_at, linetype = "dotted") +
+  
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  theme(
+    strip.background = element_blank(),
+    strip.text = element_text(hjust = 0, face = "bold"),
+    axis.title.y.right = element_text(vjust = 0.5, angle = 90),
+    panel.spacing = unit(1.2, "lines"),
+    axis.text.x = element_text(size = x_text_size, angle = x_text_angle, hjust = x_text_hjust, vjust = x_text_vjust)) + scale_color_manual(values = c("grey","purple")) + facet_wrap(~ state, ncol = 2, scales = "free")  + 
+  ggtitle(label = "Macro-distancing trend",
+          subtitle = "Rate of non-household contacts") +
+  ylab("Estimated mean number of non-household contacts per day") + 
+  
+  
+  # rug marks for holidays
+  geom_rug(
+    aes(date),
+    data = holiday_lines %>% filter(date >= "2020-11-01",date <= Sys.Date()- years(1)),
+    col = green,
+    size = 1,
+    length = unit(0.05, "npc"),
+    sides = "b",
+    inherit.aes = FALSE
+  ) +
+  
+  # add survey results estimate
+  geom_point(
+    aes(
+      wave_date,
+      estimate,
+      colour = year
+    ),
+    data = survey_points,
+    size = 2,
+    pch = "_",
+    colour = "grey"
+  ) +
+  
+  geom_errorbar(
+    aes(
+      wave_date,
+      estimate,
+      ymin = lower,
+      ymax = upper,
+      colour = year
+    ),
+    data = survey_points ,
+    size = 1,
+    alpha = 0.2,
+    width = 0
+  ) 
+p
+
+ggsave("outputs/figures/macrodistancing_compare.png",bg = "white", width = 10, height = 10)
