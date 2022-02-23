@@ -29,6 +29,8 @@ delays_from_onset <- estimate_delays(
   direction = "forward"
 )
 
+#override NT flat period
+delays_from_onset[delays_from_onset$date >= "2022-01-03" & delays_from_onset$state == "NT","ecdf"] <- delays_from_onset[delays_from_onset$date == "2022-01-03" & delays_from_onset$state == "NT","ecdf"]
 
 delay_data_to_confirmation <- detection_delay_data %>%
   filter(
