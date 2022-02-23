@@ -92,7 +92,7 @@ regular <- regular_ll %>%
   filter(date_confirmation >= "2022-01-06") %>% group_by(state,date_confirmation) %>% 
   count() %>% 
   rename(daily_notification = n) %>% ungroup() %>% 
-  mutate(source = "regular") %>% 
+  mutate(source = "NINDSS/NCIMS") %>% 
   select(colnames(Jennie_ll))
   
 combined <- rbind(combined,regular) %>% filter(date_confirmation >= "2022-01-06")

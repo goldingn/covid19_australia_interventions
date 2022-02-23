@@ -3,7 +3,7 @@ source("R/functions.R")
 #library(readxl); library(tidyverse); library(lubridate);library(rvest)
 
 test <- read_xlsx("~/not_synced/PCR and RAT Breakdown (Power Query).xlsx",
-                  range = "B4:AC46",sheet = 2,
+                  range = "B4:AC53",sheet = 2,
                   col_types = c("date",rep("numeric",27))) %>% 
   select(c(Date,starts_with("Total")))
 
@@ -76,9 +76,9 @@ linelist <- linelist %>%
 
 data <- reff_model_data(linelist_raw = linelist)
 
+saveRDS(data, "outputs/pre_loaded_reff_data.RDS")
 
-
-
+source("R/watermelon_plot.R")
 
 
 
