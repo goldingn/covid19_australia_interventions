@@ -1,6 +1,9 @@
 source("R/functions.R")
 
+
 # find most recent data or specify date, check dir printed is sensible
+get_quantium_data_dates()
+
 dir <- get_quantium_data_dir()
 dir
 
@@ -24,13 +27,23 @@ vaccine_raw <- read_quantium_vaccination_data()
 # currently only difference is 100% booster and 80% booster uptake in vaccinated
 unique(vaccine_raw$scenario)
 
-scenario_to_use <- 114
+scenario_to_use <- 140
 
 # aggregate to state
 vaccine_state <- aggregate_quantium_vaccination_data_to_state(vaccine_raw)
 
 vaccine_state
 
+saveRDS(
+  object = vaccine_state,
+  file = sprintf(
+    "outputs/vaccine_state_%s.RDS",
+    data_date
+  )
+)
+
+
+# vaccine_state <- readRDS("outputs/vaccine_state.RDS")
 
 ## tester code for single cohort date
 # target_date <- as.Date("2022-01-01")
@@ -52,7 +65,7 @@ vaccine_state
 ve_tables <- tibble(
   date = seq.Date(
     from = as.Date("2021-02-22"),
-    to = Sys.Date() + weeks(7),
+    to = data_date + weeks(16),
     by = "1 week"
   )
 ) %>%
@@ -82,6 +95,10 @@ ve_tables <- tibble(
     )
   )
 
+# saveRDS(
+#   ve_tables,
+#   "outputs/ve_tables.RDS"
+# )
 
 date_state_variant_table <- expand_grid(
   date = seq.Date(
@@ -161,7 +178,7 @@ ggplot(vaccination_effect_timeseries) +
   ) +
   scale_x_date(
     breaks = "1 month",
-    date_labels = "%b %Y"
+    date_labels = "%b %y"
   ) +
   ggtitle(
     label = "Vaccination effect",
@@ -203,7 +220,7 @@ ggplot(vaccination_effect_timeseries) +
     )
   )
 
-ggsave(
+ ggsave(
   filename = sprintf(
     "outputs/figures/vaccination_effect_%s.png",
     data_date
@@ -338,7 +355,7 @@ population_mean_ve <- ve_tables %>%
 daily_population_mean_ve <- population_mean_ve %>%
   ungroup %>%
   filter(
-    scenario == 109,
+    scenario == scenario_to_use,
     omicron_scenario == "estimate",
     outcome %in% c("acquisition", "transmission", "symptoms")
   ) %>%
@@ -362,7 +379,7 @@ daily_population_mean_ve <- population_mean_ve %>%
 write_csv(
   x = daily_population_mean_ve,
   fil = sprintf(
-    "outputs/daily_population_mean_transmission_acquisition_%s.csv",
+    "outputs/daily_population_mean_ves_%s.csv",
     data_date
   )
 )

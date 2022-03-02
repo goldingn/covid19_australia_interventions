@@ -10881,17 +10881,21 @@ sort_age_groups <- function(age_groups) {
   age_groups[order]
 }
 
-
-get_quantium_data_dir <- function(
-  date = NULL
-){
-  # get most recent forecast
-  dir_dates <- list.dirs(
+get_quantium_data_dates <- function(){
+  list.dirs(
     path = "~/not_synced/vaccination/quantium_forecasts/",
     full.names = FALSE,
     recursive = FALSE
   ) %>%
     as.Date
+}
+
+
+get_quantium_data_dir <- function(
+  date = NULL
+){
+  # get most recent forecast
+  dir_dates <- get_quantium_data_dates()
   
   if (is.null(date)) {
     dir_index <- which.max(dir_dates)
@@ -11115,13 +11119,14 @@ get_vaccine_cohorts_at_date <- function(vaccine_scenarios, target_date) {
       ),
       # rename products to match VE model, recoding Moderna as Pfizer for now
       # since there is not enough evidence on efficacy to distringuish it from
-      # Pfizer
+      # Pfizer. Ditto Novavax
       product = case_when(
         product == "Pfizer" ~ "Pf",
         product == "AstraZeneca" ~ "AZ",
         product == "Moderna" ~ "Pf",
         product == "Booster" ~ "mRNA",
-        product == "Pfizer (5-11)" ~ "Pf"
+        product == "Pfizer (5-11)" ~ "Pf",
+        product == "Novavax" ~ "Pf"
       ),
       immunity = case_when(
         !is.na(date) ~ paste(product, dose, sep = "_"),

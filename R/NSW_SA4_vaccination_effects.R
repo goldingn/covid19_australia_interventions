@@ -49,7 +49,7 @@ vaccine_sa4_nsw <- vaccine_raw %>%
 #   coverage = coverage_now_all
 # )
 
-ve_tables <- tibble(
+ve_tables_nsw_sa4 <- tibble(
   date = seq.Date(
     from = as.Date("2021-02-22"),
     to = Sys.Date() + weeks(7),
@@ -63,16 +63,16 @@ ve_tables <- tibble(
       .f = get_vaccine_cohorts_at_date,
       vaccine_scenarios = vaccine_sa4_nsw
     ),
-    cohorts_all = map(
-      .x = cohorts,
-      .f = add_missing_age_cohorts_nsw_sa4
-    ),
+    # cohorts_all = map(
+    #   .x = cohorts,
+    #   .f = add_missing_age_cohorts_nsw_sa4
+    # ),
     coverage = map(
-      .x = cohorts_all,
+      .x = cohorts,
       .f = get_coverage
     ),
     ves = map(
-      .x = cohorts_all,
+      .x = cohorts,
       .f = get_vaccine_efficacies
     ),
     vaccine_transmission_effects = map2(
@@ -82,14 +82,6 @@ ve_tables <- tibble(
     )
   )
 
-ve_tables_plus_transmission <- ve_tables %>%
-  mutate(
-    vaccine_transmission_effects = map2(
-      .x = ves,
-      .y = coverage,
-      .f = get_vaccine_transmission_effects
-    )
-  )
 
 date_state_variant_table <- expand_grid(
   date = seq.Date(
