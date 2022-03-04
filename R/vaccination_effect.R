@@ -27,7 +27,8 @@ vaccine_raw <- read_quantium_vaccination_data()
 # currently only difference is 100% booster and 80% booster uptake in vaccinated
 unique(vaccine_raw$scenario)
 
-scenario_to_use <- 140
+scenario_to_use <- max(vaccine_raw$scenario)
+#scenario_to_use <- 141
 
 # aggregate to state
 vaccine_state <- aggregate_quantium_vaccination_data_to_state(vaccine_raw)
@@ -178,7 +179,7 @@ ggplot(vaccination_effect_timeseries) +
   ) +
   scale_x_date(
     breaks = "1 month",
-    date_labels = "%b %y"
+    date_labels = "%b %Y"
   ) +
   ggtitle(
     label = "Vaccination effect",
@@ -220,7 +221,7 @@ ggplot(vaccination_effect_timeseries) +
     )
   )
 
- ggsave(
+ggsave(
   filename = sprintf(
     "outputs/figures/vaccination_effect_%s.png",
     data_date
