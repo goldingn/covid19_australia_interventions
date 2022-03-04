@@ -6,3 +6,4 @@ outputs/*
 *.tex
 gr_git_notes.txt
 .DS_Store
+.Rhistory
