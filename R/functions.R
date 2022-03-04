@@ -11307,9 +11307,16 @@ get_coverage <- function(vaccine_cohorts) {
   
 }
 
-get_omicron_params_wide <- function() {
+get_omicron_params_wide <- function(param_file = NULL) {
+  
+  if(is.null(param_file)){
+    param_file <- "outputs/scenario_parameters_omicron.csv"
+  } else if (param_file == "infection") {
+    param_file <- "outputs/scenario_parameters_omicron_infection_assumption.csv"
+  }
+  
   read_csv(
-    "outputs/scenario_parameters_omicron.csv",
+    param_file,
     col_types = cols(
       parameter = col_character(),
       # intermediate = col_double(),
