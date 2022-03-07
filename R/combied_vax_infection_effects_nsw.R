@@ -2,8 +2,8 @@
 
 source("R/functions.R")
 
-vaccine_state <- readRDS("outputs/vaccine_state.RDS")
-fitted_model <- readRDS("outputs/fitted_reff_model_20220215.RDS")
+vaccine_state <- readRDS("outputs/vaccine_state_2022-03-01.RDS")
+#fitted_model <- readRDS("outputs/fitted_reff_model_20220215.RDS")
 #ve_tables <- readRDS("outputs/ve_tables.RDS")
 
 state_population <- vaccine_state %>%
@@ -15,19 +15,17 @@ state_population <- vaccine_state %>%
   )
 
 
-
-infection_dates <- fitted_model$data$dates$infection
-
-omicron_infections_only <- fitted_model$data$local$cases %>%
-  as_tibble %>%
-  mutate(
-    date = infection_dates
+local_cases <- read_csv("outputs/local_cases_input.csv") %>%
+  select(
+    date = date_onset,
+    state,
+    cases = count
   ) %>%
-  pivot_longer(
-    cols = -date,
-    names_to = "state",
-    values_to = "cases"
-  ) %>%
+  filter(date <= "2022-02-21")
+
+#infection_dates <- fitted_model$data$dates$infection
+
+omicron_infections_only <- local_cases %>%
   mutate(
     year = year(date) %>% as.integer,
     week = isoweek(date) %>% as.integer,
@@ -54,6 +52,7 @@ omicron_infections_only <- fitted_model$data$local$cases %>%
   select(date, state, num_people) %>%
   expand_grid(
     ascertainment = c(0.25, 0.5, 0.75, 1)
+    #ascertainment = c(0.125, 0.25, 0.375, 0.5, 1)
   ) %>%
   mutate(
     num_people = num_people/ascertainment
@@ -263,7 +262,8 @@ get_infection_efficacies_vax <- function(vaccine_cohorts, param_file = "infectio
         log_k = log_k,
         c50_vec = c50,
         method = "gaussian"
-      )
+      ),
+      ve = if_else(is.nan(ve), 1, ve)
     ) %>%
     select(
       -neuts,
@@ -391,7 +391,8 @@ get_infection_efficacies_novax <- function(vaccine_cohorts, param_file = "infect
         log_k = log_k,
         c50_vec = c50,
         method = "gaussian"
-      )
+      ),
+      ve = if_else(is.nan(ve), 1, ve)
     ) %>%
     select(
       -neuts,
@@ -744,7 +745,7 @@ date_state_variant_table_infection <- expand_grid(
 combined_effect_timeseries <- combined_effect_tables %>%
   select(date, ascertainment, combined_transmission_effects) %>%
   unnest(combined_transmission_effects) %>%
-  filter(omicron_scenario == "estimate", scenario == 129) %>%
+  filter(omicron_scenario == "estimate", scenario == scenario_to_use) %>%
   select(date, ascertainment, state, variant, combined_effect) %>%
   mutate(
     effect_multiplier = 1 - combined_effect
@@ -767,12 +768,27 @@ combined_effect_timeseries <- combined_effect_tables %>%
   ungroup %>%
   select(-combined_effect)
 
-data_date <- fitted_model$data$dates$linelist
+
+combined_effect_timeseries_full <- vaccination_effect_timeseries %>%
+  expand_grid(ascertainment = unique(combined_effect_timeseries$ascertainment)) %>%
+  filter(date < min(combined_effect_timeseries$date)) %>%
+  bind_rows(combined_effect_timeseries)
+
+#data_date <- fitted_model$data$dates$linelist
+#data_date <- as.Date("2022-02-22")
 
 write_csv(
   combined_effect_timeseries,
   file = sprintf(
     "outputs/combined_effect_%s.csv",
+    data_date
+  )
+)
+
+write_csv(
+  combined_effect_timeseries_full,
+  file = sprintf(
+    "outputs/combined_effect_full_%s.csv",
     data_date
   )
 )
@@ -785,12 +801,113 @@ saveRDS(
   )
 )
 
-## plot vaccine_effect_timeseries
+
+combined_and_vax_timeseries <- bind_rows(
+  combined_effect_timeseries %>%
+    mutate(effect_type = "Combined immunity"),
+  vaccination_effect_timeseries %>%
+    mutate(
+      ascertainment = NA,
+      effect_type = "Vaccination immunity"
+    )
+)
+
+
 
 
 dpi <- 150
 font_size <- 12
-ggplot(combined_effect_timeseries %>% filter(variant == "Omicron") %>% mutate(ascertainment = as.character(ascertainment))) +
+combined_effect_timeseries %>%
+  filter(variant == "Omicron", date <= as.Date("2022-03-01")) %>%
+  mutate(ascertainment = as.character(ascertainment)) %>%
+ggplot() +
+  geom_line(
+    aes(
+      x = date,
+      y = effect,
+      colour = state,
+      #linetype = variant,
+      alpha = ascertainment
+    ),
+    size = 1
+  ) +
+  theme_classic() +
+  labs(
+    x = NULL,
+    y = "Change in transmission potential",
+    #col = "State",
+    colour = NULL,
+    alpha = "Case\nascertainment\nproportion"
+  ) +
+  scale_x_date(
+    breaks = "2 month",
+    date_labels = "%b%y"
+  ) +
+  ggtitle(
+    label = "Immunity effect",
+    subtitle = "Change in transmission potential of Omicron variant due to immunity from vaccination and infection with Omicron variant"
+  ) +
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  theme(
+    strip.background = element_blank(),
+    axis.title.y.right = element_text(vjust = 0.5, angle = 90, size = font_size),
+    legend.position = c(0.02, 0.1),
+    #legend.position = c(0.02, 0.18),
+    legend.text = element_text(size = font_size),
+    axis.text = element_text(size = font_size),
+    plot.title = element_text(size = font_size + 8),
+    plot.subtitle = element_text(size = font_size)
+  ) +
+  scale_colour_manual(
+    values = c(
+      "darkgray",
+      "cornflowerblue",
+      "chocolate1",
+      "violetred4",
+      "red1",
+      "darkgreen",
+      "darkblue",
+      "gold1"
+    ),
+
+  ) +
+  guides(colour = "none") +
+  scale_alpha_manual(values = c(0.25, 0.5, 0.75, 1)) +
+  scale_y_continuous(
+    position = "right",
+    limits = c(0, 1),
+    breaks = seq(0, 1, by = 0.1)
+  ) +
+  geom_vline(
+    aes(
+      xintercept = data_date
+    )
+  ) +
+  facet_wrap(~state, ncol = 2) +
+  geom_line(
+    data = vaccination_effect_timeseries %>%
+      filter(date <= data_date, variant == "Omicron"),
+    aes(x = date, y = effect),
+    linetype = "dashed"
+  )
+
+ggsave(
+  filename = sprintf(
+    "outputs/figures/combined_effect_long_%s.png",
+    data_date
+  ),
+  dpi = dpi,
+  width = 1500 / dpi,
+  height = 1250 / dpi,
+  scale = 1.2,
+  bg = "white"
+)
+
+combined_effect_timeseries %>%
+  filter(variant == "Omicron", date <= data_date) %>%
+  mutate(ascertainment = as.character(ascertainment)) %>%
+  ggplot() +
   geom_line(
     aes(
       x = date,
@@ -806,7 +923,7 @@ ggplot(combined_effect_timeseries %>% filter(variant == "Omicron") %>% mutate(as
     x = NULL,
     y = "Change in transmission potential",
     col = "State",
-    alpha = "Variant"
+    alpha = "ascertainment"
   ) +
   scale_x_date(
     breaks = "1 week",
@@ -850,11 +967,16 @@ ggplot(combined_effect_timeseries %>% filter(variant == "Omicron") %>% mutate(as
     aes(
       xintercept = data_date
     )
+  ) +
+  facet_wrap(~state, ncol = 2) +
+  geom_line(
+    data = vaccination_effect_timeseries %>% filter(date <= data_date, date >= "2021-12-07",  variant == "Omicron"),
+    aes(x = date, y = effect)
   )
 
 ggsave(
   filename = sprintf(
-    "outputs/figures/combined_effect_%s.png",
+    "outputs/figures/combined_effect_short_%s.png",
     data_date
   ),
   dpi = dpi,
@@ -1019,6 +1141,78 @@ ggsave(
 
 
 combined_effect_timeseries %>%
+  filter(variant == "Omicron") %>%
+  mutate(
+    ascertainment = ascertainment * 100,
+    ascertainment = factor(ascertainment, levels = c("100", "75", "50", "25")),
+    effect_type = if_else(date > data_date, "Forecast vaccination only", "Actual vaccination & Omicron infection")
+  ) %>%
+  ggplot() +
+  geom_line(
+    aes(
+      x = date,
+      y = effect,
+      colour = state,
+      linetype = effect_type,
+      alpha = ascertainment
+    ),
+    #colour = "cornflowerblue",
+    size = 1.5
+  ) +
+  theme_classic() +
+  labs(
+    x = NULL,
+    y = "Change in transmission potential",
+    #col = "State",
+    alpha = "Case ascertainment percentage",
+    linetype = "Effect from"
+  ) +
+  scale_x_date(
+    breaks = "1 month",
+    date_labels = "%b %y"
+  ) +
+  ggtitle(
+    label = "Combined vaccination and infection effect in NSW",
+    subtitle = "Change in transmission potential of Omicron variant due to vaccination and infection from the Omicron variant"
+  ) +
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  theme(
+    strip.background = element_blank(),
+    axis.title.y.right = element_text(vjust = 0.5, angle = 90, size = font_size),
+    #legend.position = c(0.02, 0.135),
+    legend.position = c(0.02, 0.18),
+    legend.text = element_text(size = font_size),
+    axis.text = element_text(size = font_size),
+    plot.title = element_text(size = font_size + 8),
+    plot.subtitle = element_text(size = font_size)
+  ) +
+  scale_alpha_manual(values = c(1, 0.75, 0.5, 0.25)) +
+  scale_y_continuous(
+    position = "right",
+    limits = c(0, 1),
+    breaks = seq(0, 1, by = 0.1)
+  ) +
+  scale_linetype_manual(values = c(1,3)) +
+  geom_vline(
+    aes(
+      xintercept = data_date
+    )
+  )
+
+ggsave(
+  filename = sprintf(
+    "outputs/figures/combined_effect_nsw_future_%s.png",
+    data_date
+  ),
+  dpi = dpi,
+  width = 1500 / dpi,
+  height = 1250 / dpi,
+  scale = 1.2,
+  bg = "white"
+)
+
+combined_effect_timeseries %>%
   filter(variant == "Omicron", state == "NSW") %>%
   mutate(
     ascertainment = ascertainment * 100,
@@ -1026,4 +1220,126 @@ combined_effect_timeseries %>%
     effect_type = if_else(date > data_date, "Forecast vaccination only", "Actual vaccination & Omicron infection")
   ) %>%
   write_csv(file = "outputs/nsw_omicron_combined_effect_20220215.csv")
+
+
+dpi <- 150
+font_size <- 12
+combined_effect_timeseries %>%
+  filter(variant == "Omicron") %>%
+  mutate(
+    ascertainment = ascertainment * 100,
+    ascertainment = factor(ascertainment, levels = c("100", "75", "50", "25")),
+    effect_type = if_else(date > data_date, "Forecast vaccination only", "Actual vaccination & Omicron infection")
+  ) %>%
+  ggplot() +
+  geom_line(
+    aes(
+      x = date,
+      y = effect,
+      colour = state,
+      linetype = effect_type,
+      alpha = ascertainment
+    ),
+    size = 1
+  ) +
+  theme_classic() +
+  labs(
+    x = NULL,
+    y = "Change in transmission potential",
+    col = "State",
+    alpha = "ascertainment"
+  ) +
+  scale_x_date(
+    breaks = "1 week",
+    date_labels = "%d/%m"
+  ) +
+  ggtitle(
+    label = "Vaccination effect",
+    subtitle = "Change in transmission potential due to vaccination"
+  ) +
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  theme(
+    strip.background = element_blank(),
+    axis.title.y.right = element_text(vjust = 0.5, angle = 90, size = font_size),
+    legend.position = c(0.02, 0.135),
+    #legend.position = c(0.02, 0.18),
+    legend.text = element_text(size = font_size),
+    axis.text = element_text(size = font_size),
+    plot.title = element_text(size = font_size + 8),
+    plot.subtitle = element_text(size = font_size)
+  ) +
+  scale_colour_manual(
+    values = c(
+      "darkgray",
+      "cornflowerblue",
+      "chocolate1",
+      "violetred4",
+      "red1",
+      "darkgreen",
+      "darkblue",
+      "gold1"
+    )
+  ) +
+  scale_alpha_manual(values = c(0.25, 0.5, 0.75, 1)) +
+  scale_y_continuous(
     
+    
+    
+    position = "right",
+    limits = c(0, 1),
+    breaks = seq(0, 1, by = 0.1)
+  ) +
+  geom_vline(
+    aes(
+      xintercept = data_date
+    )
+  ) +
+  facet_wrap(~state, ncol = 2) +
+  geom_line(
+    data = vaccination_effect_timeseries %>% filter(variant == "Omicron"),
+    aes(x = date, y = effect)
+  ) +
+  scale_linetype_manual(values = c(1,3))
+
+ggsave(
+  filename = sprintf(
+    "outputs/figures/combined_effect_long_future_%s.png",
+    data_date
+  ),
+  dpi = dpi,
+  width = 1500 / dpi,
+  height = 1250 / dpi,
+  scale = 1.2,
+  bg = "white"
+)
+
+
+fitted_model <- readRDS("outputs/fitted_reff_model_2022-03-01.RDS")
+
+simulate_variant(
+  variant = "omicron",
+  subdir = "omicron_combined",
+  vax_effect = combined_effect_timeseries_full %>% 
+    filter(
+      variant == "Omicron", 
+      date <= max(fitted_model$data$dates$infection_project),
+      ascertainment == 0.5
+    ) %>% 
+    select(date, state, effect)
+)
+
+
+simulate_variant(
+  variant = "delta",
+  subdir = "delta_combined",
+  vax_effect = combined_effect_timeseries_full %>% 
+    filter(
+      variant == "Delta", 
+      date <= max(fitted_model$data$dates$infection_project),
+      ascertainment == 0.5
+    ) %>% 
+    select(date, state, effect)
+)
+
+
