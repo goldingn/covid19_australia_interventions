@@ -4,6 +4,36 @@ green <- RColorBrewer::brewer.pal(8, "Set2")[1]
 
 # ------------------------ #
 
+
+
+#fitted_model <- readRDS("outputs/fitted_reff_model_2022-03-01.RDS")
+
+simulate_variant(
+  variant = "omicron",
+  subdir = "omicron_combined",
+  vax_effect = combined_effect_timeseries_full %>% 
+    filter(
+      variant == "Omicron", 
+      date <= max(fitted_model$data$dates$infection_project),
+      ascertainment == 0.5
+    ) %>% 
+    select(date, state, effect)
+)
+
+
+simulate_variant(
+  variant = "delta",
+  subdir = "delta_combined",
+  vax_effect = combined_effect_timeseries_full %>% 
+    filter(
+      variant == "Delta", 
+      date <= max(fitted_model$data$dates$infection_project),
+      ascertainment == 0.5
+    ) %>% 
+    select(date, state, effect)
+)
+
+
 the.date <- Sys.Date()
 the.date <- data_date
 vacc.start <- ymd("2021-02-22")
@@ -56,8 +86,8 @@ delta_combined <- read_csv(paste0("outputs/projection/delta_combined/r_eff_1_loc
 start.date <- ymd("2021-02-01")
 end.date <- the.date
 date.label.format <- "%b %y"
-n.week.labels.panel <- 1
-n.week.ticks <- "2 months"
+n.week.labels.panel <- 2
+n.week.ticks <- "1 month"
 
 # Create date objects for ticks/labels (e.g., show ticks every n.week.ticks, but label every n.week.labels.panel)
 dd <- format(seq.Date(ymd(start.date), end.date, by=n.week.ticks), date.label.format)
