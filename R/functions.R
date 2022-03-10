@@ -10849,20 +10849,20 @@ get_quantium_lookups <- function(dir) {
         week_starting = col_date("%d/%m/%Y")
       )
     ),
-    # scenario = read_csv(
-    #   sprintf(
-    #     "%s/dim_scenario.csv",
-    #     dir
-    #   ),
-    #   col_types = cols(
-    #     scenario = col_double(),
-    #     `5-11 uptake curve` = col_character(),
-    #     booster_shape = col_character(),
-    #     booster_scale_by_age = col_character(),
-    #     booster_uptake_terminal = col_double(),
-    #     booster_uptake_months = col_double()
-    #   )
-    # ),
+    scenario = read_csv(
+      sprintf(
+        "%s/dim_scenario.csv",
+        dir
+      ),
+      col_types = cols(
+        scenario = col_double(),
+        `5-11 uptake curve` = col_character(),
+        booster_shape = col_character(),
+        booster_scale_by_age = col_character(),
+        booster_uptake_terminal = col_double(),
+        booster_uptake_months = col_double()
+      )
+    ),
     sa4 = read_csv(
       sprintf(
         "%s/dim_sa4.csv",
@@ -11801,4 +11801,631 @@ split_ticks_and_labels <- function(
       labels = labs
     )
   )
+}
+
+get_omicron_infections <- function(
+  local_cases,
+  ascertainment_rates,
+  state_population
+){
+  
+  omicron_infections_only <- local_cases %>%
+    mutate(
+      year = year(date) %>% as.integer,
+      week = isoweek(date) %>% as.integer,
+      month = month(date) %>% as.integer,
+      yearweek = if_else(
+        week == 52 & month == 1,
+        sprintf("%s%02d", year - 1, week),
+        sprintf("%s%02d", year, week)
+      )
+    ) %>%
+    group_by(state, yearweek) %>%
+    mutate(
+      num_people = sum(cases)
+    ) %>%
+    filter(date == min(date)) %>%
+    ungroup %>%
+    mutate(
+      num_people = if_else(
+        date < "2021-12-01",
+        0,
+        num_people
+      )
+    ) %>%
+    select(date, state, num_people) %>%
+    expand_grid(
+      ascertainment = ascertainment_rates
+    ) %>%
+    mutate(
+      num_people = num_people/ascertainment
+    )
+  
+  
+  not_infected <- omicron_infections_only %>% 
+    group_by(state, ascertainment) %>%
+    summarise(
+      num_people = sum(num_people)
+    ) %>%
+    left_join(
+      state_population,
+      by = "state"
+    ) %>%
+    mutate(
+      num_people = population - num_people
+    ) %>%
+    mutate(
+      date = NA_Date_
+    ) %>%
+    select(date, state, num_people, ascertainment)
+  
+  
+  omicron_infections <- bind_rows(
+    omicron_infections_only,
+    not_infected
+  ) %>%
+    nest(
+      "omicron_infections" = -ascertainment
+    )
+  
+  return(omicron_infections)
+}
+
+get_infection_cohorts_at_date <- function(infection_series, target_date) {
+  
+  # set future times to NA and collapse to get contemporary data
+  infection_series %>%
+    mutate(
+      across(
+        starts_with("date"),
+        ~if_else(.x > target_date, as.Date(NA), .x)
+      )
+    ) %>%
+    group_by(
+      across(
+        -num_people
+      )
+    ) %>%
+    summarise(
+      num_people = sum(num_people),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      immunity = case_when(
+        !is.na(date) ~ "omicron_infection",
+        TRUE ~ NA_character_
+      )
+    ) %>%
+    mutate(
+      days_ago = as.numeric(target_date - date)
+    )
+  
+}
+
+
+get_coverage_infection <- function(infection_cohort) {
+  
+  # get current coverage with any dose in each age band, for each scenario
+  coverage <- infection_cohort %>%
+    mutate(
+      immune = !is.na(immunity)
+    ) %>%
+    group_by(
+      state
+    ) %>%
+    summarise(
+      coverage = weighted.mean(immune, num_people),
+      .groups = "drop"
+    )
+  
+}
+
+
+get_infection_efficacies_vax <- function(vaccine_cohorts, param_file = "infection") {
+  
+  # load omicron parameters in wide format and subset to different parameter sets
+  params_wide <- get_omicron_params_wide(param_file)
+  
+  neut_params_wide <- params_wide %>%
+    select(
+      omicron_scenario,
+      log10_mean_neut_AZ_dose_1,
+      log10_mean_neut_AZ_dose_2,
+      log10_mean_neut_Pfizer_dose_1,
+      log10_mean_neut_Pfizer_dose_2,
+      log10_mean_neut_mRNA_booster,
+      log10_mean_neut_omicron_infection,
+      additional_log10_mean_neut_omicron_infection,
+      neut_decay
+    )
+  
+  ve_params_wide <- params_wide %>%
+    select(
+      omicron_scenario,
+      starts_with("c50"),
+      log_k,
+      sd_log10_neut_titres,
+      omicron_log10_neut_fold
+    )
+  
+  # compute the average neutralisation level (mean log10 neut fold of WT
+  # convalescent) in each age group, scenario, and omicron scenario
+  mean_neuts <- vaccine_cohorts %>%
+    filter(
+      !is.na(immunity)
+    ) %>%
+    full_join(
+      tibble(
+        omicron_scenario = c(
+          # "intermediate",
+          # "optimistic",
+          "estimate",
+          "pessimistic"
+        )
+      ),
+      by = character()
+    ) %>%
+    left_join(
+      neut_params_wide,
+      by = "omicron_scenario"
+    ) %>%
+    # compute the peak and waned log10 mean neuts for each cohort
+    mutate(
+      peak_neuts = case_when(
+        immunity == "AZ_dose_1" ~ log10_mean_neut_AZ_dose_1,
+        immunity == "AZ_dose_2" ~ log10_mean_neut_AZ_dose_2,
+        immunity == "Pf_dose_1" ~ log10_mean_neut_Pfizer_dose_1,
+        immunity == "Pf_dose_2" ~ log10_mean_neut_Pfizer_dose_2,
+        immunity == "mRNA_booster" ~ log10_mean_neut_mRNA_booster,
+        immunity == "omicron_infection" ~ log10_mean_neut_Pfizer_dose_2 + additional_log10_mean_neut_omicron_infection
+      )
+    ) %>%
+    mutate(
+      neuts = log10_neut_over_time(
+        time = days_ago,
+        maximum_log10_neut = peak_neuts,
+        decay = neut_decay
+      )
+    ) %>%
+    select(
+      -starts_with("log10_mean_neut"),
+      -peak_neuts,
+      -neut_decay
+    ) %>%
+    # average the mean neuts over cohorts and scenarios
+    group_by(
+      state, omicron_scenario
+    ) %>%
+    summarise(
+      neuts = weighted.mean(neuts, num_people),
+      .groups = "drop"
+    )
+  
+  # now compute VEs against each outcome, for Omicron and Delta
+  ves <- mean_neuts %>%
+    left_join(
+      ve_params_wide,
+      by = "omicron_scenario"
+    ) %>%
+    # for omicron, adjust down the neuts
+    full_join(
+      tibble(
+        variant = c("Delta", "Omicron")
+      ),
+      by = character()
+    ) %>%
+    mutate(
+      neuts = case_when(
+        variant == "Omicron" ~ neuts + omicron_log10_neut_fold,
+        TRUE ~ neuts
+      )
+    ) %>%
+    # compute all the VEs in one shot with Gaussian integration
+    pivot_longer(
+      cols = starts_with("c50"),
+      names_to = "outcome",
+      values_to = "c50",
+      names_prefix = "c50_"
+    ) %>%
+    mutate(
+      ve = ve_from_mean_log10_neut(
+        mean_log10_neut_vec = neuts,
+        sd_log10_neut = sd_log10_neut_titres,
+        log_k = log_k,
+        c50_vec = c50,
+        method = "gaussian"
+      ),
+      ve = if_else(is.nan(ve), 1, ve)
+    ) %>%
+    select(
+      -neuts,
+      -log_k,
+      -sd_log10_neut_titres,
+      -omicron_log10_neut_fold,
+      -c50
+    )
+  
+  ves
+  
+}
+
+
+get_infection_efficacies_novax <- function(vaccine_cohorts, param_file = "infection") {
+  
+  # load omicron parameters in wide format and subset to different parameter sets
+  params_wide <- get_omicron_params_wide(param_file)
+  
+  neut_params_wide <- params_wide %>%
+    select(
+      omicron_scenario,
+      log10_mean_neut_AZ_dose_1,
+      log10_mean_neut_AZ_dose_2,
+      log10_mean_neut_Pfizer_dose_1,
+      log10_mean_neut_Pfizer_dose_2,
+      log10_mean_neut_mRNA_booster,
+      log10_mean_neut_omicron_infection,
+      additional_log10_mean_neut_omicron_infection,
+      neut_decay
+    )
+  
+  ve_params_wide <- params_wide %>%
+    select(
+      omicron_scenario,
+      starts_with("c50"),
+      log_k,
+      sd_log10_neut_titres,
+      omicron_log10_neut_fold
+    )
+  
+  # compute the average neutralisation level (mean log10 neut fold of WT
+  # convalescent) in each age group, scenario, and omicron scenario
+  mean_neuts <- vaccine_cohorts %>%
+    filter(
+      !is.na(immunity)
+    ) %>%
+    full_join(
+      tibble(
+        omicron_scenario = c(
+          # "intermediate",
+          # "optimistic",
+          "estimate",
+          "pessimistic"
+        )
+      ),
+      by = character()
+    ) %>%
+    left_join(
+      neut_params_wide,
+      by = "omicron_scenario"
+    ) %>%
+    # compute the peak and waned log10 mean neuts for each cohort
+    mutate(
+      peak_neuts = case_when(
+        immunity == "AZ_dose_1" ~ log10_mean_neut_AZ_dose_1,
+        immunity == "AZ_dose_2" ~ log10_mean_neut_AZ_dose_2,
+        immunity == "Pf_dose_1" ~ log10_mean_neut_Pfizer_dose_1,
+        immunity == "Pf_dose_2" ~ log10_mean_neut_Pfizer_dose_2,
+        immunity == "mRNA_booster" ~ log10_mean_neut_mRNA_booster,
+        immunity == "omicron_infection" ~ log10_mean_neut_omicron_infection
+      )
+    ) %>%
+    mutate(
+      neuts = log10_neut_over_time(
+        time = days_ago,
+        maximum_log10_neut = peak_neuts,
+        decay = neut_decay
+      )
+    ) %>%
+    select(
+      -starts_with("log10_mean_neut"),
+      -peak_neuts,
+      -neut_decay
+    ) %>%
+    # average the mean neuts over cohorts and scenarios
+    group_by(
+      state, omicron_scenario
+    ) %>%
+    summarise(
+      neuts = weighted.mean(neuts, num_people),
+      .groups = "drop"
+    )
+  
+  # now compute VEs against each outcome, for Omicron and Delta
+  ves <- mean_neuts %>%
+    left_join(
+      ve_params_wide,
+      by = "omicron_scenario"
+    ) %>%
+    # for omicron, adjust down the neuts
+    full_join(
+      tibble(
+        variant = c("Delta", "Omicron")
+      ),
+      by = character()
+    ) %>%
+    mutate(
+      neuts = case_when(
+        variant == "Omicron" ~ neuts + omicron_log10_neut_fold,
+        TRUE ~ neuts
+      )
+    ) %>%
+    # compute all the VEs in one shot with Gaussian integration
+    pivot_longer(
+      cols = starts_with("c50"),
+      names_to = "outcome",
+      values_to = "c50",
+      names_prefix = "c50_"
+    ) %>%
+    mutate(
+      ve = ve_from_mean_log10_neut(
+        mean_log10_neut_vec = neuts,
+        sd_log10_neut = sd_log10_neut_titres,
+        log_k = log_k,
+        c50_vec = c50,
+        method = "gaussian"
+      ),
+      ve = if_else(is.nan(ve), 1, ve)
+    ) %>%
+    select(
+      -neuts,
+      -log_k,
+      -sd_log10_neut_titres,
+      -omicron_log10_neut_fold,
+      -c50
+    )
+  
+  ves
+  
+}
+
+
+
+get_infection_transmission_effects <- function(ves, coverage) {
+  
+  
+  # load quantium lookup tables
+  dir <- get_quantium_data_dir()
+  lookups <- get_quantium_lookups(dir = dir)
+  
+  age_breaks_quantium <-lookups$age %>%
+    mutate(
+      brk = sub(
+        pattern = "\\-.*",
+        replacement = "",
+        x = age_band
+      ) %>%
+        sub(
+          pattern = "\\+",
+          replacement = "",
+          x = .
+        ) %>%
+        as.numeric
+    ) %>%
+    pull(brk)
+  
+  labq <- length(age_breaks_quantium)
+  
+  age_breaks_quantium[labq + 1] <- Inf
+  
+  # get a conmat NGM for Australia
+  australia_ngm <- baseline_matrix(age_breaks = age_breaks_quantium)
+  
+  # combine coverage and VEs to get transmission reduction for each rollout
+  # scenario, and omicron scenario
+  ves %>%
+    # add back in the younger age_groups
+    expand_grid(
+      age_band = lookups$age$age_band
+    ) %>%
+    # get the two transmission VEs as columns
+    filter(
+      outcome %in% c("acquisition", "transmission")
+    ) %>%
+    pivot_wider(
+      names_from = outcome,
+      values_from = ve
+    ) %>%
+    group_by(
+      state,
+      omicron_scenario,
+      variant
+    ) %>%
+    arrange(
+      age_band,
+      .by_group = TRUE
+    ) %>%
+    # join on coverages
+    left_join(
+      coverage %>%
+        expand_grid(
+          age_band = lookups$age$age_band
+        ),
+      by = c("age_band", "state")
+    ) %>%
+    # compute percentage reduction in acquisition and transmission in each age group
+    mutate(
+      acquisition_multiplier = 1 - acquisition * coverage,
+      transmission_multiplier = 1 - transmission * coverage,
+    ) %>%
+    select(
+      -acquisition,
+      -transmission,
+      -coverage
+    ) %>%
+    # transform these into matrices of reduction in transmission, matching the NGM
+    summarise(
+      transmission_reduction_matrix =
+        list(
+          outer(
+            # 'to' groups are on the rows in conmat, and first element in outer is rows,
+            # so acquisition first
+            acquisition_multiplier,
+            transmission_multiplier,
+            FUN = "*"
+          )
+        ),
+      .groups = "drop"
+    ) %>%
+    group_by(
+      state,
+      omicron_scenario,
+      variant
+    ) %>%
+    mutate(
+      ngm_unvaccinated = list(australia_ngm),
+      ngm_vaccinated = list(ngm_unvaccinated[[1]] * transmission_reduction_matrix[[1]]),
+      infection_effect = 1 - get_R(ngm_vaccinated[[1]]) / get_R(ngm_unvaccinated[[1]])
+    ) %>%
+    select(
+      -transmission_reduction_matrix,
+      -ngm_unvaccinated,
+      -ngm_vaccinated
+    ) %>%
+    ungroup
+  
+}
+
+
+
+combine_transmission_effects <- function(
+  ves,
+  coverage_vaccination,
+  ies,
+  coverage_infection,
+  vies
+) {
+  
+  # load quantium lookup tables
+  dir <- get_quantium_data_dir()
+  lookups <- get_quantium_lookups(dir = dir)
+  
+  age_breaks_quantium <-lookups$age %>%
+    mutate(
+      brk = sub(
+        pattern = "\\-.*",
+        replacement = "",
+        x = age_band
+      ) %>%
+        sub(
+          pattern = "\\+",
+          replacement = "",
+          x = .
+        ) %>%
+        as.numeric
+    ) %>%
+    pull(brk)
+  
+  labq <- length(age_breaks_quantium)
+  
+  age_breaks_quantium[labq + 1] <- Inf
+  
+  # get a conmat NGM for Australia
+  australia_ngm <- baseline_matrix(age_breaks = age_breaks_quantium)
+  
+  # combine coverage and VEs to get transmission reduction for each rollout
+  # scenario, and omicron scenario
+  ves %>%
+    # add back in the younger age_groups
+    complete(
+      scenario,
+      state,
+      omicron_scenario,
+      variant,
+      outcome,
+      age_band = unique(lookups$age$age_band),
+      fill = list(
+        ve = 0
+      )
+    ) %>%
+    rename(effect_vaccination = ve) %>%
+    left_join(
+      ies %>% rename(effect_infection = ve)
+    ) %>%
+    left_join(
+      vies %>% rename(effect_infandvax = ve)
+    ) %>%
+    # get the two transmission VEs as columns
+    filter(
+      outcome %in% c("acquisition", "transmission")
+    ) %>%
+    pivot_longer(
+      cols = starts_with("effect_"),
+      names_prefix = "effect_",
+      names_to = "effect_type",
+      values_to = "ve"
+    ) %>%
+    pivot_wider(
+      names_from = c(outcome, effect_type),
+      values_from = ve
+    ) %>%
+    group_by(
+      scenario,
+      state,
+      omicron_scenario,
+      variant
+    ) %>%
+    arrange(
+      age_band,
+      .by_group = TRUE
+    ) %>%
+    # join on coverages
+    left_join(
+      coverage_vaccination %>%
+        rename(coverage_vaccination = coverage),
+      by = c("age_band", "state", "scenario")
+    ) %>%
+    left_join(
+      coverage_infection %>%
+        rename(coverage_infection = coverage) %>%
+        expand_grid(
+          age_band = lookups$age$age_band
+        ),
+      by = c("age_band", "state")
+    ) %>%
+    # compute percentage reduction in acquisition and transmission in each age group
+    mutate(
+      p_infected_only = coverage_infection * (1 - coverage_vaccination),
+      p_vaccinated_only = coverage_vaccination * (1 - coverage_infection),
+      p_infandvax = coverage_vaccination * coverage_infection,
+      weighted_acquisition = p_infected_only * acquisition_infection + p_vaccinated_only * acquisition_vaccination + p_infandvax * acquisition_infandvax,
+      weighted_transmission = p_infected_only * transmission_infection + p_vaccinated_only * transmission_vaccination + p_infandvax * transmission_infandvax,
+      acquisition_multiplier = 1 - weighted_acquisition,
+      transmission_multiplier = 1 - weighted_transmission
+    ) %>%
+    # select(
+    #   -acquisition,
+    #   -transmission,
+    #   -coverage
+    # ) %>%
+    # transform these into matrices of reduction in transmission, matching the NGM
+    summarise(
+      transmission_reduction_matrix =
+        list(
+          outer(
+            # 'to' groups are on the rows in conmat, and first element in outer is rows,
+            # so acquisition first
+            acquisition_multiplier,
+            transmission_multiplier,
+            FUN = "*"
+          )
+        ),
+      .groups = "drop"
+    ) %>%
+    group_by(
+      state,
+      omicron_scenario,
+      variant
+    ) %>%
+    mutate(
+      ngm_unvaccinated = list(australia_ngm),
+      ngm_vaccinated = list(ngm_unvaccinated[[1]] * transmission_reduction_matrix[[1]]),
+      combined_effect = 1 - get_R(ngm_vaccinated[[1]]) / get_R(ngm_unvaccinated[[1]])
+    ) %>%
+    select(
+      -transmission_reduction_matrix,
+      -ngm_unvaccinated,
+      -ngm_vaccinated
+    ) %>%
+    ungroup
+  
 }
