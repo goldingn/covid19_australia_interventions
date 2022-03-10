@@ -45,7 +45,7 @@ delta_vax <- read_csv(paste0("outputs/projection/delta_vax/r_eff_1_local_samples
 
 start.date <- ymd("2021-02-01")
 end.date <- the.date
-date.label.format <- "%b"
+date.label.format <- "%m/%y"
 n.week.labels.panel <- 1
 n.week.ticks <- "1 months"
 
@@ -136,7 +136,7 @@ ggplot() +
         axis.text.x = element_text(size = 9),
         panel.spacing = unit(1.2, "lines"))
 
-ggsave(paste0("outputs/figures/omicron_vs_delta_vacc_",the.date,".png"), height = 10, width = 9, bg = "white")
+ggsave(paste0("outputs/figures/omicron_vs_delta_vacc_",the.date,".png"), height = 10, width = 10, bg = "white")
 
 
 
@@ -225,7 +225,7 @@ ggplot() +
         axis.text.x = element_text(size = 9),
         panel.spacing = unit(1.2, "lines"))
 
-ggsave(paste0("outputs/figures/omicron_novacc_vacc_",the.date,".png"), height = 10, width = 9, bg = "white")
+ggsave(paste0("outputs/figures/omicron_novacc_vacc_",the.date,".png"), height = 10, width = 10, bg = "white")
 
 
 # delta vac no vac --------------------------------------------------------
@@ -307,4 +307,4 @@ ggplot() +
         axis.text.x = element_text(size = 9),
         panel.spacing = unit(1.2, "lines"))
 
-ggsave(paste0("outputs/figures/delta_novacc_vacc_",the.date,".png"), height = 10, width = 9, bg = "white")
+ggsave(paste0("outputs/figures/delta_novacc_vacc_",the.date,".png"), height = 10, width = 10, bg = "white")

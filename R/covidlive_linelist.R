@@ -55,7 +55,7 @@ scraped <- scrape()
 scraped$date_onset <- NA
 
 # compute delays from NINDSS
-regular_ll <- load_linelist()
+regular_ll <- load_linelist(use_vic = FALSE)
 #regular_ll <- readRDS("outputs/preloaded_ll.RDS")
 
 notification_delay_cdf <- get_notification_delay_cdf(regular_ll)
@@ -129,13 +129,13 @@ for (i in 1:nrow(scraped_import)) {
 summary(as.factor(linelist_covidlive$import_status))
 
 
-linelist <- regular_ll %>% filter(date_confirmation < "2021-12-01")
+linelist <- regular_ll %>% filter(date_confirmation < "2021-12-01" | state == "NSW")
 
-linelist <- linelist_covidlive %>% filter(date_confirmation >= "2021-12-01") %>% bind_rows(linelist)
+linelist <- linelist_covidlive %>% filter(date_confirmation >= "2021-12-01" & state != "NSW") %>% bind_rows(linelist)
 
 linelist$interstate_import[is.na(linelist$interstate_import)] <- FALSE
 
-linelist$date_linelist[is.na(linelist$date_linelist)] <- as_date("2022-02-02")
+linelist$date_linelist[is.na(linelist$date_linelist)] <- as_date(Sys.Date())
 
 
 data <- reff_model_data(linelist_raw = linelist)
@@ -236,7 +236,7 @@ local_cases_reg <- tibble::tibble(
   count = as.vector(fitted_model$data$local$cases_infectious),
   acquired_in_state = as.vector(fitted_model$data$local$cases)
 )
-local_cases_reg$source <- "NINDSS/DHHS"
+local_cases_reg$source <- "NINDSS"
 local_cases_reg$source[local_cases_reg$state == "NSW"] <- "NCIMS"
 
 summary(as.factor(local_cases_reg$source))
@@ -244,7 +244,7 @@ summary(as.factor(local_cases_reg$source))
 local_cases_combined <- rbind(local_cases_reg,local_cases)
 
 lc_long <- local_cases_combined %>%
-  filter(date_onset >"2021-11-30" & date_onset <= "2022-01-31") %>%
+  filter(date_onset >"2021-11-30" & date_onset <= "2022-02-08") %>%
   select(-acquired_in_state) %>%
   group_by(state, date_onset)
 

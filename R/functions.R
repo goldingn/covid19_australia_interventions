@@ -5198,7 +5198,8 @@ get_nsw_linelist <- function (
         SETTING_OF_TRANSMISSION_DATE = col_nsw_date(),
         INTERVIEWED_DATE = col_nsw_date(),
         S_gene_result_date = col_nsw_date(),
-        Omicron_Category = col_factor()
+        Omicron_Category = col_factor(),
+        TEST_TYPE = col_factor()
       )
     ) %>%
     # remove some bogus dates
@@ -5246,7 +5247,8 @@ get_nsw_linelist <- function (
       state_of_residence = NA,
       report_delay = NA,
       date_linelist = date,
-      interstate_import = FALSE
+      interstate_import = FALSE,
+      test_type = TEST_TYPE
     )
   
   if(nindss_compatible){
