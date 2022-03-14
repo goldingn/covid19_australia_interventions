@@ -1597,7 +1597,7 @@ plot_trend <- function(
     x_text_hjust <- 0.5
     x_text_vjust <- 0.5
   } else if(length(unique(df$date)) < 50){
-    date_breaks <- "5 days"
+    date_breaks <- "7 days"
     date_minor_breaks <- "1 day"
     date_labels <- "%e-%m"
     x_text_angle <- 0
