@@ -2,22 +2,30 @@ source("R/functions.R")
 
 #library(readxl); library(tidyverse); library(lubridate);library(rvest)
 
-test <- read_xlsx("~/not_synced/PCR and RAT Breakdown (Power Query).xlsx",
-                  range = "B4:AC53",sheet = 2,
+linelist_commonwealth <- read_xlsx("~/not_synced/PCR and RAT Breakdown (Power Query).xlsx",
+                  range = "B4:AC67",sheet = 2,
                   col_types = c("date",rep("numeric",27))) %>% 
-  select(c(Date,starts_with("Total")))
+  select(-starts_with("Total"))
 
 states <- names(read_xlsx("~/not_synced/PCR and RAT Breakdown (Power Query).xlsx",
                           range = "B3:AC3",sheet = 2))
 states <- states[-grep("...",states,fixed = TRUE)]
 
-colnames(test)[2:10] <- states
+states <- rep(states,each = 2)
 
+#get test type designation
+colnames(linelist_commonwealth) <- word(colnames(linelist_commonwealth),1,1, sep = fixed("..."))
+
+
+colnames(linelist_commonwealth)[2:19] <- paste(colnames(linelist_commonwealth)[2:19],states,sep = "_")
+
+#check colnames
+colnames(linelist_commonwealth)
 #remove total row
-test <- test[-1,]
+linelist_commonwealth <- linelist_commonwealth[-1,]
 
-Jennie_ll <- test %>%
-  select(-Australia) %>% 
+linelist_commonwealth <- linelist_commonwealth %>%
+  select(-ends_with("Australia")) %>% 
   pivot_longer(-Date,
                names_to = "state",
                values_to = "daily_notification") %>% 
@@ -32,11 +40,13 @@ Jennie_ll <- test %>%
     daily_notification,
     state
   ) %>% 
-uncount(weights = daily_notification)
+  mutate("test_type" = word(state,1,1, sep = fixed("_")),
+         "state" = word(state,2,2, sep = fixed("_"))) %>% 
+  uncount(weights = daily_notification) 
 
 #Jennie_ll$source <- "Commonwealth"
 #add column for onset
-Jennie_ll$date_onset <- NA
+linelist_commonwealth$date_onset <- NA
 
 
 # compute delays from NINDSS
@@ -46,16 +56,14 @@ regular_ll <- load_linelist(use_vic = FALSE)
 notification_delay_cdf <- get_notification_delay_cdf(regular_ll)
 
 # impute onset dates and infection dates using this
-linelist_commonwealth <- Jennie_ll %>%
-  impute_linelist(notification_delay_cdf = notification_delay_cdf)
-linelist_commonwealth$date_onset <- as_date(linelist_commonwealth$date_onset)
-linelist_commonwealth$date <- as_date(linelist_commonwealth$date)
+#linelist_commonwealth <- Jennie_ll #%>%
+#  impute_linelist(notification_delay_cdf = notification_delay_cdf)
+#linelist_commonwealth$date_onset <- as_date(linelist_commonwealth$date_onset)
+#linelist_commonwealth$date <- as_date(linelist_commonwealth$date)
 
 #make into reff data format
 linelist_commonwealth$import_status <- "local"
 
-saveRDS(linelist_commonwealth,"outputs/commonwealth_ll_imputed.RDS")
-linelist_commonwealth <- readRDS("outputs/commonwealth_ll_imputed.RDS")
 
 
 linelist <- regular_ll %>% filter(date_confirmation < "2022-01-06" | state == "NSW")
@@ -73,6 +81,8 @@ write_linelist(linelist = linelist)
 linelist <- linelist %>%
   impute_linelist(notification_delay_cdf = notification_delay_cdf)
 
+saveRDS(linelist,"outputs/commonwealth_ll_imputed.RDS")
+linelist <- readRDS("outputs/commonwealth_ll_imputed.RDS")
 
 data <- reff_model_data(linelist_raw = linelist)
 
