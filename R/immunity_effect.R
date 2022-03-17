@@ -32,11 +32,18 @@ lookups <- get_quantium_lookups(dir = dir)
 vaccine_raw <- read_quantium_vaccination_data()
 
 # check scenarios and assign appropriate one for use
-# currently only difference is 100% booster and 80% booster uptake in vaccinated
+# currently only difference is % booster uptake (100, 80, 75)
+# choose 75
 unique(vaccine_raw$scenario)
 
-scenario_to_use <- max(vaccine_raw$scenario)
+scenario_to_use <- lookups$scenario$scenario[which(lookups$scenario$booster_uptake == 75)]
+
+# this may fail if scenario lookup table is not up to date so check this is TRUE or will cause failure later
+# otherwise may need to check email for appropriate scenario number and assign manually
+scenario_to_use %in% unique(vaccine_raw$scenario)
 #scenario_to_use <- 141
+
+scenario_to_use
 
 # aggregate to state
 vaccine_state <- aggregate_quantium_vaccination_data_to_state(vaccine_raw)
@@ -141,7 +148,7 @@ saveRDS(
   vaccination_effect_timeseries,
   file = sprintf(
     "outputs/vaccination_effect_%s.RDS",
-    data_date
+    data_date_save
   )
 )
 
@@ -319,7 +326,8 @@ ggsave(
   dpi = dpi,
   width = 1500 / dpi,
   height = 1250 / dpi,
-  scale = 1.2
+  scale = 1.2,
+  bg = "white"
 )
 
 # population-wide VE of the vaccinated population for Peter / Adeshina --------
@@ -548,7 +556,7 @@ write_csv(
   combined_effect_timeseries,
   file = sprintf(
     "outputs/combined_effect_%s.csv",
-    data_date
+    data_date_save
   )
 )
 
@@ -556,7 +564,7 @@ write_csv(
   combined_effect_timeseries_full,
   file = sprintf(
     "outputs/combined_effect_full_%s.csv",
-    data_date
+    data_date_save
   )
 )
 
@@ -564,7 +572,7 @@ saveRDS(
   combined_effect_timeseries,
   file = sprintf(
     "outputs/combined_effect_%s.RDS",
-    data_date
+    data_date_save
   )
 )
 
