@@ -154,3 +154,36 @@ simulate_variant(
            date <= max(fitted_model$data$dates$infection_project)) %>% 
     select(-variant,-percent_reduction)
 )
+
+
+
+#simulate variant with combined immunity effect
+
+simulate_variant(
+  variant = "omicron",
+  subdir = "omicron_combined/",
+  vax_effect = combined_effect_full %>% 
+    filter(
+      variant == "Omicron", 
+      date <= max(fitted_model$data$dates$infection_project),
+      ascertainment == 0.5
+    ) %>% 
+    select(-variant,-percent_reduction, -ascertainment)
+)
+
+
+simulate_variant(
+  variant = "delta",
+  subdir = "delta_combined",
+  vax_effect = combined_effect_full %>% 
+    filter(
+      variant == "Delta", 
+      date <= max(fitted_model$data$dates$infection_project),
+      ascertainment == 0.5
+    ) %>% 
+    select(-variant,-percent_reduction, -ascertainment)
+)
+
+
+source("R/omicron_delta_combined_compare.R")
+
