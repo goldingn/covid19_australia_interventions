@@ -35,6 +35,9 @@ source("R/check_linelist.R")
 #overall linelist read line
 linelist <- load_linelist(use_vic = FALSE)#skip Vic when using commonwealth data
 
+# remove dubious SA onset dates
+linelist$date_onset[(linelist$state == "SA" & linelist$date_onset >= as_date("2022-02-27"))] <- NA
+
 
 source("R/rolling_delays.R")
 #  -- figs to dropbox / to Freya
