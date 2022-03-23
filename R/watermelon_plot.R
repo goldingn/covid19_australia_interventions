@@ -23,7 +23,7 @@ local_cases <- local_cases %>% left_join(new_infections_by_test_type,
 
 lc_long <- local_cases %>% na.omit() %>% 
   filter(date_onset >"2022-01-05") %>%
-  filter(detection_probability > 0.01) %>%
+  filter(detection_probability > 0.05) %>%
   select(-acquired_in_state) %>%
   mutate(projected_count = count/detection_probability) %>%
   group_by(state, date_onset) %>%
@@ -81,4 +81,4 @@ lc_long %>%
     scales = "free_y"
   )
 
-ggsave("outputs/figures/watermelon.png", bg = 'white')
+ggsave("outputs/figures/watermelon.png", bg = 'white',height = 5,width = 9)
