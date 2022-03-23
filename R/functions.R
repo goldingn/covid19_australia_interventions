@@ -4818,7 +4818,8 @@ preprocess_nndss_linelist <- function(
         CV_SOURCE_INFECTION = col_double(),
         CV_SYMPTOMS_REPORTED = col_double(),
         CV_QUARANTINE_STATUS = col_double(),
-        CV_DATE_ENTERED_QUARANTINE = col_date(format = "%d/%m/%Y")),
+        CV_DATE_ENTERED_QUARANTINE = col_date(format = "%d/%m/%Y"),
+        LOADED_DATE = col_date(format = "%Y-%m-%d %H:%M:%S")),
       na = c("", "NULL") # usually turn this off
     ) %>% rename(POSTCODE = Postcode)
     
@@ -5199,7 +5200,7 @@ get_nsw_linelist <- function (
         INTERVIEWED_DATE = col_nsw_date(),
         S_gene_result_date = col_nsw_date(),
         Omicron_Category = col_factor(),
-        TEST_TYPE = col_factor()
+        TEST_TYPE = col_character()
       )
     ) %>%
     # remove some bogus dates
@@ -5266,7 +5267,8 @@ get_nsw_linelist <- function (
         state_of_residence,
         report_delay,
         date_linelist,
-        interstate_import
+        interstate_import,
+        test_type
       ) %>%
       arrange(
         desc(date_onset)
@@ -7037,7 +7039,6 @@ load_linelist <- function(date = NULL,
       )
     ) %>% 
     select(-interstate_import_cvsi)
-  
   
   linelist
   
