@@ -30,7 +30,7 @@ library(magrittr)
 library(conmat)
 library(bayesplot)
 library(gaussquad)
-
+library(orthopolynom)
 
 # read in and tidy up Facebook movement data
 facebook_mobility <- function() {
@@ -11673,6 +11673,8 @@ get_vaccine_transmission_effects <- function(ves, coverage) {
   # get a conmat NGM for Australia
   australia_ngm <- baseline_matrix(age_breaks = age_breaks_quantium)
   
+  age_band_factor <- levels(ves$age_band)
+  
   # combine coverage and VEs to get transmission reduction for each rollout
   # scenario, and omicron scenario
   ves %>%
@@ -11701,6 +11703,9 @@ get_vaccine_transmission_effects <- function(ves, coverage) {
       state,
       omicron_scenario,
       variant
+    ) %>%
+    mutate(
+      age_band = factor(age_band, levels = age_band_factor)
     ) %>%
     arrange(
       age_band,

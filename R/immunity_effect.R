@@ -433,7 +433,7 @@ local_cases <- read_csv("outputs/local_cases_input.csv") %>%
   ) %>%
   filter(date <= data_date)
 
-ascertainment_rates <- c(1, 0.75, 0.5, 0.25)
+ascertainment_rates <- c(1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2)
 
 omicron_infections <- get_omicron_infections(
   local_cases,
