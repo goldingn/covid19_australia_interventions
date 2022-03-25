@@ -152,6 +152,11 @@ saveRDS(
   )
 )
 
+saveRDS(
+  vaccination_effect_timeseries,
+  file = "outputs/vaccination_effect.RDS"
+)
+
 # vaccination effect plots --------
 dpi <- 150
 font_size <- 12
@@ -574,6 +579,19 @@ saveRDS(
     "outputs/combined_effect_%s.RDS",
     data_date_save
   )
+)
+
+saveRDS(
+  combined_effect_timeseries_full,
+  file = sprintf(
+    "outputs/combined_effect_full_%s.RDS",
+    data_date_save
+  )
+)
+
+saveRDS(
+  combined_effect_timeseries_full,
+  "outputs/combined_effect_full.RDS"
 )
 
 

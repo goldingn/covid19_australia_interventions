@@ -43,7 +43,7 @@ plot_reff_checks(fitted_model)
 write_reff_sims(fitted_model, dir = "outputs/projection")
 
 
-vaccine_effect_timeseries <- readRDS(file = "outputs/vaccine_effect_timeseries.RDS")
+vaccine_effect_timeseries <- readRDS(file = "outputs/vaccination_effect.RDS")
 
 # write sims of C1 without vaccine effect
 write_reff_sims_novax(
@@ -157,12 +157,16 @@ simulate_variant(
 
 
 
+
+
 #simulate variant with combined immunity effect
+
+combined_effect_timeseries_full <- readRDS("outputs/combined_effect_timeseries.RDS")
 
 simulate_variant(
   variant = "omicron",
   subdir = "omicron_combined/",
-  vax_effect = combined_effect_full %>% 
+  vax_effect = combined_effect_timeseries_full %>% 
     filter(
       variant == "Omicron", 
       date <= max(fitted_model$data$dates$infection_project),
@@ -175,7 +179,7 @@ simulate_variant(
 simulate_variant(
   variant = "delta",
   subdir = "delta_combined",
-  vax_effect = combined_effect_full %>% 
+  vax_effect = combined_effect_timeseries_full %>% 
     filter(
       variant == "Delta", 
       date <= max(fitted_model$data$dates$infection_project),

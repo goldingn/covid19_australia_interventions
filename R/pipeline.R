@@ -18,7 +18,7 @@ source("R/mobility_change.R")
 
 # 2. Vaccination effect
 # [~ 3 min]
-source("R/vacccination_with_waning.R")
+#source("R/vacccination_with_waning.R")
 # -- Figs into dropbox / to Freya
 # -- vaccination_effect_timeseries_<date>.csv to dropbox and mediaflux
 # -- effective_dose_data_<date>.csv to mediaflux
@@ -64,6 +64,8 @@ linelist %>%
 # write linelist format for UoAdelaide (Tobin/Josh) if necessary
 # usually unnecessary unless edits to raw linelist
 write_linelist(linelist = linelist)
+
+source("R/immunity_effect.R")
 
 # Section C) Dependent on survey data update (the numbered file must be manually
 # copied to data/survey_raw):
