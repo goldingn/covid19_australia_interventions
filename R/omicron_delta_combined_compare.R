@@ -27,7 +27,7 @@
 # )
 
 
-the.date <- Sys.Date()
+#the.date <- Sys.Date()
 the.date <- data_date
 vacc.start <- ymd("2021-02-22")
 

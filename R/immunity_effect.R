@@ -36,7 +36,7 @@ vaccine_raw <- read_quantium_vaccination_data()
 # choose 75
 unique(vaccine_raw$scenario)
 
-scenario_to_use <- lookups$scenario$scenario[which(lookups$scenario$booster_uptake == 75)]
+scenario_to_use <- lookups$scenario$scenario[which(lookups$scenario$booster_uptake == "Realistic (~75)")]
 
 # this may fail if scenario lookup table is not up to date so check this is TRUE or will cause failure later
 # otherwise may need to check email for appropriate scenario number and assign manually
@@ -433,7 +433,7 @@ local_cases <- read_csv("outputs/local_cases_input.csv") %>%
   ) %>%
   filter(date <= data_date)
 
-ascertainment_rates <- c(1, 0.75, 0.5, 0.25)
+ascertainment_rates <- c(1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2)
 
 omicron_infections <- get_omicron_infections(
   local_cases,
