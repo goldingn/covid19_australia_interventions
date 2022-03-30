@@ -2,8 +2,8 @@ source("R/functions.R")
 
 #library(readxl); library(tidyverse); library(lubridate);library(rvest)
 
-linelist_commonwealth <- read_xlsx("~/not_synced/PCR and RAT Breakdown (Power Query).xlsx",
-                  range = "B4:AC67",sheet = 2,
+linelist_commonwealth <- read_xlsx("~/not_synced/PCR and RAT Breakdown (Power Query) .xlsx",
+                  range = "B4:AC88",sheet = 2,
                   col_types = c("date",rep("numeric",27))) %>% 
   select(-starts_with("Total"))
 
@@ -53,8 +53,52 @@ linelist_commonwealth$date_onset <- NA
 regular_ll <- load_linelist(use_vic = FALSE)
 #regular_ll <- readRDS("outputs/preloaded_ll.RDS")
 
-notification_delay_cdf <- get_notification_delay_cdf(regular_ll)
+#visualise dow wave
+regular_ll %>% filter(date_confirmation >= "2022-02-01") %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = date_confirmation,
+    ),
+    stat = "count"
+  ) + 
+  geom_vline(aes(xintercept = unique(date_linelist)[1])) +
+  facet_wrap(
+    facets = vars(state),
+    ncol = 2,
+    scales = "free_y"
+  ) 
 
+ggsave("outputs/figures/NR_date_count_NINDSS_NCIMS.png")
+
+delays_to_confirmation_NCIMS <- readRDS("outputs/delay_to_confirmation_cdfs.RDS")
+
+notification_delay_cdf <- function(delays, possible_onset_dates, states) {
+  
+  #pullout the latest NSW delay to use for everything
+  cdfs <- delays_to_confirmation_NCIMS$ecdf[delays_to_confirmation_NCIMS$date == max(delays_to_confirmation_NCIMS$date) & delays_to_confirmation_NCIMS$state == "NSW"][[1]]
+
+    probs <- cdfs(delays)
+
+  probs
+  
+}
+
+#test delay ecdf behaviour
+old_delay_cdf <- get_notification_delay_cdf(regular_ll)
+delay_ecdf_plot <- tibble("days" = -3:14,
+                          "new_delay" = notification_delay_cdf(days, NULL,NULL),
+                          "old_delay_Vic" = old_delay_cdf(days,
+                                                          possible_onset_dates = rep("2022-01-01",length(days)),
+                                                                       "VIC"),
+                          "old_delay_other" = old_delay_cdf(days,
+                                                          possible_onset_dates = rep("2022-01-01",length(days)),
+                                                          "NSW"))
+delay_ecdf_plot <- delay_ecdf_plot %>% pivot_longer(cols = 2:4,names_to = "type")
+
+delay_ecdf_plot %>% filter(days <= 10) %>% ggplot(aes(x = days,y = value, col = type)) + geom_line() + scale_x_continuous(breaks = -3:10, limits = c(-3,10))
+
+ggsave("outputs/figures/ecdf_delay_compare.png")
 # impute onset dates and infection dates using this
 #linelist_commonwealth <- Jennie_ll #%>%
 #  impute_linelist(notification_delay_cdf = notification_delay_cdf)
@@ -79,14 +123,15 @@ linelist$date_onset <- as_date(ifelse(linelist$date_onset < "2020-01-01",NA,line
 write_linelist(linelist = linelist)
 
 linelist <- linelist %>%
-  impute_linelist(notification_delay_cdf = notification_delay_cdf)
+  impute_linelist(notification_delay_cdf = old_delay_cdf)
 
-saveRDS(linelist,"outputs/commonwealth_ll_imputed.RDS")
+saveRDS(linelist,"outputs/commonwealth_ll_imputed_old_method.RDS")
 linelist <- readRDS("outputs/commonwealth_ll_imputed.RDS")
 
-data <- reff_model_data(linelist_raw = linelist)
+data <- reff_model_data(linelist_raw = linelist,
+                        notification_delay_cdf = old_delay_cdf)
 
-saveRDS(data, "outputs/pre_loaded_reff_data.RDS")
+saveRDS(data, "outputs/pre_loaded_reff_data_old_imputation.RDS")
 
 source("R/watermelon_plot.R")
 

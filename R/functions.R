@@ -5354,7 +5354,8 @@ reff_model_data <- function(
   linelist_raw = load_linelist(),
   n_weeks_ahead = 6,
   inducing_gap = 3,
-  detection_cutoff = 0.95
+  detection_cutoff = 0.95,
+  notification_delay_cdf = notification_delay_cdf
 ) {
   
   linelist_date <- max(linelist_raw$date_linelist)
@@ -5363,7 +5364,9 @@ reff_model_data <- function(
   mobility_data <- readRDS("outputs/google_change_trends.RDS")
   
   # compute delays from symptom onset to detection for each state over time
-  notification_delay_cdf <- get_notification_delay_cdf(linelist_raw)
+  #notification_delay_cdf <- get_notification_delay_cdf(linelist_raw)
+  #use pre loaded delay cdf
+  notification_delay_cdf <- notification_delay_cdf
   
   # impute onset dates and infection dates using this
   linelist <- linelist_raw %>%
@@ -5469,7 +5472,7 @@ reff_model_data <- function(
   hotel_quarantine_start_date <- max(quarantine_dates()$date)
   n_hotel_cases <- sum(imported_cases[dates >= hotel_quarantine_start_date, ])
   
-  vaccine_effect_timeseries <- readRDS("outputs/vaccine_effect_timeseries.RDS")
+  vaccine_effect_timeseries <- readRDS("outputs/vaccination_effect.RDS")
   
   ve_omicron <- vaccine_effect_timeseries %>%
     filter(variant == "Omicron") %>%
@@ -6351,6 +6354,7 @@ reff_plotting <- function(
   # improved surveilance only
   plot_trend(sims$R_eff_loc_1_surv,
              data = fitted_model$data,
+             min_date = min_date,
              max_date = max_date,
              multistate = TRUE,
              base_colour = yellow,

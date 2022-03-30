@@ -662,7 +662,7 @@ combined_effect_timeseries %>%
     ),
   ) +
   guides(colour = "none") +
-  scale_alpha_manual(values = c(0.25, 0.5, 0.75, 1)) +
+  scale_alpha_manual(values = unique(combined_effect_timeseries$ascertainment)) +
   scale_y_continuous(
     position = "right",
     limits = c(0, 1),
@@ -757,7 +757,7 @@ combined_effect_timeseries %>%
     )
   ) +
   guides(colour = "none") +
-  scale_alpha_manual(values = c(0.25, 0.5, 0.75, 1)) +
+  scale_alpha_manual(values = unique(combined_effect_timeseries$ascertainment)) +
   scale_y_continuous(
     position = "right",
     limits = c(0, 1),
