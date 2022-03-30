@@ -161,7 +161,7 @@ simulate_variant(
 
 #simulate variant with combined immunity effect
 
-combined_effect_timeseries_full <- readRDS("outputs/combined_effect_timeseries.RDS")
+combined_effect_timeseries_full <- readRDS("outputs/combined_effect_full.RDS")
 
 simulate_variant(
   variant = "omicron",
