@@ -5392,6 +5392,8 @@ reff_model_data <- function(
   date_nums <- seq_len(n_dates + n_extra)
   dates_project <- earliest_date + date_nums - 1
   n_dates_project <- n_date_nums <- length(date_nums)
+  #add dow
+  dow <- lubridate::wday(dates)
   
   # build a vector of inducing points, regularly spaced over time but with one on
   # the most recent date
@@ -5554,7 +5556,8 @@ reff_model_data <- function(
       latest_infection = latest_infection_date,
       latest_project = max(dates_project),
       linelist = linelist_date,
-      vaccine_dates = vaccine_dates
+      vaccine_dates = vaccine_dates,
+      dow = dow
     ),
     n_dates = n_dates,
     n_states = n_states,
@@ -5676,13 +5679,41 @@ reff_model <- function(data) {
   # work out which elements to exclude (because there were no infectious people)
   valid <- which(data$valid_mat, arr.ind = TRUE)
   
+  # include day of the week glm to smooth weekly report artefact
+  week_count <- 1 + seq_len(data$n_dates) %/% 7
+  dow <- data$dates$dow
+  
+  dow_effect <- apply(data$local$cases,
+                      2,
+                      FUN = function(x){
+                        m <- glm(
+                          x ~ factor(week_count) + factor(dow),
+                          family = stats::poisson
+                        )
+                        trend_estimate <- tibble(
+                          week_count = 1,
+                          dow = dow
+                        ) %>%
+                          mutate(
+                            effect = predict(
+                              m,
+                              newdata = .,
+                              type = "response"
+                            ),
+                            effect = effect / mean(effect)
+                          )
+                        trend_estimate$effect}
+                      )
+
+  #vectorise it and remove invalid
+  dow_effect <- dow_effect[valid]
   # combine everything as vectors, excluding invalid datapoints (remove invalid
   # elements here, otherwise it causes a gradient issue)
   R_eff_loc <- exp(log_R_eff_loc[1:data$n_dates, ])
   R_eff_imp <- exp(log_R_eff_imp[1:data$n_dates, ])
   new_from_loc_vec <- data$local$infectiousness[valid] * R_eff_loc[valid]
   new_from_imp_vec <- data$imported$infectiousness[valid] * R_eff_imp[valid]
-  expected_infections_vec <- new_from_loc_vec + new_from_imp_vec
+  expected_infections_vec <- (new_from_loc_vec + new_from_imp_vec) * dow_effect
   
   # negative binomial likelihood for number of cases
   sqrt_inv_size <- normal(0, 0.5, truncation = c(0, Inf), dim = data$n_states)
@@ -10162,6 +10193,12 @@ simulate_variant <- function(
     prop_alpha_hat <- prop_alpha * 0
     prop_delta_hat <- prop_delta * 0
     prop_omicron_hat <- prop_omicron * 0 + 1
+  } else if(variant == "omicron.BA2") {
+    prop_wt_hat    <- prop_wt    * 0
+    prop_alpha_hat <- prop_alpha * 0
+    prop_delta_hat <- prop_delta * 0
+    prop_omicron_hat <- prop_omicron * 0
+    prop_omicron.BA2_hat <- prop_omicron * 0 + 1
   } 
   
   phi_hat <- prop_wt_hat * 1 + prop_alpha_hat * phi_alpha + prop_delta_hat * phi_delta + prop_omicron_hat * phi_omicron
