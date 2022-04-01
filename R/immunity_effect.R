@@ -608,7 +608,7 @@ combined_and_vax_timeseries <- bind_rows(
 # immunity effect plots ------
 
 combined_effect_timeseries %>%
-  filter(variant == "Omicron", date <= as.Date("2022-03-01")) %>%
+  filter(variant == "Omicron", date <= data_date) %>%
   mutate(ascertainment = as.character(ascertainment)) %>%
   ggplot() +
   geom_line(
@@ -642,9 +642,9 @@ combined_effect_timeseries %>%
   theme(
     strip.background = element_blank(),
     axis.title.y.right = element_text(vjust = 0.5, angle = 90, size = font_size),
-    legend.position = c(0.02, 0.1),
+    legend.position = c(0.0, 0.18),
     #legend.position = c(0.02, 0.18),
-    legend.text = element_text(size = font_size),
+    legend.text = element_text(size = font_size-2),
     axis.text = element_text(size = font_size),
     plot.title = element_text(size = font_size + 8),
     plot.subtitle = element_text(size = font_size)
@@ -738,8 +738,9 @@ combined_effect_timeseries %>%
   theme(
     strip.background = element_blank(),
     axis.title.y.right = element_text(vjust = 0.5, angle = 90, size = font_size),
-    legend.position = c(0.02, 0.08),
-    legend.text = element_text(size = font_size),
+    legend.position = c(0.0, 0.18),
+    #legend.position = c(0.02, 0.18),
+    legend.text = element_text(size = font_size-2),
     axis.text = element_text(size = font_size),
     plot.title = element_text(size = font_size + 8),
     plot.subtitle = element_text(size = font_size)
