@@ -5355,7 +5355,7 @@ reff_model_data <- function(
   n_weeks_ahead = 6,
   inducing_gap = 3,
   detection_cutoff = 0.95,
-  notification_delay_cdf = notification_delay_cdf
+  notification_delay_cdf = NULL
 ) {
   
   linelist_date <- max(linelist_raw$date_linelist)
@@ -5363,10 +5363,11 @@ reff_model_data <- function(
   # load modelled google mobility data 
   mobility_data <- readRDS("outputs/google_change_trends.RDS")
   
-  # compute delays from symptom onset to detection for each state over time
-  #notification_delay_cdf <- get_notification_delay_cdf(linelist_raw)
-  #use pre loaded delay cdf
-  notification_delay_cdf <- notification_delay_cdf
+  # compute delays from symptom onset to detection for each state over time if null
+  if (is.null(notification_delay_cdf)) {
+    notification_delay_cdf <- get_notification_delay_cdf(linelist_raw)
+  }
+
   
   # impute onset dates and infection dates using this
   linelist <- linelist_raw %>%
@@ -5392,8 +5393,6 @@ reff_model_data <- function(
   date_nums <- seq_len(n_dates + n_extra)
   dates_project <- earliest_date + date_nums - 1
   n_dates_project <- n_date_nums <- length(date_nums)
-  #add dow
-  dow <- lubridate::wday(dates)
   
   # build a vector of inducing points, regularly spaced over time but with one on
   # the most recent date
@@ -5473,6 +5472,39 @@ reff_model_data <- function(
   n_hotel_spillovers <- nrow(hotel_quarantine_spillover_data())
   hotel_quarantine_start_date <- max(quarantine_dates()$date)
   n_hotel_cases <- sum(imported_cases[dates >= hotel_quarantine_start_date, ])
+  
+  # include day of the week glm to smooth weekly report artefact
+  
+  #subset to omicron period
+  week_count <- 1 + 1:length(seq(as_date("2021-12-01"), latest_date, by = 1)) %/% 7
+
+  dow <- lubridate::wday(seq(as_date("2021-12-01"), latest_date, by = 1))
+  
+  dow_effect <- local_cases
+  dow_effect[] <- 1
+  
+  dow_effect[dates>=as_date("2021-12-01"),] <- apply(local_cases[dates>=as_date("2021-12-01"),],
+                      2,
+                      FUN = function(x){
+                        m <- glm(
+                          x ~ factor(week_count) + factor(dow),
+                          family = stats::poisson
+                        )
+                        trend_estimate <- tibble(
+                          week_count = 1,
+                          dow = dow
+                        ) %>%
+                          mutate(
+                            effect = predict(
+                              m,
+                              newdata = .,
+                              type = "response"
+                            ),
+                            effect = effect / mean(effect)
+                          )
+                        trend_estimate$effect*(7/sum(trend_estimate$effect[1:7]))}
+  )
+  
   
   vaccine_effect_timeseries <- readRDS("outputs/vaccination_effect.RDS")
   
@@ -5564,7 +5596,8 @@ reff_model_data <- function(
     n_date_nums = n_date_nums,
     n_dates_project = n_dates_project,
     n_inducing =  n_inducing,
-    vaccine_effect_matrix = vaccine_effect_matrix
+    vaccine_effect_matrix = vaccine_effect_matrix,
+    dow_effect = dow_effect
   )
   
 }
@@ -5679,34 +5712,8 @@ reff_model <- function(data) {
   # work out which elements to exclude (because there were no infectious people)
   valid <- which(data$valid_mat, arr.ind = TRUE)
   
-  # include day of the week glm to smooth weekly report artefact
-  week_count <- 1 + seq_len(data$n_dates) %/% 7
-  dow <- data$dates$dow
-  
-  dow_effect <- apply(data$local$cases,
-                      2,
-                      FUN = function(x){
-                        m <- glm(
-                          x ~ factor(week_count) + factor(dow),
-                          family = stats::poisson
-                        )
-                        trend_estimate <- tibble(
-                          week_count = 1,
-                          dow = dow
-                        ) %>%
-                          mutate(
-                            effect = predict(
-                              m,
-                              newdata = .,
-                              type = "response"
-                            ),
-                            effect = effect / mean(effect)
-                          )
-                        trend_estimate$effect}
-                      )
-
-  #vectorise it and remove invalid
-  dow_effect <- dow_effect[valid]
+  #vectorise dow effect and remove invalid
+  dow_effect <- data$dow_effect[valid]
   # combine everything as vectors, excluding invalid datapoints (remove invalid
   # elements here, otherwise it causes a gradient issue)
   R_eff_loc <- exp(log_R_eff_loc[1:data$n_dates, ])
@@ -6745,7 +6752,8 @@ write_local_cases <- function(model_data, dir = "outputs") {
     detection_probability = as.vector(model_data$detection_prob_mat),
     state = rep(model_data$states, each = model_data$n_dates),
     count = as.vector(model_data$local$cases_infectious),
-    acquired_in_state = as.vector(model_data$local$cases)
+    acquired_in_state = as.vector(model_data$local$cases),
+    dow_effect = as.vector(model_data$dow_effect)
   ) %>%
     write.csv(
       file.path(dir, "local_cases_input.csv"),
