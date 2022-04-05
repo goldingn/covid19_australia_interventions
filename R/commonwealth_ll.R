@@ -2,8 +2,8 @@ source("R/functions.R")
 
 #library(readxl); library(tidyverse); library(lubridate);library(rvest)
 
-linelist_commonwealth <- read_xlsx("~/not_synced/PCR and RAT Breakdown (Power Query) .xlsx",
-                  range = "B4:AC88",sheet = 2,
+linelist_commonwealth <- read_xlsx("~/not_synced/PCR and RAT Breakdown (Power Query).xlsx",
+                  range = "B4:AC95",sheet = 2,
                   col_types = c("date",rep("numeric",27))) %>% 
   select(-starts_with("Total"))
 
@@ -86,6 +86,8 @@ notification_delay_cdf <- function(delays, possible_onset_dates, states) {
 
 #test delay ecdf behaviour
 old_delay_cdf <- get_notification_delay_cdf(regular_ll)
+
+saveRDS(old_delay_cdf,"outputs/old_method_delay_cdf.RDS")
 delay_ecdf_plot <- tibble("days" = -3:14,
                           "new_delay" = notification_delay_cdf(days, NULL,NULL),
                           "old_delay_Vic" = old_delay_cdf(days,
