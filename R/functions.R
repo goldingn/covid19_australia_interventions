@@ -5426,14 +5426,14 @@ reff_model_data <- function(
   # include day of the week glm to smooth weekly report artefact
   
   #subset to omicron period
-  week_count <- 1 + 1:length(seq(as_date("2021-12-01"), latest_date, by = 1)) %/% 7
+  week_count <- 1 + 1:length(seq(earliest_date, latest_date, by = 1)) %/% 7
   
-  dow <- lubridate::wday(seq(as_date("2021-12-01"), latest_date, by = 1))
+  dow <- lubridate::wday(seq(earliest_date, latest_date, by = 1))
   
   dow_effect <- local_cases
   dow_effect[] <- 1
   
-  dow_effect[dates>=as_date("2021-12-01"),] <- apply(local_cases[dates>=as_date("2021-12-01"),],
+  dow_effect[dates>=earliest_date,] <- apply(local_cases[dates>=earliest_date,],
                                                      2,
                                                      FUN = function(x){
                                                        m <- glm(
@@ -6756,7 +6756,7 @@ write_local_cases <- function(model_data, dir = "outputs") {
     date_onset = rep(model_data$dates$onset, model_data$n_states),
     detection_probability = as.vector(model_data$detection_prob_mat),
     state = rep(model_data$states, each = model_data$n_dates),
-    count = as.vector(model_data$local$cases_infectious),
+    count = as.vector(model_data$local$cases_infectious)*as.vector(model_data$dow_effect),
     acquired_in_state = as.vector(model_data$local$cases),
     dow_effect = as.vector(model_data$dow_effect)
   ) %>%
