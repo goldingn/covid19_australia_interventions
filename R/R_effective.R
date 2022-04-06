@@ -10,7 +10,7 @@ source("R/functions.R")
 sync_nndss()
 
 # prepare data for Reff modelling
-data <- readRDS("outputs/pre_loaded_reff_data.RDS")
+data <- readRDS("outputs/pre_loaded_reff_data_old_imputation.RDS")
 #quick check if reff data is already loaded
 if (length(data) != 12) {
   data <- reff_model_data() 

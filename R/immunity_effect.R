@@ -36,7 +36,7 @@ vaccine_raw <- read_quantium_vaccination_data()
 # choose 75
 unique(vaccine_raw$scenario)
 
-scenario_to_use <- lookups$scenario$scenario[which(lookups$scenario$booster_uptake == "Realistic (~75)")]
+scenario_to_use <- lookups$scenario$scenario[grep("Realistic", lookups$scenario$booster_uptake)]
 
 # this may fail if scenario lookup table is not up to date so check this is TRUE or will cause failure later
 # otherwise may need to check email for appropriate scenario number and assign manually
