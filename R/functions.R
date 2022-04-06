@@ -5414,6 +5414,7 @@ reff_model_data <- function(
   last_detectable_idx <- which(!apply(detectable, 1, any))[1]
   latest_infection_date <- dates[ifelse(is.na(last_detectable_idx), length(dates), last_detectable_idx)]
   
+
   # those infected in the state
   local_cases <- linelist %>%
     filter(!interstate_import) %>%
@@ -5422,12 +5423,48 @@ reff_model_data <- function(
       case_type = "local"
     )
   
+  # include day of the week glm to smooth weekly report artefact
+  
+  #subset to omicron period
+  week_count <- 1 + 1:length(seq(as_date("2021-12-01"), latest_date, by = 1)) %/% 7
+  
+  dow <- lubridate::wday(seq(as_date("2021-12-01"), latest_date, by = 1))
+  
+  dow_effect <- local_cases
+  dow_effect[] <- 1
+  
+  dow_effect[dates>=as_date("2021-12-01"),] <- apply(local_cases[dates>=as_date("2021-12-01"),],
+                                                     2,
+                                                     FUN = function(x){
+                                                       m <- glm(
+                                                         x ~ factor(week_count) + factor(dow),
+                                                         family = stats::poisson
+                                                       )
+                                                       trend_estimate <- tibble(
+                                                         week_count = 1,
+                                                         dow = dow
+                                                       ) %>%
+                                                         mutate(
+                                                           effect = predict(
+                                                             m,
+                                                             newdata = .,
+                                                             type = "response"
+                                                           ),
+                                                           effect = effect / mean(effect[1:7])
+                                                         )
+                                                       trend_estimate$effect}
+  )
+  
+  
   # and those infected in any state, but infectious in this one
   local_cases_infectious <- linelist %>%
     infections_by_region(
       region_type = "state",
       case_type = "local"
     )
+  
+  # de-oscillate local infectious numbers
+  local_cases_infectious <- local_cases_infectious / dow_effect
   
   # those imported (only considered infectious, but with a different Reff)
   imported_cases <- linelist %>%
@@ -5473,39 +5510,7 @@ reff_model_data <- function(
   hotel_quarantine_start_date <- max(quarantine_dates()$date)
   n_hotel_cases <- sum(imported_cases[dates >= hotel_quarantine_start_date, ])
   
-  # include day of the week glm to smooth weekly report artefact
-  
-  #subset to omicron period
-  week_count <- 1 + 1:length(seq(as_date("2021-12-01"), latest_date, by = 1)) %/% 7
-
-  dow <- lubridate::wday(seq(as_date("2021-12-01"), latest_date, by = 1))
-  
-  dow_effect <- local_cases
-  dow_effect[] <- 1
-  
-  dow_effect[dates>=as_date("2021-12-01"),] <- apply(local_cases[dates>=as_date("2021-12-01"),],
-                      2,
-                      FUN = function(x){
-                        m <- glm(
-                          x ~ factor(week_count) + factor(dow),
-                          family = stats::poisson
-                        )
-                        trend_estimate <- tibble(
-                          week_count = 1,
-                          dow = dow
-                        ) %>%
-                          mutate(
-                            effect = predict(
-                              m,
-                              newdata = .,
-                              type = "response"
-                            ),
-                            effect = effect / mean(effect)
-                          )
-                        trend_estimate$effect*(7/sum(trend_estimate$effect[1:7]))}
-  )
-  
-  
+ 
   vaccine_effect_timeseries <- readRDS("outputs/vaccination_effect.RDS")
   
   ve_omicron <- vaccine_effect_timeseries %>%
