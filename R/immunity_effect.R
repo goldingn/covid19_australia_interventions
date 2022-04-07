@@ -36,7 +36,7 @@ vaccine_raw <- read_quantium_vaccination_data()
 # choose 75
 unique(vaccine_raw$scenario)
 
-scenario_to_use <- lookups$scenario$scenario[which(lookups$scenario$booster_uptake == "Realistic (~75)")]
+scenario_to_use <- lookups$scenario$scenario[grep("Realistic", lookups$scenario$booster_uptake)]
 
 # this may fail if scenario lookup table is not up to date so check this is TRUE or will cause failure later
 # otherwise may need to check email for appropriate scenario number and assign manually
@@ -608,7 +608,7 @@ combined_and_vax_timeseries <- bind_rows(
 # immunity effect plots ------
 
 combined_effect_timeseries %>%
-  filter(variant == "Omicron", date <= as.Date("2022-03-01")) %>%
+  filter(variant == "Omicron", date <= data_date) %>%
   mutate(ascertainment = as.character(ascertainment)) %>%
   ggplot() +
   geom_line(
@@ -642,9 +642,9 @@ combined_effect_timeseries %>%
   theme(
     strip.background = element_blank(),
     axis.title.y.right = element_text(vjust = 0.5, angle = 90, size = font_size),
-    legend.position = c(0.02, 0.1),
+    legend.position = c(0.0, 0.18),
     #legend.position = c(0.02, 0.18),
-    legend.text = element_text(size = font_size),
+    legend.text = element_text(size = font_size-2),
     axis.text = element_text(size = font_size),
     plot.title = element_text(size = font_size + 8),
     plot.subtitle = element_text(size = font_size)
@@ -662,7 +662,7 @@ combined_effect_timeseries %>%
     ),
   ) +
   guides(colour = "none") +
-  scale_alpha_manual(values = c(0.25, 0.5, 0.75, 1)) +
+  scale_alpha_manual(values = unique(combined_effect_timeseries$ascertainment)) +
   scale_y_continuous(
     position = "right",
     limits = c(0, 1),
@@ -738,8 +738,9 @@ combined_effect_timeseries %>%
   theme(
     strip.background = element_blank(),
     axis.title.y.right = element_text(vjust = 0.5, angle = 90, size = font_size),
-    legend.position = c(0.02, 0.08),
-    legend.text = element_text(size = font_size),
+    legend.position = c(0.0, 0.18),
+    #legend.position = c(0.02, 0.18),
+    legend.text = element_text(size = font_size-2),
     axis.text = element_text(size = font_size),
     plot.title = element_text(size = font_size + 8),
     plot.subtitle = element_text(size = font_size)
@@ -757,7 +758,7 @@ combined_effect_timeseries %>%
     )
   ) +
   guides(colour = "none") +
-  scale_alpha_manual(values = c(0.25, 0.5, 0.75, 1)) +
+  scale_alpha_manual(values = unique(combined_effect_timeseries$ascertainment)) +
   scale_y_continuous(
     position = "right",
     limits = c(0, 1),

@@ -10,7 +10,7 @@ source("R/functions.R")
 sync_nndss()
 
 # prepare data for Reff modelling
-data <- readRDS("outputs/pre_loaded_reff_data.RDS")
+data <- readRDS("outputs/pre_loaded_reff_data_old_imputation.RDS")
 #quick check if reff data is already loaded
 if (length(data) != 12) {
   data <- reff_model_data() 
@@ -161,7 +161,7 @@ simulate_variant(
 
 #simulate variant with combined immunity effect
 
-combined_effect_timeseries_full <- readRDS("outputs/combined_effect_timeseries.RDS")
+combined_effect_timeseries_full <- readRDS("outputs/combined_effect_full.RDS")
 
 simulate_variant(
   variant = "omicron",

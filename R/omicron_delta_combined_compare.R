@@ -28,7 +28,7 @@
 
 
 #the.date <- Sys.Date()
-the.date <- data_date
+the.date <- data$dates$linelist
 vacc.start <- ymd("2021-02-22")
 
 omicron_no_vax <- read_csv(paste0("outputs/projection/omicron/r_eff_1_local_samples.csv"),
