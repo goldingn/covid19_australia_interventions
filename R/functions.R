@@ -296,14 +296,14 @@ all_mobility <- function() {
     ) %>%
     dplyr::select(-category)
   
-  apple <- apple_mobility() %>%
-    mutate(
-      datastream = str_c("Apple: directions for ", transportation_type)
-    ) %>%
-    dplyr::select(
-      -geo_type,
-      -transportation_type
-    )
+  # apple <- apple_mobility() %>%
+  #   mutate(
+  #     datastream = str_c("Apple: directions for ", transportation_type)
+  #   ) %>%
+  #   dplyr::select(
+  #     -geo_type,
+  #     -transportation_type
+  #   )
   
   # facebook <- facebook_mobility() %>%
   #   mutate(
@@ -321,8 +321,8 @@ all_mobility <- function() {
   
   # combine the datasets
   bind_rows(
-    google,
-    apple#,
+    google#,
+    #apple#,
     # facebook,
     #citymapper
   )
@@ -9031,6 +9031,7 @@ fit_survey_gam <- function(
     cbind(count, I(respondents - count)) ~ s(date_num) + intervention_stage,
     select = TRUE,
     family = stats::binomial,
+    optimizer = c("outer","bfgs")
   )
   
   
