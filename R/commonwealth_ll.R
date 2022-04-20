@@ -6,7 +6,7 @@ source("R/functions.R")
 # the formatting and sheet numbering changes from time to time so need to manually do sanity check
 
 linelist_commonwealth <- read_xlsx("~/not_synced/PCR and RAT Breakdown (Power Query).xlsx",
-                  range = "B4:AC95",sheet = 2,
+                  range = "B4:AC109",sheet = 2,
                   col_types = c("date",rep("numeric",27))) %>% 
   select(-starts_with("Total"))
 
@@ -54,11 +54,11 @@ linelist_commonwealth$date_onset <- NA
 
 
 # load in regular linelist to compute delay from
-if (exists(linelist)) {
+#if (exists(linelist)) {
   regular_ll <- linelist
-} else {
-  regular_ll <- load_linelist(use_vic = FALSE)
-}
+#} else {
+#  regular_ll <- load_linelist(use_vic = FALSE)
+#}
 
 #visualise dow wave
 regular_ll %>% filter(date_confirmation >= (Sys.Date() - months(2))) %>% 
@@ -143,7 +143,7 @@ data <- reff_model_data(linelist_raw = linelist,
 saveRDS(data, "outputs/pre_loaded_reff_data_old_imputation.RDS")
 
 source("R/watermelon_plot.R")
-
+write_local_cases(data)
 
 # 
 # ### plot comparison

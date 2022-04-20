@@ -10,12 +10,18 @@ source("R/functions.R")
 sync_nndss()
 
 # prepare data for Reff modelling
-data <- readRDS("outputs/pre_loaded_reff_data_old_imputation.RDS")
-#quick check if reff data is already loaded
-if (length(data) != 12) {
-  data <- reff_model_data() 
-  saveRDS(data, "outputs/pre_loaded_reff_data.RDS")
-}
+linelist <- readRDS("outputs/commonwealth_ll_imputed_old_method.RDS")
+old_delay_cdf <- readRDS("outputs/old_method_delay_cdf.RDS")
+data <- reff_model_data(linelist_raw = linelist,
+                        notification_delay_cdf = old_delay_cdf)
+#reload data here to get the latest vaccine effect, which is typically computed after linelist
+
+#data <- readRDS("outputs/pre_loaded_reff_data_old_imputation.RDS")
+# #quick check if reff data is already loaded
+# if (length(data) != 12) {
+#   data <- reff_model_data() 
+#   saveRDS(data, "outputs/pre_loaded_reff_data.RDS")
+# }
 data$dates$linelist
 
 # save the key dates for Freya and David to read in, and tabulated local cases
