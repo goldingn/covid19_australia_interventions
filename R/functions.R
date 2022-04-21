@@ -11015,11 +11015,20 @@ read_quantium_vaccination_data <- function(
     left_join(
       lookups$date,
       by = c(
-        "time_booster" = "time"
+        "time_dose_3" = "time"
       )
     ) %>%
     rename(
-      date_booster = week_starting
+      date_dose_3 = week_starting
+    ) %>%
+    left_join(
+      lookups$date,
+      by = c(
+        "time_dose_4" = "time"
+      )
+    ) %>%
+    rename(
+      date_dose_4 = week_starting
     ) %>%
     select(
       -starts_with("time")
@@ -11038,14 +11047,25 @@ read_quantium_vaccination_data <- function(
     ) %>%
     left_join(
       lookups$product,
-      by = c("vaccine_booster" = "vaccine")
+      by = c("vaccine_dose_3" = "vaccine")
     ) %>%
     select(
-      -vaccine_booster,
+      -vaccine_dose_3,
       -short_name
     ) %>%
     rename(
-      vaccine_booster = name
+      vaccine_dose_3 = name
+    ) %>%
+    left_join(
+      lookups$product,
+      by = c("vaccine_dose_4" = "vaccine")
+    ) %>%
+    select(
+      -vaccine_dose_4,
+      -short_name
+    ) %>%
+    rename(
+      vaccine_dose_4 = name
     ) %>%
     # join on the age bands and convert to a factor
     left_join(
@@ -11082,9 +11102,11 @@ aggregate_quantium_vaccination_data_to_state <- function(data){
       scenario,
       date_dose_1,
       date_dose_2,
-      date_booster,
+      date_dose_3,
+      date_dose_4,
       vaccine,
-      vaccine_booster,
+      vaccine_dose_3,
+      vaccine_dose_4,
       age_band,
       state_short
     ) %>%
@@ -11098,10 +11120,12 @@ aggregate_quantium_vaccination_data_to_state <- function(data){
       state,
       age_band,
       vaccine,
-      vaccine_booster,
+      vaccine_dose_3,
+      vaccine_dose_4,
       date_dose_1,
       date_dose_2,
-      date_booster,
+      date_dose_3,
+      date_dose_4,
       num_people
     ) %>%
     arrange(
@@ -11109,9 +11133,12 @@ aggregate_quantium_vaccination_data_to_state <- function(data){
       state,
       age_band,
       vaccine,
-      vaccine_booster,
+      vaccine_dose_3,
+      vaccine_dose_4,
       date_dose_1,
       date_dose_2,
+      date_dose_3,
+      date_dose_4,
     ) %>%
     # excluding vaccinations outside of the 6 states or ACT and NT
     filter(!is.na(state))
@@ -11140,7 +11167,7 @@ get_vaccine_cohorts_at_date <- function(vaccine_scenarios, target_date) {
     ) %>%
     # compute most recent vaccines and how long ago they were for each cohort
     mutate(
-      most_recent_dose = pmax(date_dose_1, date_dose_2, date_booster, na.rm = TRUE)
+      most_recent_dose = pmax(date_dose_1, date_dose_2, date_dose_3, date_dose_4, na.rm = TRUE)
     ) %>%
     pivot_longer(
       cols = starts_with("date"),
@@ -11165,17 +11192,23 @@ get_vaccine_cohorts_at_date <- function(vaccine_scenarios, target_date) {
     mutate(
       dose = if_else(is.na(date), NA_character_, dose),
       # labelling all booster as boosters instead of by brand, thus assuming all boosters are mRNA
-      vaccine_booster = if_else(
-        !is.na(vaccine_booster),
+      vaccine_dose_3 = if_else(
+        !is.na(vaccine_dose_3),
+        "Booster",
+        NA_character_
+      ),
+      vaccine_dose_4 = if_else(
+        !is.na(vaccine_dose_4),
         "Booster",
         NA_character_
       ),
       product = case_when(
-        dose == "booster" ~ vaccine_booster,
+        dose == "dose_3" ~ vaccine_dose_3,
+        dose == "dose_4" ~ vaccine_dose_4,
         TRUE ~ vaccine
       ),
       # rename products to match VE model, recoding Moderna as Pfizer for now
-      # since there is not enough evidence on efficacy to distringuish it from
+      # since there is not enough evidence on efficacy to disinguish it from
       # Pfizer. Ditto Novavax
       product = case_when(
         product == "Pfizer" ~ "Pf",
@@ -11184,6 +11217,11 @@ get_vaccine_cohorts_at_date <- function(vaccine_scenarios, target_date) {
         product == "Booster" ~ "mRNA",
         product == "Pfizer (5-11)" ~ "Pf",
         product == "Novavax" ~ "Pf"
+      ),
+      dose = case_when(
+        dose == "dose_3" ~ "booster",
+        dose == "dose_4" ~ "booster",
+        TRUE ~ dose
       ),
       immunity = case_when(
         !is.na(date) ~ paste(product, dose, sep = "_"),
