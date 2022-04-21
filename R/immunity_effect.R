@@ -500,6 +500,7 @@ combined_effect_tables <- left_join(
     mutate(date = date + 1),
   by = "date"
 ) %>%
+  filter(date < "2022-04-01" | ascertainment > 0.2) %>%
   mutate(
     combined_transmission_effects = pmap(
       .l = list(
@@ -507,7 +508,8 @@ combined_effect_tables <- left_join(
         coverage_vaccination = coverage_vaccination,
         ies = ies,
         coverage_infection = coverage_infection,
-        vies = vies
+        vies = vies,
+        date = date
       ),
       .f = combine_transmission_effects
     )
