@@ -60,13 +60,15 @@ saveRDS(
 
 #vaccine_state <- readRDS("outputs/vaccine_state_2022-03-01.RDS")
 
+date_sequence <- seq.Date(
+  from = as.Date("2021-02-22"),
+  to = data_date + weeks(16),
+  by = "1 week"
+)
+
 # calculate vaccine effects
 ve_tables <- tibble(
-  date = seq.Date(
-    from = as.Date("2021-02-22"),
-    to = data_date + weeks(16),
-    by = "1 week"
-  )
+  date = date_sequence
 ) %>%
   mutate(
     cohorts = map(
@@ -498,6 +500,7 @@ combined_effect_tables <- left_join(
     mutate(date = date + 1),
   by = "date"
 ) %>%
+  filter(date < "2022-04-01" | ascertainment > 0.2) %>%
   mutate(
     combined_transmission_effects = pmap(
       .l = list(
@@ -505,7 +508,8 @@ combined_effect_tables <- left_join(
         coverage_vaccination = coverage_vaccination,
         ies = ies,
         coverage_infection = coverage_infection,
-        vies = vies
+        vies = vies,
+        date = date
       ),
       .f = combine_transmission_effects
     )
