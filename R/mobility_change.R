@@ -95,7 +95,7 @@ for (this_state in all_states) {
     scale_y_continuous(position = "right") +
     scale_x_date(
       date_breaks = "2 months",
-      date_labels = "%b",
+      date_labels = "%m",
       limits = range(mobility_fitted$date)
     ) +
     xlab("") +
@@ -211,7 +211,7 @@ mobility_fitted %>%
   ) +
   scale_x_date(
     date_breaks = "2 months",
-    date_labels = "%b",
+    date_labels = "%m",
     limits = range(mobility_fitted$date)
   ) +
   xlab("") +
@@ -310,7 +310,7 @@ mobility_fitted %>%
   ) +
   scale_x_date(
     date_breaks = "1 months",
-    date_labels = "%b",
+    date_labels = "%m",
     limits = range(mobility_fitted$date)
   ) +
   xlab("") +
