@@ -7,7 +7,7 @@ mobility <- all_mobility() %>%
   append_google_data()
 
 write_mobility_dates(mobility)
-  
+
 saveRDS(mobility, file = "outputs/cached_mobility.RDS")
 # mobility <- readRDS("outputs/cached_mobility.RDS")
 
@@ -38,8 +38,15 @@ mobility_fitted <- mobility %>%
 
 all_states <- na.omit(unique(mobility_fitted$state_long))
 
-for (this_state in all_states) {
+mobility_ticks_labels <- split_ticks_and_labels(
+  data = mobility_fitted,
+  tick_freq = "2 month",
+  label_freq = "4 months",
+  label_format = "%b %y"
+)
 
+for (this_state in all_states) {
+  
   mobility_fitted %>%
     filter(state_long == this_state) %>%
     ggplot() +
@@ -94,8 +101,8 @@ for (this_state in all_states) {
     ) +
     scale_y_continuous(position = "right") +
     scale_x_date(
-      date_breaks = "2 months",
-      date_labels = "%m",
+      breaks = mobility_ticks_labels$ticks,
+      labels = mobility_ticks_labels$labels,
       limits = range(mobility_fitted$date)
     ) +
     xlab("") +
@@ -112,6 +119,7 @@ for (this_state in all_states) {
     theme(legend.position = "none",
           strip.background = element_blank(),
           strip.text = element_text(hjust = 0, face = "bold"),
+          axis.text.x = element_text(size = 10),
           axis.title.y.right = element_text(vjust = 0.5, angle = 90),
           panel.spacing = unit(1.2, "lines"))
   
@@ -310,7 +318,7 @@ mobility_fitted %>%
   ) +
   scale_x_date(
     date_breaks = "1 months",
-    date_labels = "%m",
+    date_labels = "%b %y",
     limits = range(mobility_fitted$date)
   ) +
   xlab("") +
@@ -327,6 +335,7 @@ mobility_fitted %>%
   theme(legend.position = "none",
         strip.background = element_blank(),
         axis.text.y = element_text(size = 8),
+        axis.text.x = element_text(angle = 270),
         #strip.text.x = element_text(size = 10),
         strip.text.y = element_text(size = 18),
         strip.text.x = element_text(size = 12),

@@ -12530,3 +12530,6 @@ combine_transmission_effects <- function(
     ungroup
   
 }
+
+#deal with empty ggsave background
+ggsave <- function(..., bg = 'white') ggplot2::ggsave(..., bg = bg)
