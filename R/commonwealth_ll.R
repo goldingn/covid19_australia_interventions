@@ -5,13 +5,16 @@ source("R/functions.R")
 #### CHECK RAW EXCEL FILE for correct range and sheet no BEFORE LOADING
 # the formatting and sheet numbering changes from time to time so need to manually do sanity check
 
-linelist_commonwealth <- read_xlsx("~/not_synced/PCR and RAT Breakdown (Power Query).xlsx",
+ll_filepath <- "~/not_synced/pcr_rat/PCR and RAT Breakdown (24 hour totals)_20220426_twitter.xlsx"
+
+linelist_commonwealth <- read_xlsx(ll_filepath,
                   range = "B4:AC109",sheet = 2,
                   col_types = c("date",rep("numeric",27))) %>% 
   select(-starts_with("Total"))
 
-states <- names(read_xlsx("~/not_synced/PCR and RAT Breakdown (Power Query).xlsx",
+states <- names(read_xlsx(ll_filepath,
                           range = "B3:AC3",sheet = 2))
+
 states <- states[-grep("...",states,fixed = TRUE)]
 
 states <- rep(states,each = 2)
@@ -24,8 +27,10 @@ colnames(linelist_commonwealth)[2:19] <- paste(colnames(linelist_commonwealth)[2
 
 #check colnames
 colnames(linelist_commonwealth)
+
 #remove "total" row
-linelist_commonwealth <- linelist_commonwealth[-1,]
+linelist_commonwealth <- linelist_commonwealth %>%
+  filter(!is.na(Date))
 
 #pivot into linelist format
 linelist_commonwealth <- linelist_commonwealth %>%
@@ -61,7 +66,8 @@ linelist_commonwealth$date_onset <- NA
 #}
 
 #visualise dow wave
-regular_ll %>% filter(date_confirmation >= (Sys.Date() - months(2))) %>% 
+regular_ll %>%
+  filter(date_confirmation >= (Sys.Date() - months(2))) %>% 
   ggplot() +
   geom_bar(
     aes(
