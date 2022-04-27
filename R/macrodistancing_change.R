@@ -204,6 +204,8 @@ survey_points <- fitted_model$data$contacts %>%
 
 # save these fits for plotting later
 saveRDS(survey_points, "outputs/macro_data_fit.RDS")
+#survey_points <- readRDS("outputs/macro_data_fit.RDS")
+
 
 # get holiday dates and subset to where they overlap with surveys
 holiday_lines <- survey_points %>%
@@ -239,6 +241,14 @@ plot_data <- list(
   states = states,
   n_states = length(states),
   n_dates_project = length(dates)
+)
+
+macro_ticks_labels <- split_ticks_and_labels(
+  data = survey_points$wave_date,
+  tick_freq = "1 month",
+  label_freq = "4 months",
+  label_format = "%b%y",
+  label_last = FALSE # for some reason this is having opposite effect, i.e. FALSE is labelling last (as desired)
 )
 
 # non-household contacts
@@ -305,6 +315,14 @@ p <- plot_trend(pred_sim,
     size = 1,
     alpha = 0.2,
     width = 0
+  ) +
+  scale_x_date(
+    breaks = macro_ticks_labels$ticks,
+    labels = macro_ticks_labels$labels
+  ) +
+  theme(
+    axis.text.x = element_text(size = 8),
+    axis.ticks.x = element_line(colour = macro_ticks_labels$tick.cols)
   )
 
 p

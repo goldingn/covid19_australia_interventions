@@ -1607,7 +1607,7 @@ plot_trend <- function(
   } else {
     date_breaks <- "1 month"
     date_minor_breaks <- "2 weeks"
-    date_labels <- "%b"
+    date_labels <- "%b%y"
     x_text_angle <- 0
     x_text_size <- 9
     x_text_hjust <- 0.5
@@ -11896,10 +11896,13 @@ split_ticks_and_labels <- function(
   
   labs[!(labs %in% labs_short) - label_shift] <- ""
   
+  tick.cols <- ifelse(labs == "", "grey70", "black")
+  
   return(
     list(
       ticks = ticks,
-      labels = labs
+      labels = labs,
+      tick.cols = tick.cols
     )
   )
 }
