@@ -4,8 +4,7 @@ source("R/lib.R")
 
 source("R/functions.R")
 
-#deal with empty ggsave background
-ggsave <- function(..., bg = 'white') ggplot2::ggsave(..., bg = bg)
+
 # Section A) Independent of NNDSS and survey data update:
 
 # 1. Ingest mobility data, fit mobility models and output figures
@@ -65,6 +64,14 @@ linelist <- load_linelist(use_vic = FALSE)#skip Vic when using commonwealth data
 # remove dubious SA onset dates
 linelist$date_onset[(linelist$state == "SA" & linelist$date_onset >= as_date("2022-02-27"))] <- NA
 
+saveRDS(
+  linelist,
+  sprintf(
+    "outputs/linelist_%s.RDS",
+    linelist$date_linelist[1] %>%
+      format.Date(format = "%Y%m%d")
+  )
+)
 
 source("R/rolling_delays.R")
 #  -- figs to dropbox / to Freya
