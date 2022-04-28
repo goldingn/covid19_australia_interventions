@@ -58,7 +58,7 @@ linelist_commonwealth <- linelist_commonwealth %>%
 linelist_commonwealth$date_onset <- NA
 
 
-#linelist <- readRDS("outputs/linelist_20220426.RDS")
+# linelist <- readRDS("outputs/linelist_20220426.RDS")
 
 # load in regular linelist to compute delay from
 #if (exists(linelist)) {
@@ -69,13 +69,16 @@ linelist_commonwealth$date_onset <- NA
 
 #visualise dow wave
 regular_ll %>%
-  filter(date_confirmation >= (Sys.Date() - months(2))) %>% 
+  filter(date_confirmation >= (Sys.Date() - months(2))) %>%
+  group_by(state, date_confirmation) %>%
+  summarise(cases = n()) %>%
   ggplot() +
   geom_bar(
     aes(
       x = date_confirmation,
+      y = cases,
     ),
-    stat = "count"
+    stat = "identity"
   ) + 
   geom_vline(aes(xintercept = unique(date_linelist)[1])) +
   facet_wrap(
