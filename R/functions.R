@@ -4283,7 +4283,7 @@ impute_one_onset <- function(confirmation_date,
   
 }
 
-impute_onsets <- function(confirmation_dates,
+impute_onsets_old <- function(confirmation_dates,
                           states,
                           notification_delay_cdf,
                           method = c("expected", "random"),
@@ -6978,7 +6978,7 @@ detection_probability_matrix <- function(latest_date, infection_dates, states, n
   
 }
 
-impute_linelist <- function(linelist, notification_delay_cdf) {
+impute_linelist_old <- function(linelist, notification_delay_cdf) {
   
   # impute the onset dates (only 0.6% of cases) using expected value from time to
   # detection distribution. Do this outside dplyr to avoid duplicating slow computations
@@ -12536,3 +12536,106 @@ combine_transmission_effects <- function(
 
 #deal with empty ggsave background
 ggsave <- function(..., bg = 'white') ggplot2::ggsave(..., bg = bg)
+
+
+
+
+impute_linelist <- function(
+  linelist,
+  notification_delay_cdf
+) {
+  ll <- linelist %>%
+    arrange(state, date_confirmation, date_onset)
+  
+  missing_onsets <- is.na(ll$date_onset)
+  
+  ll_missing <- ll %>%
+    filter(is.na(date_onset))
+  
+  ll_missing_summary <- ll_missing %>%
+    group_by(state, date_confirmation) %>%
+    summarise(n_onsets = n())
+  
+  # impute the onset dates (only 0.6% of cases) using expected value from time to
+  # detection distribution. Do this outside dplyr to avoid duplicating slow computations
+  imputed_onsets <- impute_onsets(
+    confirmation_dates = ll_missing_summary$date_confirmation,
+    states = ll_missing_summary$state,
+    n_onsets = ll_missing_summary$n_onsets,
+    notification_delay_cdf,
+    method = "random"
+  )
+  
+  # add back 
+  ll$date_onset[missing_onsets] <- imputed_onsets
+  
+  ll %>%
+    mutate(date = date_onset - 5)
+}
+
+impute_onsets <- function(
+  confirmation_dates,
+  states,
+  n_onsets,
+  notification_delay_cdf,
+  method = c("expected", "random"),
+  min_days = -10,
+  max_days = 40
+){
+  
+  method <- match.arg(method)
+  
+  onset_dates <- mapply(
+    impute_many_onsets,
+    confirmation_date = confirmation_dates,
+    state = states,
+    n_onsets = n_onsets,
+    MoreArgs = list(
+      notification_delay_cdf = notification_delay_cdf,
+      method = method,
+      min_days = min_days,
+      max_days = max_days
+    ),
+    SIMPLIFY = FALSE
+  )
+  
+  do.call(c, onset_dates)
+  
+  
+}
+
+impute_many_onsets <- function(
+  confirmation_date,
+  state,
+  notification_delay_cdf,
+  method = c("expected", "random"),
+  min_days = -10,
+  max_days = 40,
+  n_onsets = 1
+) {
+  
+  method <- match.arg(method)
+  
+  # get possible dates of onset
+  delays <- seq(min_days, max_days) 
+  possible_onset_dates <- confirmation_date - delays
+  
+  # probability of being detected this many days later (probability of detection
+  # by this day, minus probability of detection by the previous day)
+  surv_from <- notification_delay_cdf(delays - 1, possible_onset_dates, state)
+  surv_to <- notification_delay_cdf(delays, possible_onset_dates, state)
+  prob <- surv_from - surv_to
+  
+  # normalise to get probabilities of different delays
+  prob <- prob / sum(prob)
+  
+  # compute either the expected time since onset, or draw a random one
+  sim_delays <- switch(method,
+                       expected = round(sum(delays * prob)),
+                       random = sample(delays, n_onsets, prob = prob, replace = TRUE))
+  
+  # subtract to get expected date of symptom onset
+  onset_dates <- confirmation_date - sim_delays
+  return(onset_dates)
+  
+}

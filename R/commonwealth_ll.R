@@ -8,7 +8,7 @@ source("R/functions.R")
 ll_filepath <- "~/not_synced/pcr_rat/PCR and RAT Breakdown (24 hour totals)_20220426_twitter.xlsx"
 
 linelist_commonwealth <- read_xlsx(ll_filepath,
-                  range = "B4:AC109",sheet = 2,
+                  range = "B4:AC116",sheet = 2,
                   col_types = c("date",rep("numeric",27))) %>% 
   select(-starts_with("Total"))
 
@@ -57,6 +57,8 @@ linelist_commonwealth <- linelist_commonwealth %>%
 #add column for onset
 linelist_commonwealth$date_onset <- NA
 
+
+#linelist <- readRDS("outputs/linelist_20220426.RDS")
 
 # load in regular linelist to compute delay from
 #if (exists(linelist)) {
@@ -121,9 +123,12 @@ saveRDS(old_delay_cdf,"outputs/old_method_delay_cdf.RDS")
 #make into reff data format
 linelist_commonwealth$import_status <- "local"
 
-linelist <- regular_ll %>% filter(date_confirmation < "2022-01-06" | state == "NSW")
+linelist <- regular_ll %>%
+  filter(date_confirmation < "2022-01-06" | state == "NSW")
 
-linelist <- linelist_commonwealth %>% filter(date_confirmation >= "2022-01-06" & state != "NSW") %>% bind_rows(linelist)
+linelist <- linelist_commonwealth %>%
+  filter(date_confirmation >= "2022-01-06" & state != "NSW") %>%
+  bind_rows(linelist)
 
 linelist$interstate_import[is.na(linelist$interstate_import)] <- FALSE
 
@@ -131,8 +136,31 @@ linelist$date_linelist[is.na(linelist$date_linelist)] <- as_date(Sys.Date())
 
 linelist$date_onset <- as_date(ifelse(linelist$date_onset < "2020-01-01",NA,linelist$date_onset))
 
+
+linelist %>%
+  filter(date_confirmation >= "2022-01-01") %>%
+  group_by(state, date_confirmation, test_type) %>%
+  summarise(cases = n()) %>%
+  ggplot() +
+  geom_bar(
+    aes(
+      x = date_confirmation,
+      y = cases,
+      fill = test_type
+    ),
+    stat = "identity"
+  ) +
+  facet_wrap(
+    ~ state,
+    ncol = 2,
+    scales = "free"
+  ) +
+  geom_vline(xintercept = linelist$date_linelist[1])
+    
+  
+
 #write it first before imputation for Dylan
-write_linelist(linelist = linelist)
+#write_linelist(linelist = linelist) # not needed while UoA forecast on hiatus.
 
 #impute - this takes a very long time
 #we can choose not to impute and it will be imputed in reff_model_data function instead
@@ -149,6 +177,7 @@ data <- reff_model_data(linelist_raw = linelist,
 saveRDS(data, "outputs/pre_loaded_reff_data_old_imputation.RDS")
 
 source("R/watermelon_plot.R")
+
 write_local_cases(data)
 
 # 
