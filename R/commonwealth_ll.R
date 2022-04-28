@@ -132,7 +132,7 @@ linelist <- linelist_commonwealth %>%
 
 linelist$interstate_import[is.na(linelist$interstate_import)] <- FALSE
 
-linelist$date_linelist[is.na(linelist$date_linelist)] <- as_date(Sys.Date())
+linelist$date_linelist[is.na(linelist$date_linelist)] <- regular_ll$date_linelist[1]
 
 linelist$date_onset <- as_date(ifelse(linelist$date_onset < "2020-01-01",NA,linelist$date_onset))
 
@@ -165,6 +165,7 @@ linelist %>%
 #impute - this takes a very long time
 #we can choose not to impute and it will be imputed in reff_model_data function instead
 #makes no difference, but can impute first to save progress in case of issues
+set.seed(2020-04-29)
 linelist <- linelist %>%
   impute_linelist(notification_delay_cdf = old_delay_cdf)
 
