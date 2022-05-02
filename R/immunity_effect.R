@@ -508,8 +508,7 @@ combined_effect_tables <- left_join(
         coverage_vaccination = coverage_vaccination,
         ies = ies,
         coverage_infection = coverage_infection,
-        vies = vies,
-        date = date
+        vies = vies
       ),
       .f = combine_transmission_effects
     )
@@ -595,9 +594,8 @@ saveRDS(
 
 saveRDS(
   combined_effect_timeseries_full,
-  "outputs/combined_effect_full.RDS"
+  file = "outputs/combined_effect_full.RDS"
 )
-
 
 combined_and_vax_timeseries <- bind_rows(
   combined_effect_timeseries %>%
