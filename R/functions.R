@@ -1591,7 +1591,7 @@ plot_trend <- function(
   if (length(unique(df$date)) >= 200){
     date_breaks <- "3 month"
     date_minor_breaks <- "1 month"
-    date_labels <- "%b %y"
+    date_labels <- "%b%y"
     x_text_angle <- 0
     x_text_size <- 9
     x_text_hjust <- 0.5

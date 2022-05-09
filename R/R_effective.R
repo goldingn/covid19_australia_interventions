@@ -139,6 +139,11 @@ simulate_variant(variant = "alpha")
 simulate_variant(variant = "delta")
 simulate_variant(variant = "omicron")
 
+simulate_variant(variant = "alpha", subdir = "alpha/ratio", ratio_samples = TRUE)
+simulate_variant(variant = "delta", subdir = "delta/ratio", ratio_samples = TRUE)
+simulate_variant(variant = "omicron", subdir = "omicron/ratio", ratio_samples = TRUE)
+
+
 
 #simulate variant with vax effect
 
