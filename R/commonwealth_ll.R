@@ -8,7 +8,7 @@ source("R/functions.R")
 ll_filepath <- "~/not_synced/PCR and RAT Breakdown (24 hour totals).xlsx"
 
 linelist_commonwealth <- read_xlsx(ll_filepath,
-                  range = "B4:AC123",sheet = 2,
+                  range = "B4:AC130",sheet = 2,
                   col_types = c("date",rep("numeric",27))) %>% 
   select(-starts_with("Total"))
 
@@ -75,8 +75,33 @@ linelist_commonwealth <- linelist_commonwealth %>%
     state
   ) %>% 
   mutate("test_type" = word(state,1,1, sep = fixed("_")),
-         "state" = word(state,2,2, sep = fixed("_"))) %>% 
-  uncount(weights = daily_notification) 
+         "state" = word(state,2,2, sep = fixed("_"))) #%>% 
+ 
+
+#add in covidlive
+source("R/covidlive_linelist.R")
+
+scraped$test_type <- "Total"
+
+weekends_to_replace <- linelist_commonwealth %>% 
+  filter(date_confirmation >= as_date("2022-05-07")) %>% 
+  mutate(wday = wday(date_confirmation)) %>% 
+  filter(wday == c(7,1)) %>% #NOTE that the weekend cases are reported on Sunday
+  select(date_confirmation) %>% 
+  unique %>% 
+  unlist %>% 
+  as_date()
+
+linelist_commonwealth <- linelist_commonwealth %>% 
+  filter(!(date_confirmation %in% weekends_to_replace & state != "VIC")) %>% 
+  rbind(scraped[(scraped$date_confirmation %in% weekends_to_replace & scraped$state != "VIC"),])
+
+linelist_commonwealth <- linelist_commonwealth %>% uncount(weights = daily_notification)
+
+
+
+
+# uncount(weights = daily_notification) 
 
 
 #add column for onset
@@ -86,11 +111,8 @@ linelist_commonwealth$date_onset <- NA
 # linelist <- readRDS("outputs/linelist_20220426.RDS")
 
 # load in regular linelist to compute delay from
-#if (exists(linelist)) {
-  regular_ll <- linelist
-#} else {
-#  regular_ll <- load_linelist(use_vic = FALSE)
-#}
+
+regular_ll <- linelist
 
 #visualise dow wave
 regular_ll %>%
@@ -166,7 +188,7 @@ linelist$date_onset <- as_date(ifelse(linelist$date_onset < "2020-01-01",NA,line
 
 
 linelist %>%
-  filter(date_confirmation >= "2022-01-01") %>%
+  filter(date_confirmation >= Sys.Date()-months(2)) %>%
   group_by(state, date_confirmation, test_type) %>%
   summarise(cases = n()) %>%
   ggplot() +
