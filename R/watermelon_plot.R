@@ -49,9 +49,11 @@ prob_line_90 <- lc_long %>%
 lc_long <- lc_long %>% 
   mutate(type = case_when(type == "count" & test_type == "PCR" ~ "count PCR",
                           type == "count" & test_type == "RAT" ~ "count RAT",
+                          type == "count" & test_type == "Total" ~ "count total",
                           TRUE ~ type)) %>% 
-  mutate(count = case_when(type %in% c("count PCR","count RAT") ~ cases,
-                           TRUE ~ count))
+  mutate(count = case_when(type %in% c("count PCR","count RAT","count total") ~ cases,
+                           TRUE ~ count)) %>% #remove duplicate proj column
+  filter(!(type == "proj" & test_type %in% c("RAT","Total"))) #all test type are the same
 
 lc_long %>%
   ggplot() +
