@@ -11168,7 +11168,13 @@ get_vaccine_cohorts_at_date <- function(vaccine_scenarios, target_date) {
     ) %>%
     # compute most recent vaccines and how long ago they were for each cohort
     mutate(
-      most_recent_dose = pmax(date_dose_1, date_dose_2, date_dose_3, date_dose_4, na.rm = TRUE)
+      most_recent_dose = pmax(
+        date_dose_1,
+        date_dose_2,
+        date_dose_3,
+        date_dose_4,
+        na.rm = TRUE
+      )
     ) %>%
     pivot_longer(
       cols = starts_with("date"),
@@ -11219,11 +11225,11 @@ get_vaccine_cohorts_at_date <- function(vaccine_scenarios, target_date) {
         product == "Pfizer (5-11)" ~ "Pf",
         product == "Novavax" ~ "Pf"
       ),
-      dose = case_when(
-        dose == "dose_3" ~ "booster",
-        dose == "dose_4" ~ "booster",
-        TRUE ~ dose
-      ),
+      # dose = case_when(
+      #   dose == "dose_3" ~ "booster",
+      #   dose == "dose_4" ~ "booster",
+      #   TRUE ~ dose
+      # ),
       immunity = case_when(
         !is.na(date) ~ paste(product, dose, sep = "_"),
         TRUE ~ NA_character_
@@ -11645,8 +11651,8 @@ get_vaccine_efficacies <- function(vaccine_cohorts) {
     full_join(
       tibble(
         omicron_scenario = c(
-          # "intermediate",
-          # "optimistic",
+          "intermediate",
+          "optimistic",
           "estimate",
           "pessimistic"
         )
@@ -11664,7 +11670,9 @@ get_vaccine_efficacies <- function(vaccine_cohorts) {
         immunity == "AZ_dose_2" ~ log10_mean_neut_AZ_dose_2,
         immunity == "Pf_dose_1" ~ log10_mean_neut_Pfizer_dose_1,
         immunity == "Pf_dose_2" ~ log10_mean_neut_Pfizer_dose_2,
-        immunity == "mRNA_booster" ~ log10_mean_neut_mRNA_booster
+        #immunity == "mRNA_booster" ~ log10_mean_neut_mRNA_booster
+        immunity == "mRNA_dose_3" ~ log10_mean_neut_mRNA_booster,
+        immunity == "mRNA_dose_4" ~ log10_mean_neut_mRNA_booster #+ log10(1.33)
       )
     ) %>%
     mutate(
@@ -12639,3 +12647,4 @@ impute_many_onsets <- function(
   return(onset_dates)
   
 }
+
