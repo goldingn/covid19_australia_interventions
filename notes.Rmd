@@ -1,0 +1,169 @@
+---
+title: "Notes"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#### 10 May 2022
+- Run latent_social_distancing.R for social_distancing_latent.RDS. Used under the hood for microdistancing_data()
+
+- Need uom_surveys for under the hood functions in micro & macro distancing change. Eg: parse_all_surveys() 
+
+> ~/not_synced/uom_surveys/unlocked/SPSS Updated Data Covid19 Attitudes and Practices labels April2020.xlsx
+
+
+#### 11 May 
+
+Plots look off! data object looks off
+
+# 12 may 
+
+
+commonwealth script needs vaccination_effect.RDS for the reff_model_Data(). 
+vaccination_effect.RDS generated in immunity_effect.R however to run that, I need scenario_parameters_omricon.csv which I cannot find 
+
+'outputs/scenario_parameters_omicron.csv' ??
+
+'outputs/vaccination_effect.RDS'??
+
+# Monday data 
+
+- survey data from mediaflux sit assessment repo
+
+# Tuesday data
+
+- not_synced 
+
+  + nndss 
+  + nsw
+  + pcr rat
+  + vic
+  + quantium forcasts
+
+
+# Over view
+
+> Effective reproduction number (Reff) — the average number of new infections
+caused by an infected individual in the presence of public health interventions and where no assumption of 100% susceptibility is made.
+
+- Reff > 1 = growing epidemic . 
+ 
+- If control measures, population immunity, or other factors can bring Reff below 1, then the epidemic is estimated to be in decline.
+
+> When case incidence is very low or zero, current methods for Reff is not effective. Therefore ESTIMATING TP !  Additionally, the deviation between the Reff and the transmission potential.
+
+> the ability of the virus, if it were present, to spread in a population, which we define as the ‘transmission potential. 
+
+- We separately model transmission from locally acquired cases (local-to-local trans-mission) and from overseas acquired cases (import-to-local transmission).
+
+- We model local-to-local transmission (Reff) using two components:
+
+  + Average trend in transmission driven by interventions that target local cases transmissionsuch as physical distancing and case targeted measures. **Component 1** 
+    
+      we infer temporal trends in macro- and micro-distancing behaviour (sub-models a and b).
+    
+      + macro-distancing : reduction in the rate of non-household contacts;
+      
+      + micro-distancing : i.e., reduction in transmission probability per non-household contact.
+      
+      + using data on the number of days from symptom onset to case notification for cases, we estimate the proportion of cases that are detected (and thus advised to isolate) by each day post-infection. 
+      
+      By quantifying the temporal change in the probability density for the time-to-detection (sub-model c), the model estimates how earlier isolation of cases — due to improvements in contact tracing, expanded access to testing, more inclusive case definitions, and other factors impacting detection rates — reduces the ability of SARS-CoV-2 to spread.
+      
+
+    
+   + short-term fluctuations in Reff to capture stochastic dynamics of transmission, such as clusters of cases and short periods of lower-than-expected transmission **(Component 2, the ‘deviation’ between TP and Reff).** 
+   
+   
+  > Transmission potential (Component 1) reflects the average potential for the virus to spread at the population level. During times of disease activity, Component 2 measures how transmission within the sub-populations that have the most active cases at a given point in time differs compared to that expected from the population-wide TP.
+  
+  > When Component 2, the deviation between TP and Reff, is positively biased
+(Reff > TP), it may indicate that transmission is concentrated in populations with higher-than- average levels of mixing, such as healthcare workers or meat processing workers. If negatively biased (Reff < TP), it reflects suppressed transmission compared to expectation. This may be due to an effective public health response actively suppressing transmission (e.g., through test, trace, isolation and quarantine), or other factors such as local depletion of susceptible
+individuals, and/or the virus circulating in a sub-population with fewer-than-average social contacts.
+
+
+# Model 
+
+
+## outputs 
+
+### mobility change 
+
+> gets mobility data and takes holidays, lockdowns and so on into consideration to model the mobility across different states at different places like workplace , residential places and so on.
+
+-  state wise datastream_model
+-  multi state model fit figs
+
+### microdistancing
+
+>micro-distancing, defined as the reduction in transmission probability per non-household
+contact, and assessed through weekly nationwide surveys from which we estimate the
+proportion of the population reporting always keeping 1.5 metre physical distance from
+non-household contacts.
+
+
+### macrodistancing 
+
+> macro-distancing, defined as the reduction in the average rate of non-household contacts, and assessed through weekly nationwide surveys of the daily number of non-household
+contacts;
+
+- gi_cdf? : generation interval distribution; used SI distribution from Nishiura et al
+
+- cumulative density function 'cdf'
+
+- why SI : An empirical estimate of the serial interval— the time from illness onset in a primary case (infector) to illness onset in a secondary case (infectee)—is needed to understand the
+turnover of case generations and transmissibility of the disease.
+
+- prior formed from the daily number of non-household contacts in a
+pre-COVID-19 contact survey
+
+- We account for variation among responses by day of the week by modelling
+the fraction of the weekly number of contacts falling on each day of the week (the length-seven
+vector in each state and time Di(t)) and using this to adjust the expected number of contacts
+for each respondent based on the day of the week they completed the survey.
+
+- To account for how
+the weekly distribution of contacts has changed over time as a function of mixing restrictions
+(e.g., a lower proportion of contacts on weekdays during periods when stay-at-home orders were
+in place) we model the weekly distribution of contacts itself as a function of deviation in the
+weekly average of the daily number of contacts
+
+- Combining the baseline average daily contact rate NC0, mobility-driven modelled change
+in contact rates over time δi(t), and time-varying day of the week effects Di(t) we obtain an
+expected number of daily contacts for each survey response NCk
+
+- We model the number of contacts from each survey respondent as a draw from an interval-
+censored discrete lognormal distribution.
+
+#### plots show : 
+
+- (light purple ribbons = 90% credible intervals; dark purple ribbons = 50% credible
+intervals). 
+
+- Estimates are informed by state-level data from nationwide surveys (indicated by
+the black lines and grey rectangles) and population mobility data.
+
+- Green ticks indicate the dates that public holidays coincided with surveys (when people tend to stay home, biasing down the number of non-household contacts reported on those days).
+
+
+## Surveillance model
+
+- Generation interval : also referred to as the generation time, is the time lag between infection incidents in an infector–infectee pair. It is a proxy of serial interval (SI) of infectious disease, which represent the time lag between onsets of the symptoms in an infector–infectee pair 
+
+- We model the region- and time-varying distributions fi(t, t0) empirically via a time-series of empirical distribution functions computed from all observed infection-to-isolation periods observed within an adaptive moving window around each time t.
+
+
+- we use 5 days prior to the date of
+symptom onset to be the assumed date of infection, and the date of case notification to be the assumed date of isolation.
+
+- For a given date and state/territory, the empirical distribution of delays from symptom onset to notification is computed from cases with symptom onset falling within a time window around that date, with the window selected to be the smallest that will yield at least 500 observations; but constrained to between one and eight weeks.
+    
+  + Specifically, if fewer than 100 cases, the national estimate is used, if more than 500 the state estimate is used, and if between 100 and 500 the distribution is a weighted average of state and national estimates.
+  
+### plots show 
+
+- Estimated trend in distributions of time from symptom onset to notification for locally acquired cases (black line = median; yellow ribbons = 90% distribution quantiles; black dots = time-to-notification of each case). Faded regions
+indicate where a national trend is used due to low case counts.
