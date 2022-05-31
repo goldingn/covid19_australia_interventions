@@ -4792,7 +4792,7 @@ preprocess_nndss_linelist <- function(
       data$file,
       col_types = cols_only(
         STATE = col_character(),
-        Postcode = col_double(),
+        POSTCODE = col_double(),
         CONFIRMATION_STATUS = col_character(),
         TRUE_ONSET_DATE = col_date(format = "%d/%m/%Y"),
         SPECIMEN_DATE = col_date(format = "%d/%m/%Y"),
@@ -4821,7 +4821,7 @@ preprocess_nndss_linelist <- function(
         CV_DATE_ENTERED_QUARANTINE = col_date(format = "%d/%m/%Y"),
         LOADED_DATE = col_date(format = "%Y-%m-%d %H:%M:%S")),
       na = c("", "NULL") # usually turn this off
-    ) %>% rename(POSTCODE = Postcode)
+    ) #%>% rename(POSTCODE = Postcode)
     
     # dat <- dat %>%
     #   mutate(
