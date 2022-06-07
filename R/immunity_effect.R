@@ -46,7 +46,8 @@ scenario_to_use %in% unique(vaccine_raw$scenario)
 scenario_to_use
 
 # aggregate to state
-vaccine_state <- aggregate_quantium_vaccination_data_to_state(vaccine_raw)
+vaccine_state <- aggregate_quantium_vaccination_data_to_state(vaccine_raw) %>%
+  filter(scenario == scenario_to_use)
 
 vaccine_state
 
@@ -58,13 +59,13 @@ saveRDS(
   )
 )
 
-#vaccine_state <- readRDS("outputs/vaccine_state_2022-03-01.RDS")
+#vaccine_state <- readRDS("outputs/vaccine_state_20220419.RDS")
 
 date_sequence <- seq.Date(
   from = as.Date("2021-02-22"),
   to = data_date + weeks(16),
   by = "1 week"
-)
+)#[63:66]
 
 # calculate vaccine effects
 ve_tables <- tibble(
@@ -179,7 +180,7 @@ vaccination_effect_timeseries %>%
       "Forecast"
     )
   ) %>%
-ggplot() +
+  ggplot() +
   geom_line(
     aes(
       x = date,
@@ -440,7 +441,17 @@ local_cases <- read_csv("outputs/local_cases_input.csv") %>%
   ) %>%
   filter(date <= data_date)
 
-ascertainment_rates <- c(1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2)
+ascertainment_rates <- c(
+  1,
+  0.9,
+  0.8,
+  0.7,
+  0.6,
+  0.5,
+  0.4,
+  0.3#,
+  #0.2
+)
 
 omicron_infections <- get_omicron_infections(
   local_cases,
@@ -455,9 +466,15 @@ ie_tables <- tibble(
     from = as.Date("2021-12-07"),
     to = data_date + weeks(16),
     by = "1 week"
-  )
+  #)[22:25] - 1
+  ) - 1
 ) %>%
   expand_grid(omicron_infections) %>%
+  left_join(
+    y = ve_tables,
+    by = "date"
+  ) %>%
+  rename(cohorts_vaccination = cohorts) %>%
   mutate(
     cohorts_infection = map2(
       .x = omicron_infections,
@@ -470,15 +487,16 @@ ie_tables <- tibble(
     ),
     ies = map(
       .x = cohorts_infection,
-      .f = get_infection_efficacies_novax
+      .f = get_infection_efficacies_infection_only
     ),
     infection_transmission_effects = map2(
       .x = ies,
       .y = coverage_infection,
       .f = get_infection_transmission_effects
     ),
-    vies = map(
-      .x = cohorts_infection,
+    vies = map2(
+      .x = cohorts_vaccination,
+      .y = cohorts_infection,
       .f = get_infection_efficacies_vax
     ),
     infection_vaccination_transmission_effects = map2(
@@ -488,19 +506,9 @@ ie_tables <- tibble(
     )
   )
 
-
-
-combined_effect_tables <- left_join(
-  ie_tables,
-  ve_tables %>%
-    rename(
-      cohorts_vaccination = cohorts,
-      coverage_vaccination = coverage
-    ) %>%
-    mutate(date = date + 1),
-  by = "date"
-) %>%
-  filter(date < "2022-04-01" | ascertainment > 0.2) %>%
+combined_effect_tables <- ie_tables %>%
+  rename(coverage_vaccination = coverage) %>%
+  #filter(date < "2022-04-01" | ascertainment > 0.2) %>%
   mutate(
     combined_transmission_effects = pmap(
       .l = list(
@@ -791,3 +799,35 @@ ggsave(
   scale = 1.2,
   bg = "white"
 )
+
+
+## aggregated data
+# 
+# lapply(
+#   X = date_sequence[1:2],
+#   FUN = function(date, data){
+#     state_pop <- data %>%
+#       group_by(state, age_band) %>%
+#       summarise(
+#         pop = sum(num_people),
+#         .groups = "drop"
+#       )
+#     
+#     data %>%
+#       group_by(
+#         age_band,
+#         state
+#       ) %>%
+#       mutate(
+#         
+#       )
+#     
+#   },
+#   data = vaccine_state %>%
+#     filter(scenario == scenario_to_use) %>%
+#     select(-scenario)
+# )
+# 
+# 
+
+
