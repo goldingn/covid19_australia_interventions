@@ -8,7 +8,7 @@ source("R/functions.R")
 ll_filepath <- "~/not_synced/PCR and RAT Breakdown (24 hour totals).xlsx"
 
 linelist_commonwealth <- read_xlsx(ll_filepath,
-                  range = "B4:AC130",sheet = 2,
+                  range = "B4:AC158",sheet = 2,
                   col_types = c("date",rep("numeric",27))) %>% 
   select(-starts_with("Total"))
 
@@ -95,6 +95,29 @@ weekends_to_replace <- linelist_commonwealth %>%
 linelist_commonwealth <- linelist_commonwealth %>% 
   filter(!(date_confirmation %in% weekends_to_replace & state != "VIC")) %>% 
   rbind(scraped[(scraped$date_confirmation %in% weekends_to_replace & scraped$state != "VIC"),])
+
+#also replace state holidays
+# need to revisit this because of the non holiday 0 in ACT
+
+
+holiday_dates_to_replace <- holiday_dates()
+holiday_dates_to_replace$state <- abbreviate_states(holiday_dates_to_replace$state)
+
+
+holiday_dates_to_replace <- linelist_commonwealth %>%
+  filter(date_confirmation >= as_date("2022-05-07")) %>%
+  left_join(holiday_dates_to_replace,by = c("state" = "state","date_confirmation" = "date")) %>%
+  filter(daily_notification == 0, !(is.na(name))) %>% #this 0 filter is necessary because ACT did provide on public holiday at least once
+  select("state","date_confirmation")
+
+linelist_commonwealth <- linelist_commonwealth %>%
+  filter(!(date_confirmation %in% holiday_dates_to_replace$date_confirmation &
+             state != "VIC" &
+             state %in% holiday_dates_to_replace$state)) %>%
+  rbind(scraped[(scraped$date_confirmation %in% holiday_dates_to_replace$date_confirmation &
+                   scraped$state != "VIC" &
+                   scraped$state %in% holiday_dates_to_replace$state),])
+
 
 linelist_commonwealth <- linelist_commonwealth %>% uncount(weights = daily_notification)
 
