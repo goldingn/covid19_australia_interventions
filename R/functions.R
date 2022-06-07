@@ -6708,7 +6708,7 @@ fit_reff_model <- function(data, max_tries = 1, iterations_per_step = 2000) {
     greta_model,
     sampler = hmc(Lmin = 25, Lmax = 30),
     chains = 10,
-    warmup = 500,
+    warmup = 1000,
     n_samples = 2000,
     one_by_one = TRUE
   )
@@ -9031,7 +9031,7 @@ fit_survey_gam <- function(
     cbind(count, I(respondents - count)) ~ s(date_num) + intervention_stage,
     select = TRUE,
     family = stats::binomial,
-    optimizer = c("outer","bfgs")
+    optimizer = c("outer","optim")
   )
   
   
