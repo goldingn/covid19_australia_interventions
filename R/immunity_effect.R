@@ -489,11 +489,11 @@ ie_tables <- tibble(
       .x = cohorts_infection,
       .f = get_infection_efficacies_infection_only
     ),
-    infection_transmission_effects = map2(
-      .x = ies,
-      .y = coverage_infection,
-      .f = get_infection_transmission_effects
-    ),
+    # infection_transmission_effects = map2(
+    #   .x = ies,
+    #   .y = coverage_infection,
+    #   .f = get_infection_transmission_effects
+    # ),
     vies = map2(
       .x = cohorts_vaccination,
       .y = cohorts_infection,
@@ -529,8 +529,8 @@ date_state_variant_table_infection <- expand_grid(
     to = max(ie_tables$date),
     by = 1
   ),
-  state = unique(ie_tables$infection_transmission_effects[[1]]$state),
-  variant = unique(ie_tables$infection_transmission_effects[[1]]$variant),
+  state = unique(ie_tables$vies[[1]]$state),
+  variant = unique(ie_tables$vies[[1]]$variant),
   ascertainment = unique(ie_tables$ascertainment)
 )
 
