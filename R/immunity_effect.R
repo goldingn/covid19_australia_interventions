@@ -173,6 +173,7 @@ ve_ticks_labels <- split_ticks_and_labels(
 )
 
 vaccination_effect_timeseries %>%
+  filter(variant == "Omicron") %>%
   mutate(
     data_type = if_else(
       date <= data_date,
@@ -186,8 +187,8 @@ vaccination_effect_timeseries %>%
       x = date,
       y = effect,
       colour = state,
-      linetype = data_type,
-      alpha = variant
+      linetype = data_type#,
+      #alpha = variant
     ),
     size = 1
   ) +
@@ -205,14 +206,14 @@ vaccination_effect_timeseries %>%
   ) +
   ggtitle(
     label = "Vaccination effect",
-    subtitle = "Change in transmission potential due to vaccination"
+    subtitle = "Change in transmission potential of Omicron variant due to vaccination"
   ) +
   cowplot::theme_cowplot() +
   cowplot::panel_border(remove = TRUE) +
   theme(
     strip.background = element_blank(),
     axis.title.y.right = element_text(vjust = 0.5, angle = 90, size = font_size),
-    legend.position = c(0.02, 0.25),
+    legend.position = c(0.02, 0.18),
     legend.text = element_text(size = font_size),
     axis.text = element_text(size = font_size),
     plot.title = element_text(size = font_size + 8),
@@ -253,6 +254,7 @@ ggsave(
 
 
 vaccination_effect_timeseries %>%
+  filter(variant == "Omicron") %>%
   mutate(
     data_type = if_else(
       date <= data_date,
@@ -294,7 +296,7 @@ vaccination_effect_timeseries %>%
   ) +
   ggtitle(
     label = "Chanve in vaccination effect",
-    subtitle = "Change in weekly average percentage reduction in transmission potential due to vaccination"
+    subtitle = "Change in weekly average percentage reduction in transmission against Omicron variant potential due to vaccination"
   ) +
   cowplot::theme_cowplot() +
   cowplot::panel_border(remove = TRUE) +
@@ -316,7 +318,7 @@ vaccination_effect_timeseries %>%
       "gold1"
     )
   ) +
-  facet_wrap(~variant, ncol = 1) +
+  #facet_wrap(~variant, ncol = 1) +
   geom_hline(
     aes(
       yintercept = 0
@@ -652,7 +654,7 @@ combined_effect_timeseries %>%
   theme(
     strip.background = element_blank(),
     axis.title.y.right = element_text(vjust = 0.5, angle = 90, size = font_size),
-    legend.position = c(0.0, 0.18),
+    legend.position = c(0.0, 0.15),
     #legend.position = c(0.02, 0.18),
     legend.text = element_text(size = font_size-2),
     axis.text = element_text(size = font_size),
@@ -709,9 +711,9 @@ ie_short_labels <- split_ticks_and_labels(
   data = combined_effect_timeseries %>%
     filter(variant == "Omicron", date <= data_date) %>%
     mutate(ascertainment = as.character(ascertainment)),
-  tick_freq = "1 week",
-  label_freq = "2 week",
-  label_format = "%d/%m"
+  tick_freq = "1 month",
+  label_freq = "1 month",
+  label_format = "%b %y"
 )
 
 combined_effect_timeseries %>%
@@ -736,8 +738,10 @@ combined_effect_timeseries %>%
     alpha = "Ascertainment\nproportion"
   ) +
   scale_x_date(
-    breaks = ie_short_labels$ticks,
-    labels = ie_short_labels$labels
+    # breaks = ie_short_labels$ticks,
+    # labels = ie_short_labels$labels
+    date_breaks = "month",
+    date_labels = "%b %y"
   ) +
   ggtitle(
     label = "Immunity effect",
@@ -748,7 +752,7 @@ combined_effect_timeseries %>%
   theme(
     strip.background = element_blank(),
     axis.title.y.right = element_text(vjust = 0.5, angle = 90, size = font_size),
-    legend.position = c(0.0, 0.18),
+    legend.position = c(0.0, 0.14),
     #legend.position = c(0.02, 0.18),
     legend.text = element_text(size = font_size-2),
     axis.text = element_text(size = font_size),
