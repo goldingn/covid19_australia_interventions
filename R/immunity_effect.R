@@ -295,7 +295,7 @@ vaccination_effect_timeseries %>%
     labels = ve_ticks_labels$labels
   ) +
   ggtitle(
-    label = "Chanve in vaccination effect",
+    label = "Change in vaccination effect",
     subtitle = "Change in weekly average percentage reduction in transmission against Omicron variant potential due to vaccination"
   ) +
   cowplot::theme_cowplot() +
