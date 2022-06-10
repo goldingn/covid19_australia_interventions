@@ -11169,7 +11169,13 @@ get_vaccine_cohorts_at_date <- function(vaccine_scenarios, target_date) {
     ) %>%
     # compute most recent vaccines and how long ago they were for each cohort
     mutate(
-      most_recent_dose = pmax(date_dose_1, date_dose_2, date_dose_3, date_dose_4, na.rm = TRUE)
+      most_recent_dose = pmax(
+        date_dose_1,
+        date_dose_2,
+        date_dose_3,
+        date_dose_4,
+        na.rm = TRUE
+      )
     ) %>%
     pivot_longer(
       cols = starts_with("date"),
@@ -11220,11 +11226,11 @@ get_vaccine_cohorts_at_date <- function(vaccine_scenarios, target_date) {
         product == "Pfizer (5-11)" ~ "Pf",
         product == "Novavax" ~ "Pf"
       ),
-      dose = case_when(
-        dose == "dose_3" ~ "booster",
-        dose == "dose_4" ~ "booster",
-        TRUE ~ dose
-      ),
+      # dose = case_when(
+      #   dose == "dose_3" ~ "booster",
+      #   dose == "dose_4" ~ "booster",
+      #   TRUE ~ dose
+      # ),
       immunity = case_when(
         !is.na(date) ~ paste(product, dose, sep = "_"),
         TRUE ~ NA_character_
@@ -11404,20 +11410,22 @@ get_coverage <- function(vaccine_cohorts) {
   
 }
 
-get_omicron_params_wide <- function(param_file = NULL) {
+get_omicron_params_wide <- function(
+  # param_file = NULL
+) {
   
-  if(is.null(param_file)){
+  # if(is.null(param_file)){
     param_file <- "outputs/scenario_parameters_omicron.csv"
-  } else if (param_file == "infection") {
-    param_file <- "outputs/scenario_parameters_omicron_infection_assumption.csv"
-  }
+  # } else if (param_file == "infection") {
+  #   param_file <- "outputs/scenario_parameters_omicron_infection_assumption.csv"
+  # }
   
   read_csv(
     param_file,
     col_types = cols(
       parameter = col_character(),
-      # intermediate = col_double(),
-      # optimistic = col_double(),
+      intermediate = col_double(),
+      optimistic = col_double(),
       estimate = col_double(),
       pessimistic = col_double()
     )
@@ -11643,13 +11651,13 @@ get_vaccine_efficacies <- function(vaccine_cohorts) {
     filter(
       !is.na(immunity)
     ) %>%
-    full_join(
+    left_join(
       tibble(
         omicron_scenario = c(
-          # "intermediate",
-          # "optimistic",
-          "estimate",
-          "pessimistic"
+          #"intermediate",
+          #"optimistic",
+          "estimate"#,
+          #"pessimistic"
         )
       ),
       by = character()
@@ -11665,7 +11673,9 @@ get_vaccine_efficacies <- function(vaccine_cohorts) {
         immunity == "AZ_dose_2" ~ log10_mean_neut_AZ_dose_2,
         immunity == "Pf_dose_1" ~ log10_mean_neut_Pfizer_dose_1,
         immunity == "Pf_dose_2" ~ log10_mean_neut_Pfizer_dose_2,
-        immunity == "mRNA_booster" ~ log10_mean_neut_mRNA_booster
+        #immunity == "mRNA_booster" ~ log10_mean_neut_mRNA_booster
+        immunity == "mRNA_dose_3" ~ log10_mean_neut_mRNA_booster,
+        immunity == "mRNA_dose_4" ~ log10_mean_neut_mRNA_booster + log10(1.33)
       )
     ) %>%
     mutate(
@@ -12026,10 +12036,15 @@ get_coverage_infection <- function(infection_cohort) {
 }
 
 
-get_infection_efficacies_vax <- function(vaccine_cohorts, param_file = "infection") {
+
+
+get_infection_efficacies_vax <- function(
+  vaccine_cohorts,
+  infection_cohorts
+) {
   
   # load omicron parameters in wide format and subset to different parameter sets
-  params_wide <- get_omicron_params_wide(param_file)
+  params_wide <- get_omicron_params_wide()
   
   neut_params_wide <- params_wide %>%
     select(
@@ -12039,8 +12054,8 @@ get_infection_efficacies_vax <- function(vaccine_cohorts, param_file = "infectio
       log10_mean_neut_Pfizer_dose_1,
       log10_mean_neut_Pfizer_dose_2,
       log10_mean_neut_mRNA_booster,
-      log10_mean_neut_omicron_infection,
-      additional_log10_mean_neut_omicron_infection,
+      #log10_mean_neut_omicron_infection,
+      #additional_log10_mean_neut_omicron_infection,
       neut_decay
     )
   
@@ -12053,36 +12068,76 @@ get_infection_efficacies_vax <- function(vaccine_cohorts, param_file = "infectio
       omicron_log10_neut_fold
     )
   
+  
+  combined_cohorts <- left_join(
+    x = vaccine_cohorts %>%
+      filter(!is.na(days_ago)) %>%
+      rename(
+        num_people_v = num_people,
+        days_v = days_ago
+      ) %>%
+      group_by(
+        scenario,
+        state,
+        age_band
+      ) %>%
+      mutate(
+        weight_v = num_people_v / sum(num_people_v)
+      ) %>%
+      ungroup,
+    y = infection_cohorts %>%
+      filter(date >= "2021-12-06") %>%
+      rename(
+        num_people_i = num_people,
+        days_i = days_ago
+      ) %>%
+      select(-date, -immunity) %>%
+      group_by(state) %>%
+      mutate(
+        weight_i = num_people_i / sum(num_people_i)
+      ) %>%
+      ungroup,
+    by = "state"
+  ) %>%
+    select(
+      scenario,
+      state,
+      age_band,
+      num_people_v,
+      num_people_i,
+      immunity,
+      days_v,
+      days_i,
+      weight_v,
+      weight_i
+    ) %>%
+    mutate(
+      days_ago = pmin(days_v, days_i),
+      weight = weight_v * weight_i
+    ) %>%
+    select(-days_v, -days_i, -weight_v, -weight_i)
+  
+  
   # compute the average neutralisation level (mean log10 neut fold of WT
   # convalescent) in each age group, scenario, and omicron scenario
-  mean_neuts <- vaccine_cohorts %>%
-    filter(
-      !is.na(immunity)
-    ) %>%
-    full_join(
-      tibble(
-        omicron_scenario = c(
-          # "intermediate",
-          # "optimistic",
-          "estimate",
-          "pessimistic"
-        )
-      ),
-      by = character()
+  mean_neuts <- combined_cohorts %>%
+    mutate(
+      omicron_scenario = "estimate"
     ) %>%
     left_join(
       neut_params_wide,
       by = "omicron_scenario"
     ) %>%
     # compute the peak and waned log10 mean neuts for each cohort
+    # where each cohort is that dose plus Omicron infection
     mutate(
       peak_neuts = case_when(
-        immunity == "AZ_dose_1" ~ log10_mean_neut_AZ_dose_1,
-        immunity == "AZ_dose_2" ~ log10_mean_neut_AZ_dose_2,
-        immunity == "Pf_dose_1" ~ log10_mean_neut_Pfizer_dose_1,
-        immunity == "Pf_dose_2" ~ log10_mean_neut_Pfizer_dose_2,
-        immunity == "mRNA_booster" ~ log10_mean_neut_mRNA_booster,
-        immunity == "omicron_infection" ~ log10_mean_neut_Pfizer_dose_2 + additional_log10_mean_neut_omicron_infection
+        immunity == "AZ_dose_1" ~ log10_mean_neut_AZ_dose_2,
+        immunity == "AZ_dose_2" ~ log10_mean_neut_mRNA_booster,
+        immunity == "Pf_dose_1" ~ log10_mean_neut_Pfizer_dose_2,
+        immunity == "Pf_dose_2" ~ log10_mean_neut_mRNA_booster,
+        immunity == "mRNA_dose_3" ~ log10_mean_neut_mRNA_booster,
+        immunity == "mRNA_dose_4" ~ log10_mean_neut_mRNA_booster
       )
     ) %>%
     mutate(
@@ -12097,12 +12152,15 @@ get_infection_efficacies_vax <- function(vaccine_cohorts, param_file = "infectio
       -peak_neuts,
       -neut_decay
     ) %>%
+    mutate(
+      weighted_neuts = weight * neuts
+    ) %>%
     # average the mean neuts over cohorts and scenarios
     group_by(
-      state, omicron_scenario
+      scenario, state, omicron_scenario, age_band
     ) %>%
     summarise(
-      neuts = weighted.mean(neuts, num_people),
+      neuts = sum(weighted_neuts),
       .groups = "drop"
     )
   
@@ -12115,15 +12173,12 @@ get_infection_efficacies_vax <- function(vaccine_cohorts, param_file = "infectio
     # for omicron, adjust down the neuts
     full_join(
       tibble(
-        variant = c("Delta", "Omicron")
+        variant = c(
+          #"Delta",
+          "Omicron"
+        )
       ),
       by = character()
-    ) %>%
-    mutate(
-      neuts = case_when(
-        variant == "Omicron" ~ neuts + omicron_log10_neut_fold,
-        TRUE ~ neuts
-      )
     ) %>%
     # compute all the VEs in one shot with Gaussian integration
     pivot_longer(
@@ -12155,23 +12210,26 @@ get_infection_efficacies_vax <- function(vaccine_cohorts, param_file = "infectio
 }
 
 
-get_infection_efficacies_novax <- function(vaccine_cohorts, param_file = "infection") {
+get_infection_efficacies_infection_only <- function(vaccine_cohorts) {
   
   # load omicron parameters in wide format and subset to different parameter sets
-  params_wide <- get_omicron_params_wide(param_file)
+  params_wide <- get_omicron_params_wide()
   
   neut_params_wide <- params_wide %>%
     select(
       omicron_scenario,
-      log10_mean_neut_AZ_dose_1,
-      log10_mean_neut_AZ_dose_2,
-      log10_mean_neut_Pfizer_dose_1,
-      log10_mean_neut_Pfizer_dose_2,
-      log10_mean_neut_mRNA_booster,
-      log10_mean_neut_omicron_infection,
-      additional_log10_mean_neut_omicron_infection,
+      # log10_mean_neut_AZ_dose_1,
+      # log10_mean_neut_AZ_dose_2,
+      # log10_mean_neut_Pfizer_dose_1,
+      # log10_mean_neut_Pfizer_dose_2,
+      # log10_mean_neut_mRNA_booster,
+      # omicron_log10_neut_fold,
+      log10_mean_neut_infection,
+      #log10_mean_neut_omicron_infection,
+      #additional_log10_mean_neut_omicron_infection,
       neut_decay
-    )
+    ) %>%
+    filter(omicron_scenario == "estimate")
   
   ve_params_wide <- params_wide %>%
     select(
@@ -12180,7 +12238,8 @@ get_infection_efficacies_novax <- function(vaccine_cohorts, param_file = "infect
       log_k,
       sd_log10_neut_titres,
       omicron_log10_neut_fold
-    )
+    ) %>%
+    filter(omicron_scenario == "estimate")
   
   # compute the average neutralisation level (mean log10 neut fold of WT
   # convalescent) in each age group, scenario, and omicron scenario
@@ -12193,8 +12252,8 @@ get_infection_efficacies_novax <- function(vaccine_cohorts, param_file = "infect
         omicron_scenario = c(
           # "intermediate",
           # "optimistic",
-          "estimate",
-          "pessimistic"
+          "estimate"#,
+          #"pessimistic"
         )
       ),
       by = character()
@@ -12206,12 +12265,12 @@ get_infection_efficacies_novax <- function(vaccine_cohorts, param_file = "infect
     # compute the peak and waned log10 mean neuts for each cohort
     mutate(
       peak_neuts = case_when(
-        immunity == "AZ_dose_1" ~ log10_mean_neut_AZ_dose_1,
-        immunity == "AZ_dose_2" ~ log10_mean_neut_AZ_dose_2,
-        immunity == "Pf_dose_1" ~ log10_mean_neut_Pfizer_dose_1,
-        immunity == "Pf_dose_2" ~ log10_mean_neut_Pfizer_dose_2,
-        immunity == "mRNA_booster" ~ log10_mean_neut_mRNA_booster,
-        immunity == "omicron_infection" ~ log10_mean_neut_omicron_infection
+        # immunity == "AZ_dose_1" ~ log10_mean_neut_AZ_dose_1,
+        # immunity == "AZ_dose_2" ~ log10_mean_neut_AZ_dose_2,
+        # immunity == "Pf_dose_1" ~ log10_mean_neut_Pfizer_dose_1,
+        # immunity == "Pf_dose_2" ~ log10_mean_neut_Pfizer_dose_2,
+        # immunity == "mRNA_booster" ~ log10_mean_neut_mRNA_booster,
+        immunity == "omicron_infection" ~ log10_mean_neut_infection
       )
     ) %>%
     mutate(
@@ -12228,7 +12287,7 @@ get_infection_efficacies_novax <- function(vaccine_cohorts, param_file = "infect
     ) %>%
     # average the mean neuts over cohorts and scenarios
     group_by(
-      state, omicron_scenario
+      state, omicron_scenario,
     ) %>%
     summarise(
       neuts = weighted.mean(neuts, num_people),
@@ -12244,16 +12303,19 @@ get_infection_efficacies_novax <- function(vaccine_cohorts, param_file = "infect
     # for omicron, adjust down the neuts
     full_join(
       tibble(
-        variant = c("Delta", "Omicron")
+        variant = c(
+          #"Delta",
+          "Omicron"
+        )
       ),
       by = character()
     ) %>%
-    mutate(
-      neuts = case_when(
-        variant == "Omicron" ~ neuts + omicron_log10_neut_fold,
-        TRUE ~ neuts
-      )
-    ) %>%
+    # mutate(
+    #   neuts = case_when(
+    #     variant == "Omicron" ~ neuts + omicron_log10_neut_fold,
+    #     TRUE ~ neuts
+    #   )
+    # ) %>%
     # compute all the VEs in one shot with Gaussian integration
     pivot_longer(
       cols = starts_with("c50"),
@@ -12279,13 +12341,14 @@ get_infection_efficacies_novax <- function(vaccine_cohorts, param_file = "infect
       -c50
     )
   
+  
   ves
   
 }
 
 
 
-get_infection_transmission_effects <- function(ves, coverage) {
+get_infection_transmission_effects <- function(vies, coverage) {
   
   
   # load quantium lookup tables
@@ -12315,12 +12378,23 @@ get_infection_transmission_effects <- function(ves, coverage) {
   # get a conmat NGM for Australia
   australia_ngm <- baseline_matrix(age_breaks = age_breaks_quantium)
   
+  age_band_factor <- levels(vies$age_band)
+  
   # combine coverage and VEs to get transmission reduction for each rollout
   # scenario, and omicron scenario
-  ves %>%
+  vies %>%
+    ungroup %>%
     # add back in the younger age_groups
-    expand_grid(
-      age_band = lookups$age$age_band
+    complete(
+      scenario,
+      state,
+      omicron_scenario,
+      variant,
+      outcome,
+      age_band = unique(lookups$age$age_band),
+      fill = list(
+        ve = 0
+      )
     ) %>%
     # get the two transmission VEs as columns
     filter(
@@ -12331,9 +12405,13 @@ get_infection_transmission_effects <- function(ves, coverage) {
       values_from = ve
     ) %>%
     group_by(
+      scenario,
       state,
       omicron_scenario,
       variant
+    ) %>%
+    mutate(
+      age_band = factor(age_band, levels = age_band_factor)
     ) %>%
     arrange(
       age_band,
@@ -12427,9 +12505,12 @@ combine_transmission_effects <- function(
   # get a conmat NGM for Australia
   australia_ngm <- baseline_matrix(age_breaks = age_breaks_quantium)
   
+  age_band_factor <- levels(ves$age_band)
+  
   # combine coverage and VEs to get transmission reduction for each rollout
   # scenario, and omicron scenario
   ves %>%
+    filter(variant == "Omicron") %>%
     # add back in the younger age_groups
     complete(
       scenario,
@@ -12444,10 +12525,17 @@ combine_transmission_effects <- function(
     ) %>%
     rename(effect_vaccination = ve) %>%
     left_join(
-      ies %>% rename(effect_infection = ve)
+      ies %>%
+        rename(effect_infection = ve)
     ) %>%
     left_join(
-      vies %>% rename(effect_infandvax = ve)
+      vies %>%
+        rename(effect_infandvax = ve)
+    ) %>%
+    # correct missing young age VEs and re-factor age_bands
+    mutate(
+      effect_infandvax = ifelse(is.na(effect_infandvax), 0, effect_infandvax),
+      age_band = factor(age_band, levels = age_band_factor)
     ) %>%
     # get the two transmission VEs as columns
     filter(
@@ -12640,3 +12728,4 @@ impute_many_onsets <- function(
   return(onset_dates)
   
 }
+
