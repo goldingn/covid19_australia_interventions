@@ -11620,7 +11620,7 @@ log10_neut_density <- function(x, mean, sd) {
 }
 
 
-get_vaccine_efficacies <- function(vaccine_cohorts) {
+get_vaccine_efficacies <- function(vaccine_cohorts, neut_immune_escape = 1) {
   
   # load omicron parameters in wide format and subset to different parameter sets
   params_wide <- get_omicron_params_wide()
@@ -11669,13 +11669,13 @@ get_vaccine_efficacies <- function(vaccine_cohorts) {
     # compute the peak and waned log10 mean neuts for each cohort
     mutate(
       peak_neuts = case_when(
-        immunity == "AZ_dose_1" ~ log10_mean_neut_AZ_dose_1,
-        immunity == "AZ_dose_2" ~ log10_mean_neut_AZ_dose_2,
-        immunity == "Pf_dose_1" ~ log10_mean_neut_Pfizer_dose_1,
-        immunity == "Pf_dose_2" ~ log10_mean_neut_Pfizer_dose_2,
+        immunity == "AZ_dose_1" ~ log10_mean_neut_AZ_dose_1 + log10(neut_immune_escape),
+        immunity == "AZ_dose_2" ~ log10_mean_neut_AZ_dose_2 + log10(neut_immune_escape),
+        immunity == "Pf_dose_1" ~ log10_mean_neut_Pfizer_dose_1 + log10(neut_immune_escape),
+        immunity == "Pf_dose_2" ~ log10_mean_neut_Pfizer_dose_2 + log10(neut_immune_escape),
         #immunity == "mRNA_booster" ~ log10_mean_neut_mRNA_booster
-        immunity == "mRNA_dose_3" ~ log10_mean_neut_mRNA_booster,
-        immunity == "mRNA_dose_4" ~ log10_mean_neut_mRNA_booster + log10(1.33)
+        immunity == "mRNA_dose_3" ~ log10_mean_neut_mRNA_booster + log10(neut_immune_escape),
+        immunity == "mRNA_dose_4" ~ log10_mean_neut_mRNA_booster + log10(1.33) + log10(neut_immune_escape)
       )
     ) %>%
     mutate(
