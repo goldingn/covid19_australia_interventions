@@ -5,10 +5,10 @@ source("R/functions.R")
 #### CHECK RAW EXCEL FILE for correct range and sheet no BEFORE LOADING
 # the formatting and sheet numbering changes from time to time so need to manually do sanity check
 
-ll_filepath <- "~/not_synced/pcr_rat/PCR and RAT Breakdown (24 hour totals)_20220426_twitter.xlsx"
+ll_filepath <- "~/not_synced/PCR and RAT Breakdown (24 hour totals).xlsx"
 
 linelist_commonwealth <- read_xlsx(ll_filepath,
-                  range = "B4:AC116",sheet = 2,
+                  range = "B4:AC158",sheet = 2,
                   col_types = c("date",rep("numeric",27))) %>% 
   select(-starts_with("Total"))
 
@@ -32,6 +32,31 @@ colnames(linelist_commonwealth)
 linelist_commonwealth <- linelist_commonwealth %>%
   filter(!is.na(Date))
 
+#read in vic to override the missing vic col
+vic.files <- list.files("~/not_synced/vic/",pattern = "count", full.names = TRUE)
+vic.dates <- vic.files %>%
+  basename() %>%
+  substr(1, 8) %>%
+  as.Date(format = "%Y%m%d")
+
+latest <- which.max(vic.dates)
+vic.files <- vic.files[latest]
+
+
+vic_state_count <- read_csv(vic.files) %>% rename("PCR_VIC" = "confirmed",
+                                                  "RAT_VIC" = "probable", 
+                                                  "Date" = "date")
+
+#shift date to be in line with commonwealth
+vic_state_count$Date <- vic_state_count$Date+1
+
+linelist_commonwealth <- linelist_commonwealth %>% left_join(vic_state_count,by = "Date")
+
+linelist_commonwealth <- linelist_commonwealth %>% select(-c("PCR_VIC.x","RAT_VIC.x")) %>% 
+  rename("PCR_VIC" = "PCR_VIC.y",
+           "RAT_VIC" = "RAT_VIC.y")
+
+
 #pivot into linelist format
 linelist_commonwealth <- linelist_commonwealth %>%
   select(-ends_with("Australia")) %>% 
@@ -50,8 +75,56 @@ linelist_commonwealth <- linelist_commonwealth %>%
     state
   ) %>% 
   mutate("test_type" = word(state,1,1, sep = fixed("_")),
-         "state" = word(state,2,2, sep = fixed("_"))) %>% 
-  uncount(weights = daily_notification) 
+         "state" = word(state,2,2, sep = fixed("_"))) #%>% 
+ 
+
+#add in covidlive
+source("R/covidlive_linelist.R")
+
+scraped$test_type <- "Total"
+
+weekends_to_replace <- linelist_commonwealth %>% 
+  filter(date_confirmation >= as_date("2022-05-07")) %>% 
+  mutate(wday = wday(date_confirmation)) %>% 
+  filter(wday == c(7,1)) %>% #NOTE that the weekend cases are reported on Sunday
+  select(date_confirmation) %>% 
+  unique %>% 
+  unlist %>% 
+  as_date()
+
+linelist_commonwealth <- linelist_commonwealth %>% 
+  filter(!(date_confirmation %in% weekends_to_replace & state != "VIC")) %>% 
+  rbind(scraped[(scraped$date_confirmation %in% weekends_to_replace & scraped$state != "VIC"),])
+
+#also replace state holidays
+# need to revisit this because of the non holiday 0 in ACT
+
+
+holiday_dates_to_replace <- holiday_dates()
+holiday_dates_to_replace$state <- abbreviate_states(holiday_dates_to_replace$state)
+
+
+holiday_dates_to_replace <- linelist_commonwealth %>%
+  filter(date_confirmation >= as_date("2022-05-07")) %>%
+  left_join(holiday_dates_to_replace,by = c("state" = "state","date_confirmation" = "date")) %>%
+  filter(daily_notification == 0, !(is.na(name))) %>% #this 0 filter is necessary because ACT did provide on public holiday at least once
+  select("state","date_confirmation")
+
+linelist_commonwealth <- linelist_commonwealth %>%
+  filter(!(date_confirmation %in% holiday_dates_to_replace$date_confirmation &
+             state != "VIC" &
+             state %in% holiday_dates_to_replace$state)) %>%
+  rbind(scraped[(scraped$date_confirmation %in% holiday_dates_to_replace$date_confirmation &
+                   scraped$state != "VIC" &
+                   scraped$state %in% holiday_dates_to_replace$state),])
+
+
+linelist_commonwealth <- linelist_commonwealth %>% uncount(weights = daily_notification)
+
+
+
+
+# uncount(weights = daily_notification) 
 
 
 #add column for onset
@@ -61,15 +134,12 @@ linelist_commonwealth$date_onset <- NA
 # linelist <- readRDS("outputs/linelist_20220426.RDS")
 
 # load in regular linelist to compute delay from
-#if (exists(linelist)) {
-  regular_ll <- linelist
-#} else {
-#  regular_ll <- load_linelist(use_vic = FALSE)
-#}
+
+regular_ll <- linelist
 
 #visualise dow wave
 regular_ll %>%
-  filter(date_confirmation >= (Sys.Date() - months(2))) %>%
+  filter(date_confirmation >= (Sys.Date() - months(1))) %>%
   group_by(state, date_confirmation) %>%
   summarise(cases = n()) %>%
   ggplot() +
@@ -80,7 +150,7 @@ regular_ll %>%
     ),
     stat = "identity"
   ) + 
-  geom_vline(aes(xintercept = unique(date_linelist)[1])) +
+  geom_vline(aes(xintercept = max(date_confirmation))) +
   facet_wrap(
     facets = vars(state),
     ncol = 2,
@@ -141,7 +211,7 @@ linelist$date_onset <- as_date(ifelse(linelist$date_onset < "2020-01-01",NA,line
 
 
 linelist %>%
-  filter(date_confirmation >= "2022-01-01") %>%
+  filter(date_confirmation >= Sys.Date()-months(2)) %>%
   group_by(state, date_confirmation, test_type) %>%
   summarise(cases = n()) %>%
   ggplot() +

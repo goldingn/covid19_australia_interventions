@@ -1591,7 +1591,7 @@ plot_trend <- function(
   if (length(unique(df$date)) >= 200){
     date_breaks <- "3 month"
     date_minor_breaks <- "1 month"
-    date_labels <- "%b %y"
+    date_labels <- "%b%y"
     x_text_angle <- 0
     x_text_size <- 9
     x_text_hjust <- 0.5
@@ -4792,7 +4792,7 @@ preprocess_nndss_linelist <- function(
       data$file,
       col_types = cols_only(
         STATE = col_character(),
-        Postcode = col_double(),
+        POSTCODE = col_double(),
         CONFIRMATION_STATUS = col_character(),
         TRUE_ONSET_DATE = col_date(format = "%d/%m/%Y"),
         SPECIMEN_DATE = col_date(format = "%d/%m/%Y"),
@@ -4821,7 +4821,7 @@ preprocess_nndss_linelist <- function(
         CV_DATE_ENTERED_QUARANTINE = col_date(format = "%d/%m/%Y"),
         LOADED_DATE = col_date(format = "%Y-%m-%d %H:%M:%S")),
       na = c("", "NULL") # usually turn this off
-    ) %>% rename(POSTCODE = Postcode)
+    ) #%>% rename(POSTCODE = Postcode)
     
     # dat <- dat %>%
     #   mutate(
@@ -6696,7 +6696,8 @@ write_reff_sims <- function(
   
 }
 
-fit_reff_model <- function(data, max_tries = 1, iterations_per_step = 2000) {
+fit_reff_model <- function(data, max_tries = 1, iterations_per_step = 2000,
+                           warmup = 1000) {
   
   # build the greta model
   model_output <- reff_model(data)
@@ -6708,7 +6709,7 @@ fit_reff_model <- function(data, max_tries = 1, iterations_per_step = 2000) {
     greta_model,
     sampler = hmc(Lmin = 25, Lmax = 30),
     chains = 10,
-    warmup = 500,
+    warmup = warmup,
     n_samples = 2000,
     one_by_one = TRUE
   )
@@ -9031,7 +9032,7 @@ fit_survey_gam <- function(
     cbind(count, I(respondents - count)) ~ s(date_num) + intervention_stage,
     select = TRUE,
     family = stats::binomial,
-    optimizer = c("outer","bfgs")
+    optimizer = c("outer","optim")
   )
   
   

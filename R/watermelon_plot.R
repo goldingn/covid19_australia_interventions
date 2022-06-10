@@ -22,8 +22,8 @@ local_cases <- local_cases %>% left_join(new_infections_by_test_type,
 
 
 lc_long <- local_cases %>% na.omit() %>% 
-  filter(date_onset >"2022-01-05") %>%
-  filter(detection_probability > 0.05) %>%
+  filter(date_onset >(Sys.Date()-months(2))) %>%
+  filter(detection_probability > 0.1) %>%
   select(-acquired_in_state) %>%
   mutate(projected_count = count/detection_probability) %>%
   group_by(state, date_onset) %>%
@@ -49,9 +49,11 @@ prob_line_90 <- lc_long %>%
 lc_long <- lc_long %>% 
   mutate(type = case_when(type == "count" & test_type == "PCR" ~ "count PCR",
                           type == "count" & test_type == "RAT" ~ "count RAT",
+                          type == "count" & test_type == "Total" ~ "count total",
                           TRUE ~ type)) %>% 
-  mutate(count = case_when(type %in% c("count PCR","count RAT") ~ cases,
-                           TRUE ~ count))
+  mutate(count = case_when(type %in% c("count PCR","count RAT","count total") ~ cases,
+                           TRUE ~ count)) %>% #remove duplicate proj column
+  filter(!(type == "proj" & test_type %in% c("RAT","Total"))) #all test type are the same
 
 lc_long %>%
   ggplot() +
