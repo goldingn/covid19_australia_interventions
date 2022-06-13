@@ -59,7 +59,7 @@ saveRDS(
   )
 )
 
-#vaccine_state <- readRDS("outputs/vaccine_state_20220419.RDS")
+#vaccine_state <- readRDS("outputs/vaccine_state_20220606.RDS")
 
 date_sequence <- seq.Date(
   from = as.Date("2021-02-22"),
@@ -805,33 +805,267 @@ ggsave(
 )
 
 
-## aggregated data
-# 
-# lapply(
-#   X = date_sequence[1:2],
-#   FUN = function(date, data){
-#     state_pop <- data %>%
-#       group_by(state, age_band) %>%
-#       summarise(
-#         pop = sum(num_people),
-#         .groups = "drop"
-#       )
-#     
-#     data %>%
-#       group_by(
-#         age_band,
-#         state
-#       ) %>%
-#       mutate(
-#         
-#       )
-#     
-#   },
-#   data = vaccine_state %>%
-#     filter(scenario == scenario_to_use) %>%
-#     select(-scenario)
-# )
-# 
-# 
+# aggregated data
+
+aggregated_vaccination_data <- lapply(
+  X = date_sequence,
+  FUN = function(date, data){
+    state_pop <- data %>%
+      group_by(state, age_band) %>%
+      summarise(
+        pop = sum(num_people),
+        .groups = "drop"
+      )
+    
+    cohorts <- expand_grid(
+      state_pop %>%
+        select(-pop),
+      vaccine = unique(data$vaccine),
+      num_people = 0
+    ) #%>%
+      #mutate(vaccine = as.factor(vaccine))
+    
+    dose_1s <- data %>%
+      select(
+        state,
+        age_band,
+        vaccine,
+        date_dose_1,
+        num_people
+      ) %>%
+      mutate(
+        vaccine = ifelse(
+          date_dose_1 <= date,
+          vaccine,
+          NA_character_
+        ) #%>% as.factor
+      ) %>%
+      select(-date_dose_1) %>%
+      bind_rows(cohorts) %>%
+      group_by(
+        state,
+        age_band,
+        vaccine
+      ) %>%
+      summarise(
+        num_people = sum(num_people),
+        .groups = "drop"
+      ) %>%
+      mutate(
+        vaccine = ifelse(is.na(vaccine), "None", vaccine),
+        dose = 1
+      )
+    
+    dose_2s <- data %>%
+      select(
+        state,
+        age_band,
+        vaccine,
+        date_dose_2,
+        num_people
+      ) %>%
+      mutate(
+        vaccine = ifelse(
+          date_dose_2 <= date,
+          vaccine,
+          NA_character_
+        ) #%>% as.factor
+      ) %>%
+      select(-date_dose_2) %>%
+      bind_rows(cohorts) %>%
+      group_by(
+        state,
+        age_band,
+        vaccine
+      ) %>%
+      summarise(
+        num_people = sum(num_people),
+        .groups = "drop"
+      ) %>%
+      mutate(
+        vaccine = ifelse(is.na(vaccine), "None", vaccine),
+        dose = 2
+      )
+    
+    dose_3s <- data %>%
+      select(
+        state,
+        age_band,
+        vaccine = vaccine_dose_3,
+        date_dose_3,
+        num_people
+      ) %>%
+      mutate(
+        vaccine = ifelse(
+          date_dose_3 <= date,
+          vaccine,
+          NA_character_
+        ) #%>% as.factor
+      ) %>%
+      select(-date_dose_3) %>%
+      bind_rows(cohorts) %>%
+      group_by(
+        state,
+        age_band,
+        vaccine
+      ) %>%
+      summarise(
+        num_people = sum(num_people),
+        .groups = "drop"
+      ) %>%
+      mutate(
+        vaccine = ifelse(is.na(vaccine), "None", vaccine),
+        dose = 3
+      )
+    
+    dose_4s <- data %>%
+      select(
+        state,
+        age_band,
+        vaccine = vaccine_dose_4,
+        date_dose_4,
+        num_people
+      ) %>%
+      mutate(
+        vaccine = ifelse(
+          date_dose_4 <= date,
+          vaccine,
+          NA_character_
+        ) #%>% as.factor
+      ) %>%
+      select(-date_dose_4) %>%
+      bind_rows(cohorts) %>%
+      group_by(
+        state,
+        age_band,
+        vaccine
+      ) %>%
+      summarise(
+        num_people = sum(num_people),
+        .groups = "drop"
+      ) %>%
+      mutate(
+        vaccine = ifelse(is.na(vaccine), "None", vaccine),
+        dose = 4
+      )
+    
+    result <- bind_rows(
+      dose_1s,
+      dose_2s,
+      dose_3s,
+      dose_4s
+    ) %>%
+      mutate(date = date)
+    
+    return(result)
+
+  },
+  data = vaccine_state %>%
+    filter(scenario == scenario_to_use) %>%
+    select(-scenario) %>%
+    mutate(
+      across(
+        starts_with("vaccine"),
+        ~ ifelse(.x == "Pfizer (5-11)", "Pfizer", .x)
+      )
+    )
+) %>%
+  bind_rows
 
 
+write_csv(
+  x = aggregated_vaccination_data,
+  file = sprintf(
+    "outputs/aggregated_vaccination_data_%s.csv",
+    data_date_save
+  )
+)
+
+# ggplot(dose_4s) +
+#   geom_bar(aes(x = age_band, y = num_people, fill = vaccine), stat = "identity") +
+#   facet_wrap(~state, ncol = 2, scales = "free")
+
+
+ggplot(
+  data = aggregated_vaccination_data %>%
+    filter(age_band == "5-11") %>%
+    mutate(dose = as.factor(dose))
+) +
+  geom_line(
+    aes(
+      x = date,
+      y = num_people,
+      #alpha = age_band,
+      col = vaccine,
+      linetype = dose
+    )
+  ) +
+  facet_wrap(
+    ~ state,
+    ncol = 2,
+    scales = "free"
+  ) +
+  labs(title = "5-11")
+
+
+ggplot(
+  data = aggregated_vaccination_data %>%
+    filter(age_band == "35-39") %>%
+    mutate(dose = as.factor(dose))
+) +
+  geom_line(
+    aes(
+      x = date,
+      y = num_people,
+      #alpha = age_band,
+      col = vaccine,
+      linetype = dose
+    )
+  ) +
+  facet_wrap(
+    ~ state,
+    ncol = 2,
+    scales = "free"
+  ) +
+  labs(title = "35-39")
+
+ggplot(
+  data = aggregated_vaccination_data %>%
+    filter(age_band == "75-79") %>%
+    mutate(dose = as.factor(dose))
+) +
+  geom_line(
+    aes(
+      x = date,
+      y = num_people,
+      #alpha = age_band,
+      col = vaccine,
+      linetype = dose
+    )
+  ) +
+  facet_wrap(
+    ~ state,
+    ncol = 2,
+    scales = "free"
+  ) +
+  labs(title = "75-79")
+
+lapply(
+  X = date_sequence[1:3],
+  FUN = function(x){
+    
+  },
+  vaccine_scenarios = vaccine_state
+)
+
+
+# ve_tables <- tibble(
+#   date = date_sequence
+# ) %>%
+#   mutate(
+#     cohorts = map(
+#       .x = date,
+#       .f = get_vaccine_cohorts_at_date,
+#       vaccine_scenarios = vaccine_state
+#     )
+#   )
