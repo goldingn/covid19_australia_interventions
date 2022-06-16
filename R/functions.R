@@ -5564,51 +5564,51 @@ reff_model_data <- function(
   
   vaccine_dates <- unique(vaccine_effect_timeseries$date)
   
-  #case ascertainment assumptions
-  date_seq_asc <- seq.Date(
-    from = as.Date("2021-12-01"),
-    to = Sys.Date() + weeks(16),
-    by = "1 week"
-  )
-  case_ascertainment_tables <- tibble(date = date_seq_asc)
-  
-  # NSW, VIC, ACT and QLD
-  # Case ascertainment at 75% from 1 December 2021, drop to 33.3% from
-  # 12 December 2021 to 22 January 2022, and return to 75% by 23 January
-  # 2022.
-  
-  # WA, SA, NT, and TAS
-  # Assume constant 75% case ascertainment from 1 December 2021
-  
-  date_state_ascertainment <- expand_grid(date = seq.Date(
-    from = min(case_ascertainment_tables$date),
-    to = max(case_ascertainment_tables$date),
-    by = 1
-  ),
-  state = states) %>% # states = sort(unique(linelist$state)
-    mutate(
-      ascertainment = case_when(
-        state %in% c("NSW", "ACT", "VIC", "QLD") &
-          (date >= "2021-12-01") & (date < "2021-12-12") ~ 0.75,
-        state %in% c("NSW", "ACT", "VIC", "QLD") &
-          (date >= "2021-12-20") & (date < "2022-01-16") ~ 0.33,
-        state %in% c("NSW", "ACT", "VIC", "QLD") &
-          (date >= "2022-01-23") ~ 0.75,
-        state %in% c("WA", "NT", "SA", "TAS") ~ 0.75,
-        TRUE ~ NA_real_
-      )
-    ) %>%
-    arrange(state) %>%
-    mutate(ascertainment = na.approx(ascertainment))
-  
-  ascertainment_matrix <- date_state_ascertainment %>%
-    pivot_wider(names_from = state, values_from = ascertainment) %>%
-    right_join(y = tibble(date = dates_project)) %>%
-    arrange(date) %>%
-    mutate(across(-date, ~ replace_na(.x, 1))) %>% # 100% FOR PRE DEC 2021
-    dplyr::select(-date) %>%
-    as.matrix
-  
+  # #case ascertainment assumptions
+  # date_seq_asc <- seq.Date(
+  #   from = as.Date("2021-12-01"),
+  #   to = Sys.Date() + weeks(16),
+  #   by = "1 week"
+  # )
+  # case_ascertainment_tables <- tibble(date = date_seq_asc)
+  # 
+  # # NSW, VIC, ACT and QLD
+  # # Case ascertainment at 75% from 1 December 2021, drop to 33.3% from
+  # # 12 December 2021 to 22 January 2022, and return to 75% by 23 January
+  # # 2022.
+  # 
+  # # WA, SA, NT, and TAS
+  # # Assume constant 75% case ascertainment from 1 December 2021
+  # 
+  # date_state_ascertainment <- expand_grid(date = seq.Date(
+  #   from = min(case_ascertainment_tables$date),
+  #   to = max(case_ascertainment_tables$date),
+  #   by = 1
+  # ),
+  # state = states) %>% # states = sort(unique(linelist$state)
+  #   mutate(
+  #     ascertainment = case_when(
+  #       state %in% c("NSW", "ACT", "VIC", "QLD") &
+  #         (date >= "2021-12-01") & (date < "2021-12-12") ~ 0.75,
+  #       state %in% c("NSW", "ACT", "VIC", "QLD") &
+  #         (date >= "2021-12-20") & (date < "2022-01-16") ~ 0.33,
+  #       state %in% c("NSW", "ACT", "VIC", "QLD") &
+  #         (date >= "2022-01-23") ~ 0.75,
+  #       state %in% c("WA", "NT", "SA", "TAS") ~ 0.75,
+  #       TRUE ~ NA_real_
+  #     )
+  #   ) %>%
+  #   arrange(state) %>%
+  #   mutate(ascertainment = na.approx(ascertainment))
+  # 
+  # ascertainment_matrix <- date_state_ascertainment %>%
+  #   pivot_wider(names_from = state, values_from = ascertainment) %>%
+  #   right_join(y = tibble(date = dates_project)) %>%
+  #   arrange(date) %>%
+  #   mutate(across(-date, ~ replace_na(.x, 1))) %>% # 100% FOR PRE DEC 2021
+  #   dplyr::select(-date) %>%
+  #   as.matrix
+  # 
   # return a named, nested list of these objects
   list(
     local = list(
@@ -5647,7 +5647,7 @@ reff_model_data <- function(
     n_dates_project = n_dates_project,
     n_inducing =  n_inducing,
     vaccine_effect_matrix = vaccine_effect_matrix,
-    ascertainment_matrix = ascertainment_matrix,
+   # ascertainment_matrix = ascertainment_matrix,
     dow_effect = dow_effect
   )
   
@@ -5661,10 +5661,10 @@ reff_model <- function(data) {
     cdf = gi_cdf,
     states = data$states
   )
-  # pull out ascertainment rates
-  ascertainment_rate <- data$ascertainment_matrix
-  surveillance_effect_local_reduction_with_ascertainment <- 1 - ((1 - surveillance_reff_local_reduction) * ascertainment_rate)
   
+  # ascertainment_rate <- data$ascertainment_matrix
+  # surveillance_effect_local_reduction_with_ascertainment <- 1 - ((1 - surveillance_reff_local_reduction) * ascertainment_rate)
+  # 
   # extra_isolation_local_reduction <- extra_isolation_effect(
   #   dates = data$dates$infection_project,
   #   cdf = gi_cdf,
@@ -5710,7 +5710,8 @@ reff_model <- function(data) {
   vax_effect <- data$vaccine_effect_matrix
   
   # multiply by the surveillance and vaccination effects
-  R_eff_loc_1 <- R_eff_loc_1_no_surv *  surveillance_effect_local_reduction_with_ascertainment * vax_effect #*
+  R_eff_loc_1 <- R_eff_loc_1_no_surv * surveillance_reff_local_reduction * vax_effect #*
+  # R_eff_loc_1 <- R_eff_loc_1_no_surv *  surveillance_effect_local_reduction_with_ascertainment * vax_effect #*
   #extra_isolation_local_reduction
   
   
