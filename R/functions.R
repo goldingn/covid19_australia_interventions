@@ -11669,7 +11669,9 @@ log10_neut_density <- function(x, mean, sd) {
 }
 
 
-get_vaccine_efficacies <- function(vaccine_cohorts, neut_immune_escape = 1) {
+get_vaccine_efficacies <- function(vaccine_cohorts, 
+                                   variants = c("Delta", "Omicron BA2", "Omicron BA4/5"),
+                                   neut_immune_escape = 0.778) {
   
   # load omicron parameters in wide format and subset to different parameter sets
   params_wide <- get_omicron_params_wide()
@@ -11718,13 +11720,13 @@ get_vaccine_efficacies <- function(vaccine_cohorts, neut_immune_escape = 1) {
     # compute the peak and waned log10 mean neuts for each cohort
     mutate(
       peak_neuts = case_when(
-        immunity == "AZ_dose_1" ~ log10_mean_neut_AZ_dose_1 + log10(neut_immune_escape),
-        immunity == "AZ_dose_2" ~ log10_mean_neut_AZ_dose_2 + log10(neut_immune_escape),
-        immunity == "Pf_dose_1" ~ log10_mean_neut_Pfizer_dose_1 + log10(neut_immune_escape),
-        immunity == "Pf_dose_2" ~ log10_mean_neut_Pfizer_dose_2 + log10(neut_immune_escape),
+        immunity == "AZ_dose_1" ~ log10_mean_neut_AZ_dose_1,
+        immunity == "AZ_dose_2" ~ log10_mean_neut_AZ_dose_2,
+        immunity == "Pf_dose_1" ~ log10_mean_neut_Pfizer_dose_1,
+        immunity == "Pf_dose_2" ~ log10_mean_neut_Pfizer_dose_2,
         #immunity == "mRNA_booster" ~ log10_mean_neut_mRNA_booster
-        immunity == "mRNA_dose_3" ~ log10_mean_neut_mRNA_booster + log10(neut_immune_escape),
-        immunity == "mRNA_dose_4" ~ log10_mean_neut_mRNA_booster + log10(1.33) + log10(neut_immune_escape)
+        immunity == "mRNA_dose_3" ~ log10_mean_neut_mRNA_booster,
+        immunity == "mRNA_dose_4" ~ log10_mean_neut_mRNA_booster + log10(1.33)
       )
     ) %>%
     mutate(
@@ -11757,13 +11759,14 @@ get_vaccine_efficacies <- function(vaccine_cohorts, neut_immune_escape = 1) {
     # for omicron, adjust down the neuts
     full_join(
       tibble(
-        variant = c("Delta", "Omicron")
+        variant = variants
       ),
       by = character()
     ) %>%
     mutate(
       neuts = case_when(
-        variant == "Omicron" ~ neuts + omicron_log10_neut_fold,
+        variant == "Omicron BA2" ~ neuts + omicron_log10_neut_fold,
+        variant == "Omicron BA4/5" ~ neuts + omicron_log10_neut_fold + log10(neut_immune_escape),
         TRUE ~ neuts
       )
     ) %>%
@@ -12089,7 +12092,9 @@ get_coverage_infection <- function(infection_cohort) {
 
 get_infection_efficacies_vax <- function(
   vaccine_cohorts,
-  infection_cohorts
+  infection_cohorts, 
+  variants = c("Omicron BA2", "Omicron BA4/5"),
+  neut_immune_escape = 0.778
 ) {
   
   # load omicron parameters in wide format and subset to different parameter sets
@@ -12222,12 +12227,15 @@ get_infection_efficacies_vax <- function(
     # for omicron, adjust down the neuts
     full_join(
       tibble(
-        variant = c(
-          #"Delta",
-          "Omicron"
-        )
+        variant = variants
       ),
       by = character()
+    ) %>%    
+    mutate(
+      neuts = case_when(
+        variant == "Omicron BA4/5" ~ neuts + log10(neut_immune_escape),
+        TRUE ~ neuts
+      )
     ) %>%
     # compute all the VEs in one shot with Gaussian integration
     pivot_longer(
@@ -12259,7 +12267,9 @@ get_infection_efficacies_vax <- function(
 }
 
 
-get_infection_efficacies_infection_only <- function(vaccine_cohorts) {
+get_infection_efficacies_infection_only <- function(vaccine_cohorts, 
+                                                    variants = c("Omicron BA2", "Omicron BA4/5"),
+                                                    neut_immune_escape = 0.778) {
   
   # load omicron parameters in wide format and subset to different parameter sets
   params_wide <- get_omicron_params_wide()
@@ -12352,19 +12362,16 @@ get_infection_efficacies_infection_only <- function(vaccine_cohorts) {
     # for omicron, adjust down the neuts
     full_join(
       tibble(
-        variant = c(
-          #"Delta",
-          "Omicron"
-        )
+        variant = variants
       ),
       by = character()
     ) %>%
-    # mutate(
-    #   neuts = case_when(
-    #     variant == "Omicron" ~ neuts + omicron_log10_neut_fold,
-    #     TRUE ~ neuts
-    #   )
-    # ) %>%
+    mutate(
+      neuts = case_when(
+        variant == "Omicron BA4/5" ~ neuts + log10(neut_immune_escape),
+        TRUE ~ neuts
+      )
+    ) %>%
     # compute all the VEs in one shot with Gaussian integration
     pivot_longer(
       cols = starts_with("c50"),
@@ -12559,7 +12566,7 @@ combine_transmission_effects <- function(
   # combine coverage and VEs to get transmission reduction for each rollout
   # scenario, and omicron scenario
   ves %>%
-    filter(variant == "Omicron") %>%
+    filter(variant %in% c("Omicron BA2","Omicron BA4/5")) %>%
     # add back in the younger age_groups
     complete(
       scenario,
