@@ -11622,7 +11622,7 @@ log10_neut_density <- function(x, mean, sd) {
 
 get_vaccine_efficacies <- function(vaccine_cohorts, 
                                    variants = c("Delta", "Omicron BA2", "Omicron BA4/5"),
-                                   neut_immune_escape = 0.778) {
+                                   neut_immune_escape = 0.325) {
   
   # load omicron parameters in wide format and subset to different parameter sets
   params_wide <- get_omicron_params_wide()
@@ -12045,7 +12045,7 @@ get_infection_efficacies_vax <- function(
   vaccine_cohorts,
   infection_cohorts, 
   variants = c("Omicron BA2", "Omicron BA4/5"),
-  neut_immune_escape = 0.778
+  neut_immune_escape = 0.325
 ) {
   
   # load omicron parameters in wide format and subset to different parameter sets
@@ -12220,7 +12220,7 @@ get_infection_efficacies_vax <- function(
 
 get_infection_efficacies_infection_only <- function(vaccine_cohorts, 
                                                     variants = c("Omicron BA2", "Omicron BA4/5"),
-                                                    neut_immune_escape = 0.778) {
+                                                    neut_immune_escape = 0.325) {
   
   # load omicron parameters in wide format and subset to different parameter sets
   params_wide <- get_omicron_params_wide()
