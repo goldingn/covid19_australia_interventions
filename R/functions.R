@@ -5513,8 +5513,8 @@ reff_model_data <- function(
  
   vaccine_effect_timeseries <- readRDS("outputs/vaccination_effect.RDS")
   
-  ve_omicron <- vaccine_effect_timeseries %>%
-    filter(variant == "Omicron") %>%
+  ve_omicron_ba2 <- vaccine_effect_timeseries %>%
+    filter(variant == "Omicron BA2") %>%
     select(date, state, effect)
   
   ve_delta <- vaccine_effect_timeseries %>%
@@ -5537,7 +5537,7 @@ reff_model_data <- function(
     dplyr::select(-date) %>%
     as.matrix
   
-  vaccine_effect_matrix_omicron <- ve_omicron %>%
+  vaccine_effect_matrix_omicron_ba2 <- ve_omicron_ba2 %>%
     pivot_wider(
       names_from = state,
       values_from = effect
@@ -5554,13 +5554,13 @@ reff_model_data <- function(
     as.matrix
   
   
-  omicron_matrix <- prop_variant(dates_project)$prop_omicron
+  omicron_ba2_matrix <- prop_variant(dates_project)$prop_omicron
   
-  omicron_index <- which(omicron_matrix == 1)
+  omicron_ba2_index <- which(omicron_ba2_matrix == 1)
   
   vaccine_effect_matrix <- vaccine_effect_matrix_delta
   
-  vaccine_effect_matrix[omicron_index] <- vaccine_effect_matrix_omicron[omicron_index]
+  vaccine_effect_matrix[omicron_ba2_index] <- vaccine_effect_matrix_omicron_ba2[omicron_ba2_index]
   
   vaccine_dates <- unique(vaccine_effect_timeseries$date)
   
@@ -11671,7 +11671,7 @@ log10_neut_density <- function(x, mean, sd) {
 
 get_vaccine_efficacies <- function(vaccine_cohorts, 
                                    variants = c("Delta", "Omicron BA2", "Omicron BA4/5"),
-                                   neut_immune_escape = 0.325) {
+                                   neut_immune_escape = 0.44) {
   
   # load omicron parameters in wide format and subset to different parameter sets
   params_wide <- get_omicron_params_wide()
@@ -12094,7 +12094,7 @@ get_infection_efficacies_vax <- function(
   vaccine_cohorts,
   infection_cohorts, 
   variants = c("Omicron BA2", "Omicron BA4/5"),
-  neut_immune_escape = 0.325
+  neut_immune_escape = 0.44
 ) {
   
   # load omicron parameters in wide format and subset to different parameter sets
@@ -12269,7 +12269,7 @@ get_infection_efficacies_vax <- function(
 
 get_infection_efficacies_infection_only <- function(vaccine_cohorts, 
                                                     variants = c("Omicron BA2", "Omicron BA4/5"),
-                                                    neut_immune_escape = 0.325) {
+                                                    neut_immune_escape = 0.44) {
   
   # load omicron parameters in wide format and subset to different parameter sets
   params_wide <- get_omicron_params_wide()
