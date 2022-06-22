@@ -147,15 +147,23 @@ simulate_variant(variant = "omicron", subdir = "omicron/ratio", ratio_samples = 
 
 #simulate variant with vax effect
 
+# simulate_variant(
+#   variant = "omicron",
+#   subdir = "omicron_vax",
+#   vax_effect = vaccine_effect_timeseries %>% 
+#     filter(variant == "Omicron", 
+#            date <= max(fitted_model$data$dates$infection_project)) %>% 
+#     select(-variant,-percent_reduction)
+# )
+
 simulate_variant(
   variant = "omicron",
-  subdir = "omicron_vax",
-  vax_effect = vaccine_effect_timeseries %>% 
-    filter(variant == "Omicron", 
-           date <= max(fitted_model$data$dates$infection_project)) %>% 
+  subdir = "omicron_BA2_vax",
+  vax_effect = vaccine_effect_timeseries %>%
+    filter(variant == "Omicron BA2",
+           date <= max(fitted_model$data$dates$infection_project)) %>%
     select(-variant,-percent_reduction)
 )
-
 
 simulate_variant(
   variant = "delta",
@@ -174,18 +182,29 @@ simulate_variant(
 
 combined_effect_timeseries_full <- readRDS("outputs/combined_effect_full.RDS")
 
+# simulate_variant(
+#   variant = "omicron",
+#   subdir = "omicron_combined/",
+#   vax_effect = combined_effect_timeseries_full %>% 
+#     filter(
+#       variant == "Omicron", 
+#       date <= max(fitted_model$data$dates$infection_project),
+#       ascertainment == 0.5
+#     ) %>% 
+#     select(-variant,-percent_reduction, -ascertainment)
+# )
+
 simulate_variant(
   variant = "omicron",
-  subdir = "omicron_combined/",
+  subdir = "omicron_BA2_combined/",
   vax_effect = combined_effect_timeseries_full %>% 
     filter(
-      variant == "Omicron", 
+      variant == "Omicron BA2", 
       date <= max(fitted_model$data$dates$infection_project),
       ascertainment == 0.5
     ) %>% 
     select(-variant,-percent_reduction, -ascertainment)
 )
-
 
 simulate_variant(
   variant = "delta",
@@ -257,7 +276,7 @@ r2.post <- r2 %>% filter(date >= vacc.start)
 
 
 
-r3 <- omicron_combined %>% 
+r3 <- omicron_BA2_combined %>% 
   reshape2::melt(id.vars = c("date","state","date_onset")) %>%
   group_by(date,state) %>% 
   summarise(x = quantile(value, qs), q = qs) %>% 
