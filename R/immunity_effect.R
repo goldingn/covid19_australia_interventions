@@ -1007,78 +1007,78 @@ write_csv(
 #   geom_bar(aes(x = age_band, y = num_people, fill = vaccine), stat = "identity") +
 #   facet_wrap(~state, ncol = 2, scales = "free")
 
-
-ggplot(
-  data = aggregated_vaccination_data %>%
-    filter(age_band == "5-11") %>%
-    mutate(dose = as.factor(dose))
-) +
-  geom_line(
-    aes(
-      x = date,
-      y = num_people,
-      #alpha = age_band,
-      col = vaccine,
-      linetype = dose
-    )
-  ) +
-  facet_wrap(
-    ~ state,
-    ncol = 2,
-    scales = "free"
-  ) +
-  labs(title = "5-11")
-
-
-ggplot(
-  data = aggregated_vaccination_data %>%
-    filter(age_band == "35-39") %>%
-    mutate(dose = as.factor(dose))
-) +
-  geom_line(
-    aes(
-      x = date,
-      y = num_people,
-      #alpha = age_band,
-      col = vaccine,
-      linetype = dose
-    )
-  ) +
-  facet_wrap(
-    ~ state,
-    ncol = 2,
-    scales = "free"
-  ) +
-  labs(title = "35-39")
-
-ggplot(
-  data = aggregated_vaccination_data %>%
-    filter(age_band == "75-79") %>%
-    mutate(dose = as.factor(dose))
-) +
-  geom_line(
-    aes(
-      x = date,
-      y = num_people,
-      #alpha = age_band,
-      col = vaccine,
-      linetype = dose
-    )
-  ) +
-  facet_wrap(
-    ~ state,
-    ncol = 2,
-    scales = "free"
-  ) +
-  labs(title = "75-79")
-
-lapply(
-  X = date_sequence[1:3],
-  FUN = function(x){
-    
-  },
-  vaccine_scenarios = vaccine_state
-)
+# 
+# ggplot(
+#   data = aggregated_vaccination_data %>%
+#     filter(age_band == "5-11") %>%
+#     mutate(dose = as.factor(dose))
+# ) +
+#   geom_line(
+#     aes(
+#       x = date,
+#       y = num_people,
+#       #alpha = age_band,
+#       col = vaccine,
+#       linetype = dose
+#     )
+#   ) +
+#   facet_wrap(
+#     ~ state,
+#     ncol = 2,
+#     scales = "free"
+#   ) +
+#   labs(title = "5-11")
+# 
+# 
+# ggplot(
+#   data = aggregated_vaccination_data %>%
+#     filter(age_band == "35-39") %>%
+#     mutate(dose = as.factor(dose))
+# ) +
+#   geom_line(
+#     aes(
+#       x = date,
+#       y = num_people,
+#       #alpha = age_band,
+#       col = vaccine,
+#       linetype = dose
+#     )
+#   ) +
+#   facet_wrap(
+#     ~ state,
+#     ncol = 2,
+#     scales = "free"
+#   ) +
+#   labs(title = "35-39")
+# 
+# ggplot(
+#   data = aggregated_vaccination_data %>%
+#     filter(age_band == "75-79") %>%
+#     mutate(dose = as.factor(dose))
+# ) +
+#   geom_line(
+#     aes(
+#       x = date,
+#       y = num_people,
+#       #alpha = age_band,
+#       col = vaccine,
+#       linetype = dose
+#     )
+#   ) +
+#   facet_wrap(
+#     ~ state,
+#     ncol = 2,
+#     scales = "free"
+#   ) +
+#   labs(title = "75-79")
+# 
+# lapply(
+#   X = date_sequence[1:3],
+#   FUN = function(x){
+#     
+#   },
+#   vaccine_scenarios = vaccine_state
+# )
 
 
 # ve_tables <- tibble(
