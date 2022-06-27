@@ -165,6 +165,7 @@ simulate_variant(
     select(-variant,-percent_reduction)
 )
 
+
 simulate_variant(
   variant = "delta",
   subdir = "delta_vax",
@@ -174,7 +175,14 @@ simulate_variant(
     select(-variant,-percent_reduction)
 )
 
-
+simulate_variant(
+  variant = "omicron",
+  subdir = "omicron_BA4.5_vax",
+  vax_effect = vaccine_effect_timeseries %>%
+    filter(variant == "Omicron BA4/5",
+           date <= max(fitted_model$data$dates$infection_project)) %>%
+    select(-variant,-percent_reduction)
+)
 
 
 
@@ -205,6 +213,20 @@ simulate_variant(
     ) %>% 
     select(-variant,-percent_reduction, -ascertainment)
 )
+
+simulate_variant(
+  variant = "omicron",
+  subdir = "omicron_BA4.5_combined/",
+  vax_effect = combined_effect_timeseries_full %>% 
+    filter(
+      variant == "Omicron BA4/5", 
+      date <= max(fitted_model$data$dates$infection_project),
+      ascertainment == 0.5
+    ) %>% 
+    select(-variant,-percent_reduction, -ascertainment)
+)
+
+
 
 simulate_variant(
   variant = "delta",
@@ -239,9 +261,31 @@ no_vax_or_infection_immunity_c1 <- read_csv(paste0("outputs/projection/r_eff_1_l
                                             )) 
 
 
+
+#ba2 vs ba4
+BA2_TP <- read_csv(paste0("outputs/projection/omicron_BA2_combined/r_eff_1_local_samples.csv"),
+                   col_types =cols(
+                     .default = col_double(),
+                     date = col_date(format = ""),
+                     state = col_character(),
+                     date_onset = col_date(format = "")
+                   )) 
+
+BA4_TP <- read_csv(paste0("outputs/projection/omicron_BA4.5_combined/r_eff_1_local_samples.csv"),
+                   col_types =cols(
+                     .default = col_double(),
+                     date = col_date(format = ""),
+                     state = col_character(),
+                     date_onset = col_date(format = "")
+                   )) 
+
+
+
+
 #plot 
 start.date <- ymd("2021-02-01")
-end.date <- the.date
+end.date <- Sys.Date()
+vacc.start <- ymd("2021-02-22")
 date.label.format <- "%b %y"
 n.week.labels.panel <- 2
 n.week.ticks <- "1 month"
@@ -257,7 +301,7 @@ dd <- seq.Date(ymd(start.date), end.date, by=n.week.ticks)
 # Quantiles
 qs <- c(0.05, 0.25, 0.5, 0.75, 0.95)
 
-r1 <- no_vax_or_infection_immunity_c1 %>% 
+r1 <- BA2_TP %>% 
   reshape2::melt(id.vars = c("date","state","date_onset")) %>%
   group_by(date,state) %>% 
   summarise(x = quantile(value, qs), q = qs) %>% 
@@ -265,7 +309,7 @@ r1 <- no_vax_or_infection_immunity_c1 %>%
   rename("L90"="0.05", "L50"="0.25", "med"="0.5", "U50"="0.75", "U90"="0.95") %>% filter(date <= end.date)
 
 
-r2 <- no_infection_immunity_c1 %>% 
+r2 <- BA4_TP %>% 
   reshape2::melt(id.vars = c("date","state","date_onset")) %>%
   group_by(date,state) %>% 
   summarise(x = quantile(value, qs), q = qs) %>% 
@@ -276,14 +320,14 @@ r2.post <- r2 %>% filter(date >= vacc.start)
 
 
 
-r3 <- omicron_BA2_combined %>% 
-  reshape2::melt(id.vars = c("date","state","date_onset")) %>%
-  group_by(date,state) %>% 
-  summarise(x = quantile(value, qs), q = qs) %>% 
-  reshape2::dcast(state+date ~ q, value.var = "x") %>%
-  rename("L90"="0.05", "L50"="0.25", "med"="0.5", "U50"="0.75", "U90"="0.95")  %>% filter(date <= end.date)
-
-r3.post <- r3 %>% filter(date >= "2021-12-01")
+# r3 <- omicron_combined %>% 
+#   reshape2::melt(id.vars = c("date","state","date_onset")) %>%
+#   group_by(date,state) %>% 
+#   summarise(x = quantile(value, qs), q = qs) %>% 
+#   reshape2::dcast(state+date ~ q, value.var = "x") %>%
+#   rename("L90"="0.05", "L50"="0.25", "med"="0.5", "U50"="0.75", "U90"="0.95")  %>% filter(date <= end.date)
+# 
+# r3.post <- r3 %>% filter(date >= "2021-12-01")
 
 
 # Plot aesthetics
@@ -299,8 +343,8 @@ subset.states <- c("ACT","NSW","NT","QLD","SA","TAS","VIC","WA")
 
 ggplot() +
   ggtitle(
-    label = "Transmission potential",
-    subtitle = "Wth and without the effects of vaccination, and the effect of immunity from infection with Omicron variant"
+    label = "Transmission potentials of Omicron BA1/2 and BA4/5 subvariants",
+    subtitle = "With the effects of vaccination and the effect of immunity from infection with Omicron BA1/2 subvariant"
   ) +
   geom_hline(yintercept = 1, linetype = "dotted") +
   
@@ -315,23 +359,23 @@ ggplot() +
   geom_line(data = r1 %>% filter(state %in% subset.states), aes(x = date, y = L90), col = col1, alpha = line.alpha) +
   geom_line(data = r1 %>% filter(state %in% subset.states), aes(x = date, y = U90), col = col1, alpha = line.alpha) +
   
-  geom_ribbon(data = r2.post %>% filter(state %in% subset.states), aes(x = date, ymin = L90, ymax = U90), fill = col2, alpha=outer.alpha) +
-  geom_ribbon(data = r2.post %>% filter(state %in% subset.states), aes(x = date, ymin = L50, ymax = U50), fill = col2, alpha=inner.alpha) +
-  geom_line(data = r2.post %>% filter(state %in% subset.states), aes(x = date, y = L90), col = col2, alpha = line.alpha) +
-  geom_line(data = r2.post %>% filter(state %in% subset.states), aes(x = date, y = U90), col = col2, alpha = line.alpha) +
-  
-  geom_ribbon(data = r3.post %>% filter(state %in% subset.states), aes(x = date, ymin = L90, ymax = U90), fill = col3, alpha=outer.alpha) +
-  geom_ribbon(data = r3.post %>% filter(state %in% subset.states), aes(x = date, ymin = L50, ymax = U50), fill = col3, alpha=inner.alpha) +
-  geom_line(data = r3.post %>% filter(state %in% subset.states), aes(x = date, y = L90), col = col3, alpha = line.alpha) +
-  geom_line(data = r3.post %>% filter(state %in% subset.states), aes(x = date, y = U90), col = col3, alpha = line.alpha) +
+  geom_ribbon(data = r2.post %>% filter(state %in% subset.states), aes(x = date, ymin = L90, ymax = U90), fill = col3, alpha=outer.alpha) +
+  geom_ribbon(data = r2.post %>% filter(state %in% subset.states), aes(x = date, ymin = L50, ymax = U50), fill = col3, alpha=inner.alpha) +
+  geom_line(data = r2.post %>% filter(state %in% subset.states), aes(x = date, y = L90), col = col3, alpha = line.alpha) +
+  geom_line(data = r2.post %>% filter(state %in% subset.states), aes(x = date, y = U90), col = col3, alpha = line.alpha) +
+  # 
+  # geom_ribbon(data = r3.post %>% filter(state %in% subset.states), aes(x = date, ymin = L90, ymax = U90), fill = col3, alpha=outer.alpha) +
+  # geom_ribbon(data = r3.post %>% filter(state %in% subset.states), aes(x = date, ymin = L50, ymax = U50), fill = col3, alpha=inner.alpha) +
+  # geom_line(data = r3.post %>% filter(state %in% subset.states), aes(x = date, y = L90), col = col3, alpha = line.alpha) +
+  # geom_line(data = r3.post %>% filter(state %in% subset.states), aes(x = date, y = U90), col = col3, alpha = line.alpha) +
   # geom_vline(
   #   data = prop_variant_dates() %>% filter(state %in% subset.states),
   #   aes(xintercept = date),
   #   colour = "firebrick1",
   #   linetype = 5
   # ) +
-  
-  geom_vline(xintercept = vacc.start, colour = "steelblue3", linetype = 5) +
+
+geom_vline(xintercept = vacc.start, colour = "steelblue3", linetype = 5) +
   
   facet_wrap(~state, ncol = 2, scales = "free") +
   
@@ -350,12 +394,22 @@ ggplot() +
         axis.title.y.right = element_text(vjust = 0.5, angle = 90),
         # axis.text.x = element_text(angle = 45, hjust = 1),
         axis.text.x = element_text(size = 9),
-        panel.spacing = unit(1.2, "lines")) + 
-  geom_vline(
-    data = prop_variant_dates(),
-    aes(xintercept = date),
-    colour = "firebrick1",
-    linetype = 5
-  )
+        panel.spacing = unit(1.2, "lines")) #+ 
+# geom_vline(
+#   data = prop_variant_dates(),
+#   aes(xintercept = date),
+#   colour = "firebrick1",
+#   linetype = 5
+# )
 
-ggsave(paste0("outputs/figures/full_tp_compare_",the.date,".png"), height = 10, width = 9, bg = "white")
+ggsave(paste0("outputs/figures/full_tp_compare_",end.date,"_BA4.png"), height = 10, width = 9, bg = "white")
+
+
+##### for NSW TP no immunity 
+tp_novax <- read_reff_samples("outputs/projection/r_eff_1_local_without_vaccine_samples.csv")
+
+write_csv(
+  tp_novax %>%
+    filter(state == "NSW"),
+  file = paste0("outputs/nsw_tp_no_immunity_",data$dates$linelist,".csv")
+)
