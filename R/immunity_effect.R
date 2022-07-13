@@ -343,6 +343,69 @@ ggsave(
   bg = "white"
 )
 
+
+ve_tables %>%
+  select(date, coverage, ves) %>%
+  mutate(hosp = pmap(., get_hospitalisation_ve)) %>% 
+  select(date, hosp) %>%
+  unnest(hosp) %>%
+  
+  mutate(age_group = vaccine_age_bands_to_wider(age_band)) %>%
+  group_by(variant, date, state, age_group) %>%
+  summarise(m_hosp = mean(m_hosp)) %>%
+  filter(variant != "Delta") %>%
+  mutate(
+    data_type = if_else(
+      date <= data_date,
+      "Actual",
+      "Forecast"
+    )
+  ) %>%
+  mutate(age_group = factor(age_group, levels = c("0-4", "5-11", "12-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70-79", "80+"))) %>%
+  filter(state == "NSW") %>%
+  ggplot() +
+  geom_line(aes(x = date, y = m_hosp, linetype = data_type, alpha = variant),
+            color = "#0072B2") +
+  
+  geom_hline(yintercept = 0, size = 0.8, col = 'grey40')  +
+  
+  coord_cartesian(ylim = c(0, 1)) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+  
+  facet_wrap(~age_group, ncol = 2) +
+  xlab(NULL) + ylab("Change in probability of severe disease") +
+  
+  scale_linetype_manual("Data type", values = c(1, 2)) +
+  scale_alpha_manual("Omicron sub-variant", values = c(0.4, 1)) +
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  
+  scale_x_date(breaks = seq(ymd("2021-01-01"), ymd("2023-01-01"), by = "3 months"),
+               labels = scales::label_date_short(format = c("%Y", "%b")),
+               expand = expansion(mult = c(0, 0.05))) +
+  
+  theme(
+    strip.background = element_blank(),
+    strip.text = element_text(hjust = 0, face = "bold"),
+    axis.title.y.right = element_text(vjust = 0.5, angle = 90),
+    panel.spacing = unit(1.2, "lines"),
+    legend.position = "bottom"
+  ) 
+
+
+ggsave(
+  filename = sprintf(
+    "outputs/figures/vaccination_severe_disease_effect_NSW_%s.png",
+    data_date_save
+  ),
+  dpi = dpi,
+  width = 1500 / dpi,
+  height = 1250 / dpi,
+  scale = 1.2,
+  bg = "white"
+)
+
+
 # population-wide VE of the vaccinated population for Peter / Adeshina --------
 coverage_fraction <- ve_tables %>%
   select(date, coverage) %>%

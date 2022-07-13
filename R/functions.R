@@ -12679,6 +12679,33 @@ combine_transmission_effects <- function(
   
 }
 
+get_hospitalisation_ve <- function(coverage, ves, ...) {
+  ves %>%
+    filter(outcome == "hospitalisation") %>%
+    
+    left_join(coverage, by = c("scenario", "state", "age_band")) %>%
+    complete(scenario, omicron_scenario, state, age_band, variant, outcome) %>%
+    
+    mutate(ve = replace_na(ve, 0),
+           coverage = replace_na(coverage, 0),
+           m_hosp = 1 - ve * coverage)
+}
+
+
+vaccine_age_bands_to_wider <- function(age_group_vacc) {
+  case_when(
+    age_group_vacc %in% c("0-4") ~ "0-4",
+    age_group_vacc %in% c("5-11") ~ "5-11",
+    age_group_vacc %in% c("12-15", "16-19") ~ "12-19",
+    age_group_vacc %in% c("20-24", "25-29") ~ "20-29",
+    age_group_vacc %in% c("30-34", "35-39") ~ "30-39",
+    age_group_vacc %in% c("40-44", "45-49") ~ "40-49",
+    age_group_vacc %in% c("50-54", "55-59") ~ "50-59",
+    age_group_vacc %in% c("60-64", "65-69") ~ "60-69",
+    age_group_vacc %in% c("70-74", "75-79") ~ "70-79",
+    age_group_vacc %in% c("80+") ~ "80+")
+}
+
 #deal with empty ggsave background
 ggsave <- function(..., bg = 'white') ggplot2::ggsave(..., bg = bg)
 
