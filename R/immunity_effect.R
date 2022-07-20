@@ -51,6 +51,26 @@ vaccine_state <- aggregate_quantium_vaccination_data_to_state(vaccine_raw) %>%
 
 vaccine_state
 
+
+
+state_population <- vaccine_state %>%
+  filter(scenario == max(scenario)) %>%
+  group_by(state) %>%
+  summarise(
+    population = sum(num_people, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+state_population_by_age_band <- vaccine_state %>%
+  filter(scenario == max(scenario)) %>%
+  group_by(age_band, state) %>%
+  summarise(
+    population = sum(num_people, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  group_by(state) %>%
+  mutate(prop_age = population / sum(population))
+
 saveRDS(
   object = vaccine_state,
   file = sprintf(
@@ -373,7 +393,7 @@ ve_tables %>%
   scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
   
   facet_wrap(~age_group, ncol = 2) +
-  xlab(NULL) + ylab("Change in probability of severe disease") +
+  xlab(NULL) + ylab("Change in probability of hospitalisation") +
   
   scale_linetype_manual("Data type", values = c(1, 2)) +
   scale_alpha_manual("Omicron sub-variant", values = c(0.4, 1)) +
@@ -395,11 +415,81 @@ ve_tables %>%
 
 ggsave(
   filename = sprintf(
-    "outputs/figures/vaccination_severe_disease_effect_NSW_%s.png",
+    "outputs/figures/vaccination_hospitalisation_effect_NSW_%s.png",
     data_date_save
   ),
   dpi = dpi,
   width = 1500 / dpi,
+  height = 1250 / dpi,
+  scale = 1.2,
+  bg = "white"
+)
+
+vaccination_effect_timeseries_hosp <- ve_tables %>%
+  select(date, coverage, ves) %>%
+  mutate(
+    hosp = pmap(., get_hospitalisation_ve_pop_mean, state_population_by_age_band)
+  ) %>% 
+  select(date, hosp) %>%
+  unnest(hosp)
+
+write_csv(
+  vaccination_effect_timeseries_hosp,
+  file = sprintf(
+    "outputs/vaccination_effect_hosp_%s.csv",
+    data_date_save
+  )
+)
+
+vaccination_effect_timeseries_hosp %>%
+  filter(variant != "Delta") %>%
+  mutate(
+    data_type = if_else(
+      date <= data_date,
+      "Actual",
+      "Forecast"
+    )
+  ) %>%
+  ggplot() +
+  geom_line(aes(x = date, y = m_hosp, alpha = variant, linetype = data_type),
+            color = "#0072B2") +
+  
+  geom_hline(yintercept = 0, size = 0.8, col = 'grey40')  +
+  
+  geom_vline(xintercept = ymd("2021-02-22"), size = 0.8, col = 'grey40') +
+  
+  geom_hline(yintercept = 0, size = 0.8, col = 'grey40')  +
+  
+  coord_cartesian(ylim = c(0, 1)) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+  
+  facet_wrap(~state, ncol = 2) +
+  xlab(NULL) + ylab("Change in probability of hospitalisation") +
+  
+  scale_linetype_manual("Data type", values = c(1, 2)) +
+  scale_alpha_manual("Omicron sub-variant", values = c(0.4, 1)) +
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  
+  scale_x_date(breaks = seq(ymd("2021-01-01"), ymd("2023-01-01"), by = "3 months"),
+               labels = scales::label_date_short(format = c("%Y", "%b")),
+               expand = expansion(mult = c(0, 0.05))) +
+  
+  theme(
+    strip.background = element_blank(),
+    strip.text = element_text(hjust = 0, face = "bold"),
+    axis.title.y.right = element_text(vjust = 0.5, angle = 90),
+    panel.spacing = unit(1.2, "lines"),
+    legend.position = "bottom"
+  ) 
+
+ggsave(
+  filename = sprintf(
+    "outputs/figures/vaccination_hospitalisation_effect_mean_%s.png",
+    data_date_save
+  ),
+  dpi = dpi,
+  width = 1200 / dpi,
   height = 1250 / dpi,
   scale = 1.2,
   bg = "white"
@@ -488,17 +578,6 @@ ggplot(vaccinated_population_mean_ve) +
   facet_wrap(~state)
 
 ## Immunity effect -------------
-
-
-
-
-state_population <- vaccine_state %>%
-  filter(scenario == max(scenario)) %>%
-  group_by(state) %>%
-  summarise(
-    population = sum(num_people, na.rm = TRUE),
-    .groups = "drop"
-  )
 
 
 local_cases <- read_csv("outputs/local_cases_input.csv") %>%
@@ -637,10 +716,26 @@ combined_effect_timeseries_full <- vaccination_effect_timeseries %>%
   bind_rows(combined_effect_timeseries)
 
 
+combined_effect_timeseries_hosp <- ie_tables %>%
+  select(date, ascertainment, coverage, ves, coverage_infection, ies, vies) %>%
+  mutate(effect = pmap(., get_hospitalisation_vie_pop_mean, state_population_by_age_band)) %>%
+  select(date, ascertainment, effect) %>%
+  unnest(effect) %>%
+  filter(date <= data_date)
+
+
 write_csv(
   combined_effect_timeseries,
   file = sprintf(
     "outputs/combined_effect_%s.csv",
+    data_date_save
+  )
+)
+
+write_csv(
+  combined_effect_timeseries_hosp,
+  file = sprintf(
+    "outputs/combined_effect_hospitalisation_%s.csv",
     data_date_save
   )
 )
@@ -683,6 +778,9 @@ combined_and_vax_timeseries <- bind_rows(
       effect_type = "Vaccination immunity"
     )
 )
+  
+  
+
 
 # immunity effect plots ------
 
@@ -888,6 +986,60 @@ ggsave(
   scale = 1.2,
   bg = "white"
 )
+
+
+
+
+combined_effect_timeseries_hosp %>%
+  ggplot() +
+  geom_line(aes(x = date, y = m_hosp, linetype = variant, alpha = factor(ascertainment)),
+            color = "#0072B2")  +
+  geom_line(aes(x = date, y = m_hosp, linetype = variant),
+            color = 'black',
+            vaccination_effect_timeseries_hosp %>% 
+              filter(date <= data_date, date <= ymd("2021-12-06"), variant %in% c("Omicron BA2", "Omicron BA4/5"))
+  )  +
+  
+  geom_hline(yintercept = 0, size = 0.8, col = 'grey40')  +
+  
+  geom_vline(xintercept = ymd("2021-02-22"), size = 0.8, col = 'grey40')  +
+  
+  coord_cartesian(ylim = c(0, 1)) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+  
+  facet_wrap(~state, ncol = 2) +
+  xlab(NULL) + ylab("Change in probability of hospitalisation") +
+  
+  scale_linetype_manual("Omicron sub-variant", values = c(1, 2)) +
+  scale_alpha_manual("Ascertainment", values = c(0.4, 1)) +
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  
+  scale_x_date(breaks = seq(ymd("2021-01-01"), ymd("2023-01-01"), by = "3 months"),
+               labels = scales::label_date_short(format = c("%Y", "%b")),
+               expand = expansion(mult = c(0, 0.05))) +
+  
+  theme(
+    strip.background = element_blank(),
+    strip.text = element_text(hjust = 0, face = "bold"),
+    axis.title.y.right = element_text(vjust = 0.5, angle = 90),
+    panel.spacing = unit(1.2, "lines"),
+    legend.position = "bottom"
+  ) 
+
+ggsave(
+  filename = sprintf(
+    "outputs/figures/combined_hospitalisation_effect_mean_%s.png",
+    data_date_save
+  ),
+  dpi = dpi,
+  width = 1200 / dpi,
+  height = 1250 / dpi,
+  scale = 1.2,
+  bg = "white"
+)
+
+
 
 
 # aggregated data

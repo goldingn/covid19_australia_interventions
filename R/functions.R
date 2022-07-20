@@ -12691,6 +12691,52 @@ get_hospitalisation_ve <- function(coverage, ves, ...) {
            m_hosp = 1 - ve * coverage)
 }
 
+get_hospitalisation_ve_pop_mean <- function(coverage, ves, state_population_by_age_band, ...) {
+  ves %>%
+    filter(outcome == "hospitalisation") %>%
+    
+    left_join(coverage, by = c("scenario", "state", "age_band")) %>%
+    complete(scenario, omicron_scenario, state, age_band, variant, outcome) %>%
+    
+    mutate(ve = replace_na(ve, 0),
+           coverage = replace_na(coverage, 0),
+           m_hosp = 1 - ve * coverage) %>%
+    
+    left_join(state_population_by_age_band, by = c("age_band", "state")) %>%
+    
+    group_by(scenario, omicron_scenario, variant, state) %>%
+    summarise(m_hosp = sum(m_hosp * prop_age), .groups = "drop")
+}
+
+get_hospitalisation_vie_pop_mean <- function(coverage, ves, coverage_infection, ies, vies, state_population_by_age_band, ...) {
+  
+  
+  coverage %>%
+    left_join(ves %>% filter(variant != "Delta"), by = c("scenario", "state", "age_band")) %>%
+    rename(coverage_vacc = coverage,
+           effect_vacc = ve) %>%
+    filter(outcome == "hospitalisation") %>%
+    complete(scenario, omicron_scenario, state, age_band, variant, outcome) %>%
+    
+    left_join(coverage_infection %>% rename(coverage_inf = coverage), by = "state") %>%
+    left_join(ies %>% rename(effect_inf = ve), by = c("omicron_scenario", "state", "variant", "outcome")) %>%
+    left_join(vies %>% rename(effect_both = ve), by = c("scenario", "omicron_scenario", "state", "age_band", "variant", "outcome")) %>%
+    mutate(coverage_vacc = replace_na(coverage_vacc, 0),
+           effect_vacc = replace_na(effect_vacc, 0),
+           effect_both = replace_na(effect_both, 0)) %>%
+    
+    mutate(p_vacc_only = coverage_vacc * (1 - coverage_inf),
+           p_inf_only = coverage_inf * (1 - coverage_vacc),
+           p_both = coverage_inf * coverage_vacc) %>%
+    
+    mutate(m_hosp = 1 - (p_vacc_only * effect_vacc + p_inf_only * effect_inf + p_both * effect_both)) %>%
+    
+    left_join(state_population_by_age_band, by = c("age_band", "state")) %>%
+    
+    group_by(scenario, omicron_scenario, variant, state) %>%
+    summarise(m_hosp = sum(m_hosp * prop_age), .groups = "drop")
+}
+
 
 vaccine_age_bands_to_wider <- function(age_group_vacc) {
   case_when(
