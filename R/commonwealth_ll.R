@@ -137,6 +137,9 @@ linelist_commonwealth$date_onset <- NA
 
 regular_ll <- linelist
 
+#sanity check against dubious dates
+regular_ll <- regular_ll %>% filter(date_confirmation >= "2020-01-01")
+
 #visualise dow wave
 regular_ll %>%
   filter(date_confirmation >= (Sys.Date() - months(1))) %>%

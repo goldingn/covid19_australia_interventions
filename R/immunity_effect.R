@@ -173,13 +173,13 @@ ve_ticks_labels <- split_ticks_and_labels(
 )
 
 vaccination_effect_timeseries %>%
-  filter(variant == "Omicron") %>%
+  filter(variant %in% c("Omicron BA2","Omicron BA4/5")) %>%
   mutate(
     data_type = if_else(
       date <= data_date,
       "Actual",
-      "Forecast"
-    )
+      "Forecast"),
+    variant = word(variant, 2,2)
   ) %>%
   ggplot() +
   geom_line(
@@ -187,8 +187,8 @@ vaccination_effect_timeseries %>%
       x = date,
       y = effect,
       colour = state,
-      linetype = data_type#,
-      #alpha = variant
+      linetype = data_type,
+      alpha = variant
     ),
     size = 1
   ) +
@@ -196,8 +196,8 @@ vaccination_effect_timeseries %>%
   labs(
     x = NULL,
     y = "Change in transmission potential",
-    col = "State",
-    alpha = "Variant",
+    #col = NULL,
+    alpha = "Omicron sub-variant",
     linetype = "Data type"
   ) +
   scale_x_date(
@@ -206,14 +206,14 @@ vaccination_effect_timeseries %>%
   ) +
   ggtitle(
     label = "Vaccination effect",
-    subtitle = "Change in transmission potential of Omicron variant due to vaccination"
+    subtitle = "Change in transmission potential of Omicron sub-variants due to vaccination"
   ) +
   cowplot::theme_cowplot() +
   cowplot::panel_border(remove = TRUE) +
   theme(
     strip.background = element_blank(),
     axis.title.y.right = element_text(vjust = 0.5, angle = 90, size = font_size),
-    legend.position = c(0.02, 0.18),
+    legend.position = c(0.02, 0.14),
     legend.text = element_text(size = font_size),
     axis.text = element_text(size = font_size),
     plot.title = element_text(size = font_size + 8),
@@ -231,13 +231,15 @@ vaccination_effect_timeseries %>%
       "gold1"
     )
   ) +
-  scale_alpha_manual(values = c(0.4, 1)) +
+  scale_alpha_manual(values = c(0.5, 1)) +
   scale_linetype_manual(values = c(1,3)) +
   scale_y_continuous(
     position = "right",
     limits = c(0, 1),
     breaks = seq(0, 1, by = 0.1)
-  )
+  ) +
+  facet_wrap(~state, ncol = 2) +
+  guides(colour = "none") 
 
 ggsave(
   filename = sprintf(
@@ -254,7 +256,7 @@ ggsave(
 
 
 vaccination_effect_timeseries %>%
-  filter(variant == "Omicron") %>%
+  filter(variant %in% c("Omicron BA2","Omicron BA4/5")) %>%
   mutate(
     data_type = if_else(
       date <= data_date,
@@ -279,7 +281,8 @@ vaccination_effect_timeseries %>%
       x = date,
       y = delta_week,
       col = state,
-      linetype = data_type
+      linetype = data_type,
+      alpha = variant
     ),
     size = 1
   ) +
@@ -339,6 +342,69 @@ ggsave(
   scale = 1.2,
   bg = "white"
 )
+
+
+ve_tables %>%
+  select(date, coverage, ves) %>%
+  mutate(hosp = pmap(., get_hospitalisation_ve)) %>% 
+  select(date, hosp) %>%
+  unnest(hosp) %>%
+  
+  mutate(age_group = vaccine_age_bands_to_wider(age_band)) %>%
+  group_by(variant, date, state, age_group) %>%
+  summarise(m_hosp = mean(m_hosp)) %>%
+  filter(variant != "Delta") %>%
+  mutate(
+    data_type = if_else(
+      date <= data_date,
+      "Actual",
+      "Forecast"
+    )
+  ) %>%
+  mutate(age_group = factor(age_group, levels = c("0-4", "5-11", "12-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70-79", "80+"))) %>%
+  filter(state == "NSW") %>%
+  ggplot() +
+  geom_line(aes(x = date, y = m_hosp, linetype = data_type, alpha = variant),
+            color = "#0072B2") +
+  
+  geom_hline(yintercept = 0, size = 0.8, col = 'grey40')  +
+  
+  coord_cartesian(ylim = c(0, 1)) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+  
+  facet_wrap(~age_group, ncol = 2) +
+  xlab(NULL) + ylab("Change in probability of severe disease") +
+  
+  scale_linetype_manual("Data type", values = c(1, 2)) +
+  scale_alpha_manual("Omicron sub-variant", values = c(0.4, 1)) +
+  cowplot::theme_cowplot() +
+  cowplot::panel_border(remove = TRUE) +
+  
+  scale_x_date(breaks = seq(ymd("2021-01-01"), ymd("2023-01-01"), by = "3 months"),
+               labels = scales::label_date_short(format = c("%Y", "%b")),
+               expand = expansion(mult = c(0, 0.05))) +
+  
+  theme(
+    strip.background = element_blank(),
+    strip.text = element_text(hjust = 0, face = "bold"),
+    axis.title.y.right = element_text(vjust = 0.5, angle = 90),
+    panel.spacing = unit(1.2, "lines"),
+    legend.position = "bottom"
+  ) 
+
+
+ggsave(
+  filename = sprintf(
+    "outputs/figures/vaccination_severe_disease_effect_NSW_%s.png",
+    data_date_save
+  ),
+  dpi = dpi,
+  width = 1500 / dpi,
+  height = 1250 / dpi,
+  scale = 1.2,
+  bg = "white"
+)
+
 
 # population-wide VE of the vaccinated population for Peter / Adeshina --------
 coverage_fraction <- ve_tables %>%
@@ -443,17 +509,18 @@ local_cases <- read_csv("outputs/local_cases_input.csv") %>%
   ) %>%
   filter(date <= data_date)
 
-ascertainment_rates <- c(
-  1,
-  0.9,
-  0.8,
-  0.7,
-  0.6,
-  0.5,
-  0.4,
-  0.3#,
-  #0.2
-)
+# ascertainment_rates <- c(
+#   1,
+#   0.9,
+#   0.8,
+#   0.7,
+#   0.6,
+#   0.5,
+#   0.4,
+#   0.3#,
+#   #0.2
+# )
+ascertainment_rates <- c(0.5, 0.75)
 
 omicron_infections <- get_omicron_infections(
   local_cases,
@@ -620,7 +687,8 @@ combined_and_vax_timeseries <- bind_rows(
 # immunity effect plots ------
 
 combined_effect_timeseries %>%
-  filter(variant == "Omicron", date <= data_date) %>%
+  filter(variant %in% c("Omicron BA2","Omicron BA4/5"), 
+         date <= data_date) %>%
   mutate(ascertainment = as.character(ascertainment)) %>%
   ggplot() +
   geom_line(
@@ -628,7 +696,7 @@ combined_effect_timeseries %>%
       x = date,
       y = effect,
       colour = state,
-      #linetype = variant,
+      linetype = variant,
       alpha = ascertainment
     ),
     size = 1
@@ -639,7 +707,8 @@ combined_effect_timeseries %>%
     y = "Change in transmission potential",
     #col = "State",
     colour = NULL,
-    alpha = "Case\nascertainment\nproportion"
+    alpha = "Ascertainment rate",
+    linetype = "Sub-variant"#"Case\nascertainment\nproportion"
   ) +
   scale_x_date(
     breaks = ve_ticks_labels$ticks,
@@ -647,7 +716,7 @@ combined_effect_timeseries %>%
   ) +
   ggtitle(
     label = "Immunity effect",
-    subtitle = "Change in transmission potential of Omicron variant due to immunity from vaccination and infection with Omicron variant"
+    subtitle = "Change in transmission potential of Omicron sub-variants due to immunity from vaccination and infection with Omicron BA2 sub-variant, \nassuming 50% case ascertainment"
   ) +
   cowplot::theme_cowplot() +
   cowplot::panel_border(remove = TRUE) +
@@ -674,7 +743,8 @@ combined_effect_timeseries %>%
     ),
   ) +
   guides(colour = "none") +
-  scale_alpha_manual(values = unique(combined_effect_timeseries$ascertainment)) +
+  scale_alpha_manual(values = c(0.5,1)) +
+  scale_linetype_manual(values = c("dashed","solid")) + 
   scale_y_continuous(
     position = "right",
     limits = c(0, 1),
@@ -688,9 +758,15 @@ combined_effect_timeseries %>%
   facet_wrap(~state, ncol = 2) +
   geom_line(
     data = vaccination_effect_timeseries %>%
-      filter(date <= data_date, variant == "Omicron"),
+      filter(date <= data_date, variant == "Omicron BA2"),
     aes(x = date, y = effect),
     linetype = "dashed"
+  ) +
+  geom_line(
+    data = vaccination_effect_timeseries %>%
+      filter(date <= data_date, variant == "Omicron BA4/5"),
+    aes(x = date, y = effect),
+    linetype = "solid"
   )
 
 
@@ -709,7 +785,8 @@ ggsave(
 
 ie_short_labels <- split_ticks_and_labels(
   data = combined_effect_timeseries %>%
-    filter(variant == "Omicron", date <= data_date) %>%
+    filter(variant %in% c("Omicron BA2","Omicron BA4/5"), date <= data_date,
+           ascertainment == 0.5) %>%
     mutate(ascertainment = as.character(ascertainment)),
   tick_freq = "1 month",
   label_freq = "1 month",
@@ -717,7 +794,7 @@ ie_short_labels <- split_ticks_and_labels(
 )
 
 combined_effect_timeseries %>%
-  filter(variant == "Omicron", date <= data_date) %>%
+  filter(variant %in% c("Omicron BA2","Omicron BA4/5"), date <= data_date) %>%
   mutate(ascertainment = as.character(ascertainment)) %>%
   ggplot() +
   geom_line(
@@ -725,7 +802,7 @@ combined_effect_timeseries %>%
       x = date,
       y = effect,
       colour = state,
-      #linetype = variant,
+      linetype = variant,
       alpha = ascertainment
     ),
     size = 1
@@ -735,7 +812,8 @@ combined_effect_timeseries %>%
     x = NULL,
     y = "Change in transmission potential",
     col = NULL,
-    alpha = "Ascertainment\nproportion"
+    linetype = "Sub-variant",
+    alpha = "Ascertainment rate"
   ) +
   scale_x_date(
     # breaks = ie_short_labels$ticks,
@@ -745,14 +823,14 @@ combined_effect_timeseries %>%
   ) +
   ggtitle(
     label = "Immunity effect",
-    subtitle = "Change in transmission potential of Omicron variant due to immunity from vaccination and infection with Omicron variant"
+    subtitle = "Change in transmission potential of Omicron sub-variants due to immunity from vaccination and infection with Omicron BA2 sub-variant, \nassuming 50% case ascertainment"
   ) +
   cowplot::theme_cowplot() +
   cowplot::panel_border(remove = TRUE) +
   theme(
     strip.background = element_blank(),
     axis.title.y.right = element_text(vjust = 0.5, angle = 90, size = font_size),
-    legend.position = c(0.0, 0.14),
+    legend.position = c(0.0, 0.1),
     #legend.position = c(0.02, 0.18),
     legend.text = element_text(size = font_size-2),
     axis.text = element_text(size = font_size),
@@ -772,7 +850,8 @@ combined_effect_timeseries %>%
     )
   ) +
   guides(colour = "none") +
-  scale_alpha_manual(values = unique(combined_effect_timeseries$ascertainment)) +
+  scale_alpha_manual(values = c(0.5,1)) +
+  scale_linetype_manual(values = c("dashed","solid")) + 
   scale_y_continuous(
     position = "right",
     limits = c(0, 1),
@@ -786,9 +865,15 @@ combined_effect_timeseries %>%
   facet_wrap(~state, ncol = 2) +
   geom_line(
     data = vaccination_effect_timeseries %>%
-      filter(date <= data_date, date >= "2021-12-07",  variant == "Omicron"),
+      filter(date <= data_date, date >= "2021-12-07",  variant == "Omicron BA2"),
     aes(x = date, y = effect),
     linetype = "dashed"
+  ) +
+  geom_line(
+    data = vaccination_effect_timeseries %>%
+      filter(date <= data_date, date >= "2021-12-07", variant == "Omicron BA4/5"),
+    aes(x = date, y = effect),
+    linetype = "solid"
   )
 
 
@@ -985,78 +1070,78 @@ write_csv(
 #   geom_bar(aes(x = age_band, y = num_people, fill = vaccine), stat = "identity") +
 #   facet_wrap(~state, ncol = 2, scales = "free")
 
-
-ggplot(
-  data = aggregated_vaccination_data %>%
-    filter(age_band == "5-11") %>%
-    mutate(dose = as.factor(dose))
-) +
-  geom_line(
-    aes(
-      x = date,
-      y = num_people,
-      #alpha = age_band,
-      col = vaccine,
-      linetype = dose
-    )
-  ) +
-  facet_wrap(
-    ~ state,
-    ncol = 2,
-    scales = "free"
-  ) +
-  labs(title = "5-11")
-
-
-ggplot(
-  data = aggregated_vaccination_data %>%
-    filter(age_band == "35-39") %>%
-    mutate(dose = as.factor(dose))
-) +
-  geom_line(
-    aes(
-      x = date,
-      y = num_people,
-      #alpha = age_band,
-      col = vaccine,
-      linetype = dose
-    )
-  ) +
-  facet_wrap(
-    ~ state,
-    ncol = 2,
-    scales = "free"
-  ) +
-  labs(title = "35-39")
-
-ggplot(
-  data = aggregated_vaccination_data %>%
-    filter(age_band == "75-79") %>%
-    mutate(dose = as.factor(dose))
-) +
-  geom_line(
-    aes(
-      x = date,
-      y = num_people,
-      #alpha = age_band,
-      col = vaccine,
-      linetype = dose
-    )
-  ) +
-  facet_wrap(
-    ~ state,
-    ncol = 2,
-    scales = "free"
-  ) +
-  labs(title = "75-79")
-
-lapply(
-  X = date_sequence[1:3],
-  FUN = function(x){
-    
-  },
-  vaccine_scenarios = vaccine_state
-)
+# 
+# ggplot(
+#   data = aggregated_vaccination_data %>%
+#     filter(age_band == "5-11") %>%
+#     mutate(dose = as.factor(dose))
+# ) +
+#   geom_line(
+#     aes(
+#       x = date,
+#       y = num_people,
+#       #alpha = age_band,
+#       col = vaccine,
+#       linetype = dose
+#     )
+#   ) +
+#   facet_wrap(
+#     ~ state,
+#     ncol = 2,
+#     scales = "free"
+#   ) +
+#   labs(title = "5-11")
+# 
+# 
+# ggplot(
+#   data = aggregated_vaccination_data %>%
+#     filter(age_band == "35-39") %>%
+#     mutate(dose = as.factor(dose))
+# ) +
+#   geom_line(
+#     aes(
+#       x = date,
+#       y = num_people,
+#       #alpha = age_band,
+#       col = vaccine,
+#       linetype = dose
+#     )
+#   ) +
+#   facet_wrap(
+#     ~ state,
+#     ncol = 2,
+#     scales = "free"
+#   ) +
+#   labs(title = "35-39")
+# 
+# ggplot(
+#   data = aggregated_vaccination_data %>%
+#     filter(age_band == "75-79") %>%
+#     mutate(dose = as.factor(dose))
+# ) +
+#   geom_line(
+#     aes(
+#       x = date,
+#       y = num_people,
+#       #alpha = age_band,
+#       col = vaccine,
+#       linetype = dose
+#     )
+#   ) +
+#   facet_wrap(
+#     ~ state,
+#     ncol = 2,
+#     scales = "free"
+#   ) +
+#   labs(title = "75-79")
+# 
+# lapply(
+#   X = date_sequence[1:3],
+#   FUN = function(x){
+#     
+#   },
+#   vaccine_scenarios = vaccine_state
+# )
 
 
 # ve_tables <- tibble(

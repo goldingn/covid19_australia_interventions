@@ -41,16 +41,23 @@ omicron_no_vax <- read_csv(paste0("outputs/projection/omicron/r_eff_1_local_samp
 
 
 
-omicron_vax <- read_csv(paste0("outputs/projection/omicron_vax/r_eff_1_local_samples.csv"),
-                  col_types =cols(
-                    .default = col_double(),
-                    date = col_date(format = ""),
-                    state = col_character(),
-                    date_onset = col_date(format = "")
-                  )) 
+# omicron_vax <- read_csv(paste0("outputs/projection/omicron_vax/r_eff_1_local_samples.csv"),
+#                   col_types =cols(
+#                     .default = col_double(),
+#                     date = col_date(format = ""),
+#                     state = col_character(),
+#                     date_onset = col_date(format = "")
+#                   )) 
 
+omicron_BA2_vax <- read_csv(paste0("outputs/projection/omicron_BA2_vax/r_eff_1_local_samples.csv"),
+                        col_types =cols(
+                          .default = col_double(),
+                          date = col_date(format = ""),
+                          state = col_character(),
+                          date_onset = col_date(format = "")
+                        )) 
 
-omicron_combined <- read_csv(paste0("outputs/projection/omicron_combined/r_eff_1_local_samples.csv"),
+omicron_BA2_combined <- read_csv(paste0("outputs/projection/omicron_BA2_combined/r_eff_1_local_samples.csv"),
                         col_types =cols(
                           .default = col_double(),
                           date = col_date(format = ""),
@@ -111,7 +118,7 @@ r1 <- delta_combined %>%
   filter(date <= end.date)
 
 
-r2 <- omicron_combined %>% 
+r2 <- omicron_BA2_combined %>% 
   reshape2::melt(id.vars = c("date","state","date_onset")) %>%
   group_by(date,state) %>% 
   summarise(x = quantile(value, qs), q = qs) %>% 
@@ -195,7 +202,7 @@ r1 <- omicron_no_vax %>%
   rename("L90"="0.05", "L50"="0.25", "med"="0.5", "U50"="0.75", "U90"="0.95") %>% filter(date <= end.date)
 
 
-r2 <- omicron_combined %>% 
+r2 <- omicron_BA2_combined %>% 
   reshape2::melt(id.vars = c("date","state","date_onset")) %>%
   group_by(date,state) %>% 
   summarise(x = quantile(value, qs), q = qs) %>% 

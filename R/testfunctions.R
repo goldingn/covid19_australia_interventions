@@ -11,7 +11,7 @@ module <- greta::.internals$utils$misc$module
 fl <- greta:::fl
 tf_float <- greta:::tf_float
 
-
+library(zoo)
 library(readr)
 library(dplyr)
 library(stringr)
@@ -5513,8 +5513,8 @@ reff_model_data <- function(
  
   vaccine_effect_timeseries <- readRDS("outputs/vaccination_effect.RDS")
   
-  ve_omicron_ba2 <- vaccine_effect_timeseries %>%
-    filter(variant == "Omicron BA2") %>%
+  ve_omicron <- vaccine_effect_timeseries %>%
+    filter(variant == "Omicron") %>%
     select(date, state, effect)
   
   ve_delta <- vaccine_effect_timeseries %>%
@@ -5537,7 +5537,7 @@ reff_model_data <- function(
     dplyr::select(-date) %>%
     as.matrix
   
-  vaccine_effect_matrix_omicron_ba2 <- ve_omicron_ba2 %>%
+  vaccine_effect_matrix_omicron <- ve_omicron %>%
     pivot_wider(
       names_from = state,
       values_from = effect
@@ -5554,61 +5554,61 @@ reff_model_data <- function(
     as.matrix
   
   
-  omicron_ba2_matrix <- prop_variant(dates_project)$prop_omicron
+  omicron_matrix <- prop_variant(dates_project)$prop_omicron
   
-  omicron_ba2_index <- which(omicron_ba2_matrix == 1)
+  omicron_index <- which(omicron_matrix == 1)
   
   vaccine_effect_matrix <- vaccine_effect_matrix_delta
   
-  vaccine_effect_matrix[omicron_ba2_index] <- vaccine_effect_matrix_omicron_ba2[omicron_ba2_index]
+  vaccine_effect_matrix[omicron_index] <- vaccine_effect_matrix_omicron[omicron_index]
   
   vaccine_dates <- unique(vaccine_effect_timeseries$date)
   
-  # #case ascertainment assumptions
-  # date_seq_asc <- seq.Date(
-  #   from = as.Date("2021-12-01"),
-  #   to = Sys.Date() + weeks(16),
-  #   by = "1 week"
-  # )
-  # case_ascertainment_tables <- tibble(date = date_seq_asc)
-  # 
-  # # NSW, VIC, ACT and QLD
-  # # Case ascertainment at 75% from 1 December 2021, drop to 33.3% from
-  # # 12 December 2021 to 22 January 2022, and return to 75% by 23 January
-  # # 2022.
-  # 
-  # # WA, SA, NT, and TAS
-  # # Assume constant 75% case ascertainment from 1 December 2021
-  # 
-  # date_state_ascertainment <- expand_grid(date = seq.Date(
-  #   from = min(case_ascertainment_tables$date),
-  #   to = max(case_ascertainment_tables$date),
-  #   by = 1
-  # ),
-  # state = states) %>% # states = sort(unique(linelist$state)
-  #   mutate(
-  #     ascertainment = case_when(
-  #       state %in% c("NSW", "ACT", "VIC", "QLD") &
-  #         (date >= "2021-12-01") & (date < "2021-12-12") ~ 0.75,
-  #       state %in% c("NSW", "ACT", "VIC", "QLD") &
-  #         (date >= "2021-12-20") & (date < "2022-01-16") ~ 0.33,
-  #       state %in% c("NSW", "ACT", "VIC", "QLD") &
-  #         (date >= "2022-01-23") ~ 0.75,
-  #       state %in% c("WA", "NT", "SA", "TAS") ~ 0.75,
-  #       TRUE ~ NA_real_
-  #     )
-  #   ) %>%
-  #   arrange(state) %>%
-  #   mutate(ascertainment = na.approx(ascertainment))
-  # 
-  # ascertainment_matrix <- date_state_ascertainment %>%
-  #   pivot_wider(names_from = state, values_from = ascertainment) %>%
-  #   right_join(y = tibble(date = dates_project)) %>%
-  #   arrange(date) %>%
-  #   mutate(across(-date, ~ replace_na(.x, 1))) %>% # 100% FOR PRE DEC 2021
-  #   dplyr::select(-date) %>%
-  #   as.matrix
-  # 
+  #case ascertainment assumptions
+  date_seq_asc <- seq.Date(
+    from = as.Date("2021-12-01"),
+    to = Sys.Date() + weeks(16),
+    by = "1 week"
+  )
+  case_ascertainment_tables <- tibble(date = date_seq_asc)
+
+  # NSW, VIC, ACT and QLD
+  # Case ascertainment at 75% from 1 December 2021, drop to 33.3% from
+  # 12 December 2021 to 22 January 2022, and return to 75% by 23 January
+  # 2022.
+
+  # WA, SA, NT, and TAS
+  # Assume constant 75% case ascertainment from 1 December 2021
+
+  date_state_ascertainment <- expand_grid(date = seq.Date(
+    from = min(case_ascertainment_tables$date),
+    to = max(case_ascertainment_tables$date),
+    by = 1
+  ),
+  state = states) %>% # states = sort(unique(linelist$state)
+    mutate(
+      ascertainment = case_when(
+        state %in% c("NSW", "ACT", "VIC", "QLD") &
+          (date >= "2021-12-01") & (date < "2021-12-12") ~ 0.75,
+        state %in% c("NSW", "ACT", "VIC", "QLD") &
+          (date >= "2021-12-20") & (date < "2022-01-16") ~ 0.33,
+        state %in% c("NSW", "ACT", "VIC", "QLD") &
+          (date >= "2022-01-23") ~ 0.75,
+        state %in% c("WA", "NT", "SA", "TAS") ~ 0.75,
+        TRUE ~ NA_real_
+      )
+    ) %>%
+    arrange(state) %>%
+    mutate(ascertainment = na.approx(ascertainment))
+
+  ascertainment_matrix <- date_state_ascertainment %>%
+    pivot_wider(names_from = state, values_from = ascertainment) %>%
+    right_join(y = tibble(date = dates_project)) %>%
+    arrange(date) %>%
+    mutate(across(-date, ~ replace_na(.x, 1))) %>% # 100% FOR PRE DEC 2021
+    dplyr::select(-date) %>%
+    as.matrix
+
   # return a named, nested list of these objects
   list(
     local = list(
@@ -5647,7 +5647,7 @@ reff_model_data <- function(
     n_dates_project = n_dates_project,
     n_inducing =  n_inducing,
     vaccine_effect_matrix = vaccine_effect_matrix,
-   # ascertainment_matrix = ascertainment_matrix,
+    ascertainment_matrix = ascertainment_matrix,
     dow_effect = dow_effect
   )
   
@@ -5656,15 +5656,15 @@ reff_model_data <- function(
 reff_model <- function(data) {
   
   # reduction in R due to surveillance detecting and isolating infectious people
-  surveillance_reff_local_reduction <- surveillance_effect(
+  surveillance_reff_local_reduction_no_asc <- surveillance_effect(
     dates = data$dates$infection_project,
     cdf = gi_cdf,
     states = data$states
   )
   
-  # ascertainment_rate <- data$ascertainment_matrix
-  # surveillance_effect_local_reduction_with_ascertainment <- 1 - ((1 - surveillance_reff_local_reduction) * ascertainment_rate)
-  # 
+  ascertainment_rate <- data$ascertainment_matrix
+  surveillance_reff_local_reduction <- 1 - ((1 - surveillance_reff_local_reduction_no_asc) * ascertainment_rate)
+
   # extra_isolation_local_reduction <- extra_isolation_effect(
   #   dates = data$dates$infection_project,
   #   cdf = gi_cdf,
@@ -10282,12 +10282,14 @@ simulate_variant <- function(
   
   
   # multiply by the surveillance effect to get component 1
-  surveillance_reff_local_reduction <- surveillance_effect(
+  surveillance_reff_local_reduction_no_asc <- surveillance_effect(
     dates = data$dates$infection_project,
     cdf = gi_cdf,
     states = data$states
   )
-  # 
+  # adding ascertainment
+  ascertainment_rate <- data$ascertainment_matrix
+  surveillance_reff_local_reduction <- 1 - ((1 - surveillance_reff_local_reduction_no_asc) * ascertainment_rate)
   
   wt_fitted_model <- .fitted_model
   
@@ -11669,9 +11671,7 @@ log10_neut_density <- function(x, mean, sd) {
 }
 
 
-get_vaccine_efficacies <- function(vaccine_cohorts, 
-                                   variants = c("Delta", "Omicron BA2", "Omicron BA4/5"),
-                                   neut_immune_escape = 0.44) {
+get_vaccine_efficacies <- function(vaccine_cohorts, neut_immune_escape = 1) {
   
   # load omicron parameters in wide format and subset to different parameter sets
   params_wide <- get_omicron_params_wide()
@@ -11720,13 +11720,13 @@ get_vaccine_efficacies <- function(vaccine_cohorts,
     # compute the peak and waned log10 mean neuts for each cohort
     mutate(
       peak_neuts = case_when(
-        immunity == "AZ_dose_1" ~ log10_mean_neut_AZ_dose_1,
-        immunity == "AZ_dose_2" ~ log10_mean_neut_AZ_dose_2,
-        immunity == "Pf_dose_1" ~ log10_mean_neut_Pfizer_dose_1,
-        immunity == "Pf_dose_2" ~ log10_mean_neut_Pfizer_dose_2,
+        immunity == "AZ_dose_1" ~ log10_mean_neut_AZ_dose_1 + log10(neut_immune_escape),
+        immunity == "AZ_dose_2" ~ log10_mean_neut_AZ_dose_2 + log10(neut_immune_escape),
+        immunity == "Pf_dose_1" ~ log10_mean_neut_Pfizer_dose_1 + log10(neut_immune_escape),
+        immunity == "Pf_dose_2" ~ log10_mean_neut_Pfizer_dose_2 + log10(neut_immune_escape),
         #immunity == "mRNA_booster" ~ log10_mean_neut_mRNA_booster
-        immunity == "mRNA_dose_3" ~ log10_mean_neut_mRNA_booster,
-        immunity == "mRNA_dose_4" ~ log10_mean_neut_mRNA_booster + log10(1.33)
+        immunity == "mRNA_dose_3" ~ log10_mean_neut_mRNA_booster + log10(neut_immune_escape),
+        immunity == "mRNA_dose_4" ~ log10_mean_neut_mRNA_booster + log10(1.33) + log10(neut_immune_escape)
       )
     ) %>%
     mutate(
@@ -11759,14 +11759,13 @@ get_vaccine_efficacies <- function(vaccine_cohorts,
     # for omicron, adjust down the neuts
     full_join(
       tibble(
-        variant = variants
+        variant = c("Delta", "Omicron")
       ),
       by = character()
     ) %>%
     mutate(
       neuts = case_when(
-        variant == "Omicron BA2" ~ neuts + omicron_log10_neut_fold,
-        variant == "Omicron BA4/5" ~ neuts + omicron_log10_neut_fold + log10(neut_immune_escape),
+        variant == "Omicron" ~ neuts + omicron_log10_neut_fold,
         TRUE ~ neuts
       )
     ) %>%
@@ -12092,9 +12091,7 @@ get_coverage_infection <- function(infection_cohort) {
 
 get_infection_efficacies_vax <- function(
   vaccine_cohorts,
-  infection_cohorts, 
-  variants = c("Omicron BA2", "Omicron BA4/5"),
-  neut_immune_escape = 0.44
+  infection_cohorts
 ) {
   
   # load omicron parameters in wide format and subset to different parameter sets
@@ -12227,15 +12224,12 @@ get_infection_efficacies_vax <- function(
     # for omicron, adjust down the neuts
     full_join(
       tibble(
-        variant = variants
+        variant = c(
+          #"Delta",
+          "Omicron"
+        )
       ),
       by = character()
-    ) %>%    
-    mutate(
-      neuts = case_when(
-        variant == "Omicron BA4/5" ~ neuts + log10(neut_immune_escape),
-        TRUE ~ neuts
-      )
     ) %>%
     # compute all the VEs in one shot with Gaussian integration
     pivot_longer(
@@ -12267,9 +12261,7 @@ get_infection_efficacies_vax <- function(
 }
 
 
-get_infection_efficacies_infection_only <- function(vaccine_cohorts, 
-                                                    variants = c("Omicron BA2", "Omicron BA4/5"),
-                                                    neut_immune_escape = 0.44) {
+get_infection_efficacies_infection_only <- function(vaccine_cohorts) {
   
   # load omicron parameters in wide format and subset to different parameter sets
   params_wide <- get_omicron_params_wide()
@@ -12362,16 +12354,19 @@ get_infection_efficacies_infection_only <- function(vaccine_cohorts,
     # for omicron, adjust down the neuts
     full_join(
       tibble(
-        variant = variants
+        variant = c(
+          #"Delta",
+          "Omicron"
+        )
       ),
       by = character()
     ) %>%
-    mutate(
-      neuts = case_when(
-        variant == "Omicron BA4/5" ~ neuts + log10(neut_immune_escape),
-        TRUE ~ neuts
-      )
-    ) %>%
+    # mutate(
+    #   neuts = case_when(
+    #     variant == "Omicron" ~ neuts + omicron_log10_neut_fold,
+    #     TRUE ~ neuts
+    #   )
+    # ) %>%
     # compute all the VEs in one shot with Gaussian integration
     pivot_longer(
       cols = starts_with("c50"),
@@ -12566,7 +12561,7 @@ combine_transmission_effects <- function(
   # combine coverage and VEs to get transmission reduction for each rollout
   # scenario, and omicron scenario
   ves %>%
-    filter(variant %in% c("Omicron BA2","Omicron BA4/5")) %>%
+    filter(variant == "Omicron") %>%
     # add back in the younger age_groups
     complete(
       scenario,
@@ -12677,33 +12672,6 @@ combine_transmission_effects <- function(
     ) %>%
     ungroup
   
-}
-
-get_hospitalisation_ve <- function(coverage, ves, ...) {
-  ves %>%
-    filter(outcome == "hospitalisation") %>%
-    
-    left_join(coverage, by = c("scenario", "state", "age_band")) %>%
-    complete(scenario, omicron_scenario, state, age_band, variant, outcome) %>%
-    
-    mutate(ve = replace_na(ve, 0),
-           coverage = replace_na(coverage, 0),
-           m_hosp = 1 - ve * coverage)
-}
-
-
-vaccine_age_bands_to_wider <- function(age_group_vacc) {
-  case_when(
-    age_group_vacc %in% c("0-4") ~ "0-4",
-    age_group_vacc %in% c("5-11") ~ "5-11",
-    age_group_vacc %in% c("12-15", "16-19") ~ "12-19",
-    age_group_vacc %in% c("20-24", "25-29") ~ "20-29",
-    age_group_vacc %in% c("30-34", "35-39") ~ "30-39",
-    age_group_vacc %in% c("40-44", "45-49") ~ "40-49",
-    age_group_vacc %in% c("50-54", "55-59") ~ "50-59",
-    age_group_vacc %in% c("60-64", "65-69") ~ "60-69",
-    age_group_vacc %in% c("70-74", "75-79") ~ "70-79",
-    age_group_vacc %in% c("80+") ~ "80+")
 }
 
 #deal with empty ggsave background
