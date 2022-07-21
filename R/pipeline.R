@@ -37,16 +37,16 @@ ggsave(
 # data/contacts/barometer/contact numbers wave <wave>.csv), run microdistancing
 # model, and output figure (microdistancing_effect.png) and trend estimates
 # (microdistancing_trends.RDS) [~2 min]
-source("R/microdistancing_change.R")
+source("R/microdistancing_change.R") # ~ 10 mins
 # -- email data/microdistancing/Barometer wave <wave> compliance.csv and
 # data/contacts/barometer/contact numbers wave <wave>.csv to Tobin/Dylan/Josh
 # -- figure to dropbox / Freya
 
 # 8. Run macrodistancing model and output figure ((microdistancing_effect.png) and
 # trend estimates (macrodistancing_trends.RDS). Can be run concurrently with
-# microdistancing model (i.e. on a separate process/machine) [~5-8h]
+# microdistancing model (i.e. on a separate process/machine) [~10h]
 # macro takes half a day to run so best to do on Mondays
-source("R/macrodistancing_change.R")
+source("R/macrodistancing_change.R") 
 # -- figure to dropbox / Freya
 
 # Section B) Dependent on NNDSS data update:
@@ -64,6 +64,12 @@ linelist <- load_linelist(use_vic = FALSE)#skip Vic when using commonwealth data
 # remove dubious SA onset dates
 linelist$date_onset[(linelist$state == "SA" & linelist$date_onset >= as_date("2022-02-27"))] <- NA
 
+
+#check min & max dates
+
+min_date <- min(linelist$date_confirmation)
+max_date <- max(linelist$date_confirmation)
+
 saveRDS(
   linelist,
   sprintf(
@@ -73,7 +79,7 @@ saveRDS(
   )
 )
 
-source("R/rolling_delays.R")
+source("R/rolling_delays.R") #[~2h]
 #  -- figs to dropbox / to Freya
 
 # 4. TTIQ and Isolation effect
@@ -85,7 +91,7 @@ source("R/rolling_delays.R")
 # load in commonwealth summary data and process it in reff model format
 #  this is a temporary data stream
 # inputing onset dates takes several hours so expect this script to take long
-source("R/commonwealth_ll.R")
+source("R/commonwealth_ll.R") #[~5mins]
 
 
 # # 5. Sync NNDSS data and write out case data (local_cases.csv) for Monash (Rob Hyndman/Mitch)
@@ -113,7 +119,7 @@ source("R/commonwealth_ll.R")
 
 # 2. Vaccination effect - Quantium update usually CoB Tuesday
 # [~ 15 min]
-source("R/immunity_effect.R")
+source("R/immunity_effect.R") #[~1hr]
 # -- Figs into dropbox / to Freya
 # -- vaccination_effect_timeseries_<date>.csv to dropbox and mediaflux
 # -- effective_dose_data_<date>.csv to mediaflux
@@ -131,5 +137,5 @@ source("R/immunity_effect.R")
 source("R/R_effective.R")
 ## - figures, samples as above, plus wt, alpha and delta, and
 # outputs/output_dates.csv to dropbox/Freya
-
+# tp_novax emailed to alexandra.hogan@unsw.edu.au,flynn.hill@health.nsw.gov.au & probably also good to cc james.wood@unsw.edu.au
 # hooray - you're done!
