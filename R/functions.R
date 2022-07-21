@@ -6265,7 +6265,7 @@ reff_plotting <- function(
   }
   
   if(is.na(min_date)){
-    min_date <- max_date - months(6)
+    min_date <- max_date %m-% months(6)
   }
   
   # reformat case data for plotting (C1 and C12)
