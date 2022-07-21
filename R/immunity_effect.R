@@ -361,7 +361,8 @@ ve_tables %>%
       "Forecast"
     )
   ) %>%
-  mutate(age_group = factor(age_group, levels = c("0-4", "5-11", "12-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70-79", "80+"))) %>%
+  mutate(age_group = factor(age_group, levels = c("0-4", "5-11", "12-19", "20-29", 
+                                                  "30-39", "40-49", "50-59", "60-69", "70-79", "80+"))) %>%
   filter(state == "NSW") %>%
   ggplot() +
   geom_line(aes(x = date, y = m_hosp, linetype = data_type, alpha = variant),
@@ -373,7 +374,7 @@ ve_tables %>%
   scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
   
   facet_wrap(~age_group, ncol = 2) +
-  xlab(NULL) + ylab("Change in probability of severe disease") +
+  xlab(NULL) + ylab("Change in probability of hospitalisation") +
   
   scale_linetype_manual("Data type", values = c(1, 2)) +
   scale_alpha_manual("Omicron sub-variant", values = c(0.4, 1)) +
@@ -755,19 +756,20 @@ combined_effect_timeseries %>%
       xintercept = data_date
     )
   ) +
-  facet_wrap(~state, ncol = 2) +
-  geom_line(
-    data = vaccination_effect_timeseries %>%
-      filter(date <= data_date, variant == "Omicron BA2"),
-    aes(x = date, y = effect),
-    linetype = "dashed"
-  ) +
-  geom_line(
-    data = vaccination_effect_timeseries %>%
-      filter(date <= data_date, variant == "Omicron BA4/5"),
-    aes(x = date, y = effect),
-    linetype = "solid"
-  )
+  facet_wrap(~state, ncol = 2) 
+# +
+#   geom_line(
+#     data = vaccination_effect_timeseries %>%
+#       filter(date <= data_date, variant == "Omicron BA2"),
+#     aes(x = date, y = effect),
+#     linetype = "dashed"
+#   ) +
+#   geom_line(
+#     data = vaccination_effect_timeseries %>%
+#       filter(date <= data_date, variant == "Omicron BA4/5"),
+#     aes(x = date, y = effect),
+#     linetype = "solid"
+#   )
 
 
 ggsave(
@@ -862,19 +864,19 @@ combined_effect_timeseries %>%
       xintercept = data_date
     )
   ) +
-  facet_wrap(~state, ncol = 2) +
-  geom_line(
-    data = vaccination_effect_timeseries %>%
-      filter(date <= data_date, date >= "2021-12-07",  variant == "Omicron BA2"),
-    aes(x = date, y = effect),
-    linetype = "dashed"
-  ) +
-  geom_line(
-    data = vaccination_effect_timeseries %>%
-      filter(date <= data_date, date >= "2021-12-07", variant == "Omicron BA4/5"),
-    aes(x = date, y = effect),
-    linetype = "solid"
-  )
+   facet_wrap(~state, ncol = 2) 
+#   geom_line(
+#     data = vaccination_effect_timeseries %>%
+#       filter(date <= data_date, date >= "2021-12-07",  variant == "Omicron BA2"),
+#     aes(x = date, y = effect),
+#     linetype = "dashed"
+#   ) +
+#   geom_line(
+#     data = vaccination_effect_timeseries %>%
+#       filter(date <= data_date, date >= "2021-12-07", variant == "Omicron BA4/5"),
+#     aes(x = date, y = effect),
+#     linetype = "solid"
+#   )
 
 
 ggsave(
