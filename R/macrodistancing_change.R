@@ -330,6 +330,83 @@ p
 save_ggplot("macrodistancing_effect.png")
 
 
+p <- plot_trend(pred_sim,
+                data = plot_data,
+                multistate = TRUE,
+                base_colour = purple,
+                max_date = max(data$contacts$date),
+                ylim = c(0, 20),
+                hline_at = NULL) + 
+  ggtitle(label = "Macro-distancing trend",
+          subtitle = "Rate of non-household contacts") +
+  ylab("Estimated mean number of non-household contacts per day") + 
+  
+  # add baseline estimate
+  geom_point(
+    aes(date, estimate),
+    data = baseline_point,
+    size = 0.5,
+    colour = grey(0.5)
+  ) +
+  geom_errorbar(
+    aes(
+      date,
+      estimate,
+      ymin = lower,
+      ymax = upper
+    ),
+    data = baseline_point,
+    width = 0,
+    colour = grey(0.5)
+  ) + 
+  
+  # rug marks for holidays
+  geom_rug(
+    aes(date),
+    data = holiday_lines,
+    col = green,
+    size = 1,
+    length = unit(0.05, "npc"),
+    sides = "b",
+    inherit.aes = FALSE
+  ) +
+  
+  # add survey results estimate
+  # geom_point(
+  #   aes(
+  #     wave_date,
+  #     estimate,
+  #   ),
+  #   data = survey_points,
+  #   size = 2,
+  #   pch = "_"
+  # ) +
+  # 
+  # geom_errorbar(
+  #   aes(
+  #     wave_date,
+  #     estimate,
+  #     ymin = lower,
+  #     ymax = upper,
+  #   ),
+  #   data = survey_points,
+  #   size = 1,
+  #   alpha = 0.2,
+  #   width = 0
+  # ) +
+  scale_x_date(
+    breaks = macro_ticks_labels$ticks,
+    labels = macro_ticks_labels$labels
+  ) +
+  theme(
+    axis.text.x = element_text(size = 8),
+    axis.ticks.x = element_line(colour = macro_ticks_labels$tick.cols)
+  )
+
+p
+
+save_ggplot("macrodistancing_effect_no_data_vis.png")
+
 # non-household contacts
 p <- plot_trend(pred_sim,
                 data = plot_data,

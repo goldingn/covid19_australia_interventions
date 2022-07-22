@@ -8,7 +8,7 @@ source("R/functions.R")
 ll_filepath <- "~/not_synced/PCR and RAT Breakdown (24 hour totals).xlsx"
 
 linelist_commonwealth <- read_xlsx(ll_filepath,
-                  range = "B4:AC158",sheet = 2,
+                  range = "B4:AC200",sheet = 2,
                   col_types = c("date",rep("numeric",27))) %>% 
   select(-starts_with("Total"))
 
