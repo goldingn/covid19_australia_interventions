@@ -155,8 +155,7 @@ max_intervention_stage <- intervention_steps %>%
 
 mask_pred_data <- expand_grid(
   date = seq.Date(from = min_data_date, to = max_data_date, by = 1),
-  state = unique(mask_data_yn$state),
-  distancing = 1
+  state = unique(mask_data_yn$state)
 )
 
 
@@ -165,22 +164,19 @@ df_fit <- mask_data_yn %>%
     intervention_steps,
     by = c("state", "date")
   )%>%
-  mutate(distancing = 1) %>%
   dplyr::select(
     state,
     date,
     count,
     respondents,
-    intervention_stage,
-    distancing
+    intervention_stage
   ) %>%
   nest(
     fit_dat = c(
       date,
       count,
       respondents,
-      intervention_stage,
-      distancing
+      intervention_stage
     )
   )
 
@@ -210,14 +206,12 @@ df_pred <- mask_pred_data %>%
   dplyr::select(
     state,
     date,
-    intervention_stage,
-    distancing
+    intervention_stage
   ) %>%
   nest(
     pred_dat = c(
       date,
-      intervention_stage,
-      distancing
+      intervention_stage
     )
   )
 
@@ -229,19 +223,88 @@ df_mask <- full_join(
   by = "state"
 )
 
+x <- 6
+fit_dat <- df_mask$fit_dat[[x]]
+pred_dat <- df_mask$pred_dat[[x]]
+
+fit_mask_gam <- function(
+  fit_dat,
+  pred_dat
+){
+  
+  respondents <- fit_dat$respondents
+  count <- fit_dat$count
+  date <- fit_dat$date
+  intervention_stage <- fit_dat$intervention_stage
+  
+  date_num <- as.numeric(date - min(date))
+  
+  
+  if(length(unique(fit_dat$intervention_stage)) == 1) {
+    m <- mgcv::gam(
+      cbind(count, I(respondents - count)) ~ s(date_num),
+      select = TRUE,
+      family = stats::binomial,
+      optimizer = c("outer","optim")
+    )
+  } else {
+    m <- mgcv::gam(
+      cbind(count, I(respondents - count)) ~ s(date_num)  + intervention_stage,
+      select = TRUE,
+      family = stats::binomial,
+      optimizer = c("outer","optim")
+    )
+  }
+
+  
+  pred_dat$date_num <- as.numeric(pred_dat$date - min(date))
+  
+  #pred <- predict(m, se.fit = TRUE, type = "link")
+  pred <- predict(
+    object = m,
+    newdata = pred_dat,
+    se.fit = TRUE,
+    type = "link"
+  )
+  
+  quantile95 <- qnorm(0.95)
+  quantile75 <- qnorm(0.75)
+  ci_90_hi <- pred$fit + (quantile95 * pred$se.fit)
+  ci_90_lo <- pred$fit - (quantile95 * pred$se.fit)
+  ci_50_hi <- pred$fit + (quantile75 * pred$se.fit)
+  ci_50_lo <- pred$fit - (quantile75 * pred$se.fit)
+  
+  fitted <- m$family$linkinv(pred$fit)
+  ci_90_hi <- m$family$linkinv(ci_90_hi)
+  ci_90_lo <- m$family$linkinv(ci_90_lo)
+  ci_50_hi <- m$family$linkinv(ci_50_hi)
+  ci_50_lo <- m$family$linkinv(ci_50_lo)
+  
+  
+  
+  tibble(
+    date = pred_dat$date,
+    mean = fitted ,
+    ci_90_lo,
+    ci_50_lo,
+    ci_50_hi,
+    ci_90_hi
+  )
+  
+}
 
 
 
 mask_fit <- mapply(
-  FUN = fit_survey_gam,
+  FUN = fit_mask_gam,
   fit_dat = df_mask$fit_dat,
   pred_dat = df_mask$pred_dat,
   SIMPLIFY = FALSE
 )
 
 
-pred_plot <- df_mic %>%
-  mutate(fit = survey_fit) %>% 
+pred_plot <- df_mask %>%
+  mutate(fit = mask_fit) %>% 
   unnest(fit) %>%
   dplyr::select(-fit_dat, -pred_dat)
 
@@ -256,7 +319,7 @@ line_df <- pred_plot %>%
 
 
 
-point_df <- survey_distance %>%
+point_df <- mask_data_yn %>%
   group_by(state, wave_date) %>%
   summarise(
     count =  sum(count),
@@ -308,13 +371,13 @@ point_df <- point_df %>%
     upper = cis[, 2] * 100
   )
 
-# save these fits for plotting later
-module(line_df, point_df) %>%
-  saveRDS("outputs/micro_plotting_data.RDS")
+# # save these fits for plotting later
+# module(line_df, point_df) %>%
+#   saveRDS("outputs/mask_plotting_data.RDS")
 
 
 
-base_colour <- purple
+base_colour <- "#98F5FF"
 
 p <- ggplot(line_df) +
   
@@ -324,7 +387,7 @@ p <- ggplot(line_df) +
   
   coord_cartesian(ylim = c(0, 100)) +
   scale_y_continuous(position = "right") +
-  scale_x_date(date_breaks = "2 month", date_labels = "%e/%m") +
+  scale_x_date(date_breaks = "4 month", date_labels = "%b%y") +
   scale_alpha(range = c(0, 0.5)) +
   scale_fill_manual(values = c("Nowcast" = base_colour)) +
   
@@ -376,17 +439,15 @@ p <- ggplot(line_df) +
   
   # and titles  
   ggtitle(
-    label = "Micro-distancing trend",
-    subtitle = "Calibrated against self-reported adherence to physical distancing"
+    label = "Mask-wearing trend",
+    subtitle = "Calibrated against self-reported mask-wearing"
   ) +
-  ylab("Estimate of percentage 'always' keeping 1.5m distance")
+  ylab("Estimate of percentage 'always' wearing face covering")
 
 p
 
 
-save_ggplot("microdistancing_effect.png")
-
-
+save_ggplot("mask_wearing_always.png")
 
 p <- ggplot(line_df) +
   
@@ -396,7 +457,7 @@ p <- ggplot(line_df) +
   
   coord_cartesian(ylim = c(0, 100)) +
   scale_y_continuous(position = "right") +
-  scale_x_date(date_breaks = "2 month", date_labels = "%e/%m") +
+  scale_x_date(date_breaks = "4 month", date_labels = "%b%y") +
   scale_alpha(range = c(0, 0.5)) +
   scale_fill_manual(values = c("Nowcast" = base_colour)) +
   
@@ -429,203 +490,15 @@ p <- ggplot(line_df) +
         axis.title.y.right = element_text(vjust = 0.5, angle = 90),
         panel.spacing = unit(1.2, "lines"),
         axis.text.x = element_text(size = 7)) +
-  # 
-  # # add empirical percentages
-  # geom_point(
-  #   aes(date, percentage),
-  #   data = point_df,
-  #   size = 2,
-  #   pch = "_"
-  # ) +
-  # 
-  # geom_errorbar(
-  #   aes(date, percentage, ymin = lower, ymax = upper),
-  #   data = point_df,
-  #   size = 1,
-  #   alpha = 0.2,
-  #   width = 0
-  # ) +
-  # 
+  
   # and titles  
   ggtitle(
-    label = "Micro-distancing trend",
-    subtitle = "Calibrated against self-reported adherence to physical distancing"
+    label = "Mask-wearing trend",
+    subtitle = "Calibrated against self-reported mask-wearing"
   ) +
-  ylab("Estimate of percentage 'always' keeping 1.5m distance")
+  ylab("Estimate of percentage 'always' wearing face covering")
 
 p
 
 
-save_ggplot("microdistancing_effect_no_data_vis.png")
-
-
-p <- ggplot(line_df) +
-  
-  aes(date, mean, fill = type) +
-  
-  xlab(element_blank()) +
-  
-  coord_cartesian(ylim = c(0, 100)) +
-  scale_y_continuous(position = "right") +
-  scale_x_date(date_breaks = "2 month", date_labels = "%e/%m") +
-  scale_alpha(range = c(0, 0.5)) +
-  scale_fill_manual(values = c("Nowcast" = base_colour)) +
-  
-  geom_vline(
-    aes(xintercept = date),
-    data = interventions(),
-    colour = "grey80"
-  ) +
-  
-  geom_ribbon(aes(ymin = ci_90_lo,
-                  ymax = ci_90_hi),
-              alpha = 0.2) +
-  geom_ribbon(aes(ymin = ci_50_lo,
-                  ymax = ci_50_hi),
-              alpha = 0.5) +
-  geom_line(aes(y = ci_90_lo),
-            colour = base_colour,
-            alpha = 0.8) + 
-  geom_line(aes(y = ci_90_hi),
-            colour = base_colour,
-            alpha = 0.8) + 
-  
-  facet_wrap(~state, ncol = 2, scales = "free") +
-  
-  cowplot::theme_cowplot() +
-  cowplot::panel_border(remove = TRUE) +
-  theme(legend.position = "none",
-        strip.background = element_blank(),
-        strip.text = element_text(hjust = 0, face = "bold"),
-        axis.title.y.right = element_text(vjust = 0.5, angle = 90),
-        panel.spacing = unit(1.2, "lines"),
-        axis.text.x = element_text(size = 8)) +
-  
-  # add empirical percentages
-  geom_point(
-    aes(date, percentage),
-    data = point_df,
-    size = 2,
-    pch = "_"
-  ) +
-  
-  geom_errorbar(
-    aes(date, percentage, ymin = lower, ymax = upper),
-    data = point_df,
-    size = 1,
-    alpha = 0.2,
-    width = 0
-  ) +
-  
-  # and titles  
-  ggtitle(
-    label = "Micro-distancing trend",
-    subtitle = "Calibrated against self-reported adherence to physical distancing"
-  ) +
-  ylab("Estimate of percentage 'always' keeping 1.5m distance")
-
-p
-
-
-save_ggplot("microdistancing_effect.png")
-
-#micro_date_six_month <- as.Date(max(line_df$date)) %m-%months(6)
-micro_date_six_month <- max(line_df$date) - months(6)
-
-p <- ggplot(line_df %>%
-              filter(date >= micro_date_six_month)) +
-  
-  aes(date, mean, fill = type) +
-  
-  xlab(element_blank()) +
-  
-  coord_cartesian(ylim = c(0, 100)) +
-  scale_y_continuous(position = "right") +
-  scale_x_date(date_breaks = "1 month", date_labels = "%e/%m") +
-  scale_alpha(range = c(0, 0.5)) +
-  scale_fill_manual(values = c("Nowcast" = base_colour)) +
-  
-  geom_vline(
-    aes(xintercept = date),
-    data = interventions(),
-    colour = "grey80"
-  ) +
-  
-  geom_ribbon(aes(ymin = ci_90_lo,
-                  ymax = ci_90_hi),
-              alpha = 0.2) +
-  geom_ribbon(aes(ymin = ci_50_lo,
-                  ymax = ci_50_hi),
-              alpha = 0.5) +
-  geom_line(aes(y = ci_90_lo),
-            colour = base_colour,
-            alpha = 0.8) + 
-  geom_line(aes(y = ci_90_hi),
-            colour = base_colour,
-            alpha = 0.8) + 
-  
-  facet_wrap(~state, ncol = 2, scales = "free") +
-  
-  cowplot::theme_cowplot() +
-  cowplot::panel_border(remove = TRUE) +
-  theme(legend.position = "none",
-        strip.background = element_blank(),
-        strip.text = element_text(hjust = 0, face = "bold"),
-        axis.title.y.right = element_text(vjust = 0.5, angle = 90),
-        panel.spacing = unit(1.2, "lines"),
-        axis.text.x = element_text(size = 12)) +
-  
-  # add empirical percentages
-  geom_point(
-    aes(date, percentage),
-    data = point_df %>%
-      filter(date >= micro_date_six_month),
-    size = 2,
-    pch = "_"
-  ) +
-  
-  geom_errorbar(
-    aes(date, percentage, ymin = lower, ymax = upper),
-    data = point_df %>%
-      filter(date >= micro_date_six_month),
-    size = 1,
-    alpha = 0.2,
-    width = 0
-  ) +
-  
-  # and titles  
-  ggtitle(
-    label = "Micro-distancing trend",
-    subtitle = "Calibrated against self-reported adherence to physical distancing"
-  ) +
-  ylab("Estimate of percentage 'always' keeping 1.5m distance")
-
-p
-
-
-save_ggplot("microdistancing_effect_six_month.png")
-
-
-
-# save the model fit
-saveRDS(pred_plot, file = "outputs/microdistancing_trends.RDS")
-
-# estimates at peak and at latest date
-pred_summary <- pred_plot %>%
-  group_by(state) %>%
-  summarise(peak = which.max(mean),
-            peak_estimate = mean[peak] * 100,
-            peak_low = ci_90_lo[peak] * 100,
-            peak_high = ci_90_hi[peak] * 100,
-            peak_date = date[peak],
-            latest = which.max(date),
-            latest_estimate = mean[latest] * 100,
-            latest_low = ci_90_lo[latest] * 100,
-            latest_high = ci_90_hi[latest] * 100,
-            latest_date = date[latest]) %>%
-  select(-peak, -latest)
-
-saveRDS(pred_summary,
-        file = "outputs/microdistancing_trend_summary.RDS")
-
-
+save_ggplot("mask_wearing_always_line_only.png")
