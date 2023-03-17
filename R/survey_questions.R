@@ -83,38 +83,140 @@ parse_doh_survey <- function(filename) {
       mutate(face_covering = NA)
   }
   
+  if ("Q224" %in% names(full)) {
+    full <- full %>%
+      mutate(vaccinated = Q224)
+  } else {
+    full <- full %>%
+      mutate(vaccinated = NA)
+  }
+  
+  if ("Q225B" %in% names(full)) {
+    full <- full %>%
+      mutate(guidelines_given_vaccinated = Q225B)
+  } else {
+    full <- full %>%
+      mutate(guidelines_given_vaccinated = NA)
+  }
+ 
+  
+  # likelihood of seeking test given symptoms
+  # this questions starts 2021-04-19, however from
+  # 2021-11-08 respondents are given a randomly given
+  # one of 3 sets of symptoms. Before this date we code the
+  # symptom set as 4
+  if ("Q226" %in% names(full)) {
+    full <- full %>%
+      mutate(test_seeking = Q226)
+    if("Q226_Symptoms" %in% names(full)){
+      full <- full %>%
+        mutate(test_seeking_set = Q226_Symptoms)
+    } else{
+      full <- full %>%
+        mutate(test_seeking_set = 4)
+    }
+  } else {
+    full <- full %>%
+      mutate(
+        test_seeking = NA,
+        test_seeking_set = NA
+      )
+  }
+  
+  if ("Q228_1" %in% names(full)) {
+    full <- full %>%
+      mutate(
+        symptoms_cough = Q228_1,
+        symptoms_fever = Q228_2,
+        symptoms_difficultybreathing = Q228_3,
+        symptoms_sorethroat = Q228_4,
+        symptoms_tiredness = Q228_5,
+        symptoms_jointaches = Q228_6,
+        symptoms_headache = Q228_7,
+        symptoms_runnynose = Q228_8,
+        symptoms_tastesmellchange = Q228_9,
+        symptoms_nauseavomit = Q228_10,
+        symptoms_chills = Q228_11,
+        symptoms_none = Q228_99,
+        tested = Q229,
+        why_tested_symptoms = Q230_1,
+        why_tested_contact = Q230_2,
+        why_tested_job = Q230_3,
+        why_tested_other = Q230_98,
+        why_tested_other_specify = Q230_98_OTH
+      )
+  } else {
+    full <- full %>%
+      full <- full %>%
+        mutate(
+          symptoms_cough = NA,
+          symptoms_fever = NA,
+          symptoms_difficultybreathing = NA,
+          symptoms_sorethroat = NA,
+          symptoms_tiredness = NA,
+          symptoms_jointaches = NA,
+          symptoms_headache = NA,
+          symptoms_runnynose = NA,
+          symptoms_tastesmellchange = NA,
+          symptoms_nauseavomit = NA,
+          symptoms_chills = NA,
+          symptoms_none = NA,
+          tested = NA,
+          why_tested_symptoms = NA,
+          why_tested_contact = NA,
+          why_tested_job = NA,
+          why_tested_other = NA,
+          why_tested_other_specify = NA
+        )
+  }
+  
+  if("Q231_1" %in% names(full)){
+    full <- full %>%
+      mutate(
+        test_type_pcr = Q231_1,
+        test_type_rat = Q231_2,
+        test_type_unknown = Q231_3,
+        test_result_pcr = Q231a,
+        test_result_rat = Q231b
+      )
+  } else {
+    full <- full %>%
+      mutate(
+        test_type_pcr = NA,
+        test_type_rat = NA,
+        test_type_unknown = NA,
+        test_result_pcr = NA,
+        test_result_rat = NA
+      )
+  }
+  
+  if("Q232" %in% names(full)){
+    full <- full %>%
+      mutate(
+        report_rat = Q232
+      )
+  } else {
+    full <- full %>%
+      mutate(
+        report_rat = NA
+      )
+  }
+  
   if ("Q233" %in% names(full)) {
     full <- full %>%
-      mutate(informed_contact = Q233)
+      mutate(
+        informed_contact = Q233,
+        response_to_informed_contact = Q234,
+        action_given_symptoms = Q235
+      )
   } else {
     full <- full %>%
-      mutate(informed_contact = NA)
+      mutate(
+        informed_contact = NA,
+        response_to_informed_contact = NA,
+        action_given_symptoms = NA
+      )
   }
-  
-  if ("Q234" %in% names(full)) {
-    full <- full %>%
-      mutate(response_to_informed_contact = Q234)
-  } else {
-    full <- full %>%
-      mutate(response_to_informed_contact = NA)
-  }
-  
-  if ("Q228" %in% names(full)) {
-    full <- full %>%
-      mutate(symptoms = Q228)
-  } else {
-    full <- full %>%
-      mutate(symptoms = NA)
-  }
-  
-  if ("Q228" %in% names(full)) {
-    full <- full %>%
-      mutate(symptoms = Q228)
-  } else {
-    full <- full %>%
-      mutate(symptoms = NA)
-  }
-  
   
   full %>%
     select(
@@ -131,10 +233,8 @@ parse_doh_survey <- function(filename) {
       income = Q42,
       isolating = Q61,
       how_likely_to_catch = Q14,
-      informed_contact,
-      response_to_informed_contact,
-      symptoms,
-      
+      attitude_severe = Q56,
+      work_location = Q101,
       parent,
       employment = Q38,
       phys_contact = Q109,
@@ -144,6 +244,16 @@ parse_doh_survey <- function(filename) {
       cough = Q111,
       mask,
       face_covering,
+      vaccinated,
+      guidelines_given_vaccinated,
+      
+      
+      
+      informed_contact,
+      response_to_informed_contact,
+      symptoms,
+      
+      
       contact_num = Q138,
       contacts_under18 = Q166_1,
       contacts_18to39 = Q166_2,
@@ -198,6 +308,8 @@ survey_question_first_asked <- function(dir = "data/survey_raw") {
       pattern = ".csv$",
       full.names = FALSE
     )
+  
+  
   
   survey_no <- sub(
     pattern = "\\..*",
