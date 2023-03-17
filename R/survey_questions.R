@@ -218,7 +218,7 @@ parse_doh_survey <- function(filename) {
       )
   }
   
-  full %>%
+  survey_results <- full %>%
     select(
       wave,
       state,
@@ -246,14 +246,35 @@ parse_doh_survey <- function(filename) {
       face_covering,
       vaccinated,
       guidelines_given_vaccinated,
-      
-      
-      
+      test_seeking,
+      test_seeking_set,
+      symptoms_cough,
+      symptoms_fever,
+      symptoms_difficultybreathing,
+      symptoms_sorethroat,
+      symptoms_tiredness,
+      symptoms_jointaches,
+      symptoms_headache,
+      symptoms_runnynose,
+      symptoms_tastesmellchange,
+      symptoms_nauseavomit,
+      symptoms_chills,
+      symptoms_none,
+      tested,
+      why_tested_symptoms,
+      why_tested_contact,
+      why_tested_job,
+      why_tested_other,
+      why_tested_other_specify,
+      test_type_pcr,
+      test_type_rat,
+      test_type_unknown,
+      test_result_pcr,
+      test_result_rat,
+      report_rat,
       informed_contact,
       response_to_informed_contact,
-      symptoms,
-      
-      
+      action_given_symptoms,
       contact_num = Q138,
       contacts_under18 = Q166_1,
       contacts_18to39 = Q166_2,
@@ -290,10 +311,27 @@ parse_doh_survey <- function(filename) {
     mutate_at(
       vars(starts_with("contacts_")),
       ~as.numeric(.)
+    ) %>%
+    mutate_at(
+      vars(
+        starts_with("symptoms_"),
+        starts_with("why_tested_"),
+        starts_with("test_type_")
+      ),
+      ~quoted_to_logical(.)
     )
+    
   
 }
 
+
+quoted_to_logical <- function(x) {
+  case_when(
+    x == "quoted" ~ TRUE,
+    x == "not quoted" ~ FALSE,
+    TRUE ~ NA
+  )
+}
 
 survey_question_first_asked <- function(dir = "data/survey_raw") {
   
