@@ -113,7 +113,7 @@ parse_doh_survey <- function(filename) {
         mutate(test_seeking_set = Q226_Symptoms)
     } else{
       full <- full %>%
-        mutate(test_seeking_set = 4)
+        mutate(test_seeking_set = "4")
     }
   } else {
     full <- full %>%
@@ -147,27 +147,26 @@ parse_doh_survey <- function(filename) {
       )
   } else {
     full <- full %>%
-      full <- full %>%
-        mutate(
-          symptoms_cough = NA,
-          symptoms_fever = NA,
-          symptoms_difficultybreathing = NA,
-          symptoms_sorethroat = NA,
-          symptoms_tiredness = NA,
-          symptoms_jointaches = NA,
-          symptoms_headache = NA,
-          symptoms_runnynose = NA,
-          symptoms_tastesmellchange = NA,
-          symptoms_nauseavomit = NA,
-          symptoms_chills = NA,
-          symptoms_none = NA,
-          tested = NA,
-          why_tested_symptoms = NA,
-          why_tested_contact = NA,
-          why_tested_job = NA,
-          why_tested_other = NA,
-          why_tested_other_specify = NA
-        )
+      mutate(
+        symptoms_cough = NA,
+        symptoms_fever = NA,
+        symptoms_difficultybreathing = NA,
+        symptoms_sorethroat = NA,
+        symptoms_tiredness = NA,
+        symptoms_jointaches = NA,
+        symptoms_headache = NA,
+        symptoms_runnynose = NA,
+        symptoms_tastesmellchange = NA,
+        symptoms_nauseavomit = NA,
+        symptoms_chills = NA,
+        symptoms_none = NA,
+        tested = NA,
+        why_tested_symptoms = NA,
+        why_tested_contact = NA,
+        why_tested_job = NA,
+        why_tested_other = NA,
+        why_tested_other_specify = NA
+      )
   }
   
   if("Q231_1" %in% names(full)){
@@ -321,8 +320,9 @@ parse_doh_survey <- function(filename) {
       ~quoted_to_logical(.)
     )
     
-  
+  return(survey_results)
 }
+
 
 
 quoted_to_logical <- function(x) {
@@ -430,7 +430,7 @@ sqfa <- survey_question_first_asked()
 
 
 
-
+#### masks
 
 all_surveys <- parse_all_surveys()
 
@@ -891,3 +891,30 @@ p
 
 
 save_ggplot("mask_wearing_always_line_only.png")
+
+#### single response data
+
+all_survey_results <- parse_all_surveys()
+
+# single responses to look at 
+
+# isolating - q61
+# phys_distance - q65
+# phys_contact - q109
+# wash_hands - q110
+# cough - q111
+# face_covering - q222
+# how_likely_to_catch - q14
+# attitude_severe - q56
+# vaccinated - q224
+
+
+# Multiple responses
+
+
+# dependent responses
+# consider looking at #attitude_severe | how_likely_to_catch
+# guidelines_given_vaccinated - q225b | does level of vaccination effect willingness to follow guidelines
+
+
+
