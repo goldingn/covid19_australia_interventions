@@ -907,7 +907,8 @@ all_survey_results <- parse_all_surveys()
 # how_likely_to_catch - q14
 # attitude_severe - q56
 # vaccinated - q224
-
+# informed_contact - q233
+# response_to_informed_contact - Q234 (this is dependant on response 1 in informed_contact, so should be otherwise NA can be analysed as a single response question 
 
 # Multiple responses
 
