@@ -917,5 +917,46 @@ all_survey_results <- parse_all_surveys()
 # consider looking at #attitude_severe | how_likely_to_catch
 # guidelines_given_vaccinated - q225b | does level of vaccination effect willingness to follow guidelines
 
+md <- get_mask_data_all(all_survey_results)
+
+single_reponse_summary <- function(data, var){
+  
+  data %>%
+    select(
+      #wave,
+      wave_date,
+      state,
+      {{var}}
+    ) %>% 
+    filter(
+      !is.na({{var}}),
+      !is.na(state)
+    )  %>%
+    group_by(state, wave_date, {{var}}) %>%
+    summarise(count = n()) %>%
+    ungroup %>%
+    complete(state, wave_date, {{var}}, fill = list(count = 0)) %>%
+    arrange(state, wave_date, {{var}}) %>%
+    group_by(state, wave_date) %>%
+    mutate(
+      n = sum(count),
+      proportion = count/n
+    ) %>%
+    ungroup %>%
+    select(-n)
+  
+}
+
+single_reponse_summary(all_survey_results, attitude_severe) %>%
+  mutate(
+    attitude_severe = case_when(
+      "I don't know" ~ "Unknown",
+      "I don^t know" ~ "Unknown",
+      "I dont know" ~ "Unknown",
+      "Not at all" ~ "None"
+      
+      
+    )
+  )
 
 
