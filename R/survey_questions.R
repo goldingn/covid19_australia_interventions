@@ -501,6 +501,7 @@ plot_single_response_stack <- function(
       y = "Raw proportions of weekly responses",
       title = title,
       subtitle = subtitle,
+      caption = "This is a summary of raw data.\nQuestion and responses here may be paraphrased from actual questions asked.",
       colour = "Response",
       fill = "Response"
     ) +
@@ -563,6 +564,7 @@ plot_single_response_line <- function(
       y = "Smoothed and raw (faint) proportions of weekly responses",
       title = title,
       subtitle = subtitle,
+      caption = "This is a summary of raw data.\nSmoothed lines are to aid visual purposes only, they do not represent a model fit.\nQuestion and responses here may be paraphrased from actual questions asked.",
       colour = "Response",
       fill = "Response"
     ) +
@@ -1083,7 +1085,7 @@ isolating_summary <- single_reponse_summary(all_survey_results, isolating) %>%
 plot_single_response_stack(
   isolating_summary,
   title = "Staying home behaviour",
-  subtitle = "Proportion of respondents answering\n'What best describes approach you have been taking to COVID-19?'"
+  subtitle = "Proportion of respondents answering 'What best describes approach you\nhave been taking to COVID-19?'"
 )
 
 save_ggplot(
@@ -1096,7 +1098,7 @@ save_ggplot(
 plot_single_response_line(
   isolating_summary,
   title = "Staying home behaviour",
-  subtitle = "Proportion of respondents answering\n'What best describes approach you have been taking to COVID-19?'"
+  subtitle = "Proportion of respondents answering 'What best describes approach you\nhave been taking to COVID-19?'"
 )
 
 save_ggplot(
@@ -1122,7 +1124,7 @@ phys_distance_summary <- single_reponse_summary(all_survey_results, phys_distanc
 plot_single_response_stack(
   phys_distance_summary,
   title = "Physical distancing behaviour",
-  subtitle = "Proportion of respondents answering\n'Are you staying 1.5m away from people outside of your household?'"
+  subtitle = "Proportion of respondents answering 'Are you staying 1.5m away from people\noutside of your household?'"
 )
 
 save_ggplot(
@@ -1135,12 +1137,12 @@ save_ggplot(
 plot_single_response_line(
   phys_distance_summary,
   title = "Physical distancing behaviour",
-  subtitle = "Proportion of respondents answering\n'Are you staying 1.5m away from people outside of your household?'"
+  subtitle = "Proportion of respondents answering 'Are you staying 1.5m away from people\noutside of your household?'"
 )
 
 save_ggplot(
   sprintf(
-    "phys_distancing_%s.png",
+    "phys_distancing_line_%s.png",
     save_date
   )
 )
@@ -1148,13 +1150,19 @@ save_ggplot(
 # phys_contact - q109
 # In the last week, have you had physical contact with a person who doesn’t live with you? (e.g. shaken hands, hugged, body contact during sports)? 
 phys_contact_summary <- single_reponse_summary(all_survey_results, phys_contact) %>%
+  mutate(
+    response = case_when(
+      response ~ "Yes",
+      TRUE ~ "No"
+    )
+  ) %>%
   arrange(state, wave_date, response)
 
 
 plot_single_response_stack(
   phys_contact_summary,
   title = "Physical contact",
-  subtitle = "Proportion of respondents answering\n'In the last week, have you had physical contact with a person who doesn’t live with you?\n(e.g. shaken hands, hugged, body contact during sports)'"
+  subtitle = "Proportion of respondents answering 'In the last week, have you had physical\ncontact with a person who doesn’t live with you? (e.g. shaken hands, hugged,\nbody contact during sports)'"
 )
 
 save_ggplot(
@@ -1167,92 +1175,98 @@ save_ggplot(
 plot_single_response_line(
   phys_contact_summary,
   title = "Physical contact",
-  subtitle = "Proportion of respondents answering\n'In the last week, have you had physical contact with a person who doesn’t live with you?\n(e.g. shaken hands, hugged, body contact during sports)?'"
+  subtitle = "Proportion of respondents answering 'In the last week, have you had physical\ncontact with a person who doesn’t live with you? (e.g. shaken hands, hugged,\nbody contact during sports)'"
 )
 
 save_ggplot(
   sprintf(
-    "phys_contact_%s.png",
+    "phys_contact_line_%s.png",
     save_date
   )
 )
 
 # wash_hands - q110
-XXX_summary <- single_reponse_summary(all_survey_results, XXX) %>%
+# Thinking about the last time you were in a public place, did you wash your hands or use hand sanitiser immediately afterwards?
+wash_hands_summary <- single_reponse_summary(all_survey_results, wash_hands) %>%
   mutate(
-    response = factor(
-      response,
-      levels = c("No", "Rarely", "Sometimes", "Often", "Always")
+    response = case_when(
+      response == "Yes, I washed or sanitised my hands immediately afterward" ~ "Yes, immediately",
+      response == "I washed or sanitised my hands as soon as I could, but there was a delay" ~ "Yes, delayed",
+      response == "No" ~ "No"
     )
   ) %>%
   arrange(state, wave_date, response)
 
 
 plot_single_response_stack(
-  XXX_summary,
-  title = "XX behaviour",
-  subtitle = "Proportion of respondents answering\n'XX?'"
+  wash_hands_summary,
+  title = "Hand washing behaviour",
+  subtitle = "Proportion of respondents answering 'Thinking about the last time you\n were in a public place, did you wash your hands or use hand sanitiser\nimmediately afterwards?'"
 )
 
 save_ggplot(
   sprintf(
-    "XXX_stack_%s.png",
+    "wash_hands_stack_%s.png",
     save_date
   )
 )
 
 plot_single_response_line(
-  XXX_summary,
-  title = "XX behaviour",
-  subtitle = "Proportion of respondents answering\n'XX?'"
+  wash_hands_summary,
+  title = "Hand washing behaviour",
+  subtitle = "Proportion of respondents answering 'Thinking about the last time you\n were in a public place, did you wash your hands or use hand sanitiser\nimmediately afterwards?'"
 )
 
 save_ggplot(
   sprintf(
-    "XXX_%s.png",
+    "wash_hands_line_%s.png",
     save_date
   )
 )
 
 # cough - q111
-XXX_summary <- single_reponse_summary(all_survey_results, XXX) %>%
+# Thinking about the last time you coughed or sneezed, did you cover your mouth with…
+cough_summary <- single_reponse_summary(all_survey_results, cough) %>%
   mutate(
-    response = factor(
-      response,
-      levels = c("No", "Rarely", "Sometimes", "Often", "Always")
-    )
+    response = case_when(
+      response == "Something else (e.g. a hanky, clothing)" ~ "Something else",
+      TRUE ~ response
+    ) %>% 
+      factor(
+        levels = c("Nothing", "Your hand", "Your elbow", "A tissue", "Something else")
+      )
   ) %>%
   arrange(state, wave_date, response)
 
 
 plot_single_response_stack(
-  XXX_summary,
-  title = "XX behaviour",
-  subtitle = "Proportion of respondents answering\n'XX?'"
+  cough_summary,
+  title = "Coughing behaviour",
+  subtitle = "Proportion of respondents answering 'Thinking about the last time you\ncoughed or sneezed, did you cover your mouth with…'"
 )
 
 save_ggplot(
   sprintf(
-    "XXX_stack_%s.png",
+    "cough_stack_%s.png",
     save_date
   )
 )
 
 plot_single_response_line(
-  XXX_summary,
-  title = "XX behaviour",
-  subtitle = "Proportion of respondents answering\n'XX?'"
+  cough_summary,
+  title = "Coughing behaviour",
+  subtitle = "Proportion of respondents answering 'Thinking about the last time you\ncoughed or sneezed, did you cover your mouth with…'"
 )
 
 save_ggplot(
   sprintf(
-    "XXX_%s.png",
+    "cough_line_%s.png",
     save_date
   )
 )
 
 # face_covering - q222
-XXX_summary <- single_reponse_summary(all_survey_results, XXX) %>%
+face_covering_summary <- single_reponse_summary(all_survey_results, face_covering) %>%
   mutate(
     response = factor(
       response,
@@ -1263,192 +1277,71 @@ XXX_summary <- single_reponse_summary(all_survey_results, XXX) %>%
 
 
 plot_single_response_stack(
-  XXX_summary,
-  title = "XX behaviour",
-  subtitle = "Proportion of respondents answering\n'XX?'"
+  face_covering_summary,
+  title = "Mask wearing behaviour",
+  subtitle = "Proportion of respondents answering'Do you wear a face covering whenever\nyou leave your home? A face covering needs to cover both your nose and\nmouth. It could be a face mask or shield'"
 )
 
 save_ggplot(
   sprintf(
-    "XXX_stack_%s.png",
+    "face_covering_stack_%s.png",
     save_date
   )
 )
 
 plot_single_response_line(
-  XXX_summary,
-  title = "XX behaviour",
-  subtitle = "Proportion of respondents answering\n'XX?'"
+  face_covering_summary,
+  title = "Mask wearing behaviour",
+  subtitle = "Proportion of respondents answering'Do you wear a face covering whenever\nyou leave your home? A face covering needs to cover both your nose and\nmouth. It could be a face mask or shield'"
 )
 
 save_ggplot(
   sprintf(
-    "XXX_%s.png",
+    "face_covering_line_%s.png",
     save_date
   )
 )
 
 # how_likely_to_catch - q14
-
-XXX_summary <- single_reponse_summary(all_survey_results, XXX) %>%
+# How likely do you think it is that you will catch COVID-19?
+how_likely_to_catch_summary <- single_reponse_summary(all_survey_results, how_likely_to_catch) %>%
   mutate(
     response = factor(
       response,
-      levels = c("No", "Rarely", "Sometimes", "Often", "Always")
+      levels = c("Very unlikely", "Unlikely", "Neutral", "Likely", "Very likely")
     )
   ) %>%
   arrange(state, wave_date, response)
 
 
 plot_single_response_stack(
-  XXX_summary,
-  title = "XX behaviour",
-  subtitle = "Proportion of respondents answering\n'XX?'"
+  how_likely_to_catch_summary,
+  title = "Expectation of infection",
+  subtitle = "Proportion of respondents answering 'How likely do you think it is that you\nwill catch COVID-19?'"
 )
 
 save_ggplot(
   sprintf(
-    "XXX_stack_%s.png",
+    "how_likely_to_catch_stack_%s.png",
     save_date
   )
 )
 
 plot_single_response_line(
-  XXX_summary,
-  title = "XX behaviour",
-  subtitle = "Proportion of respondents answering\n'XX?'"
+  how_likely_to_catch_summary,
+  title = "Expectation of infection",
+  subtitle = "Proportion of respondents answering 'How likely do you think it is that you\nwill catch COVID-19?'"
 )
 
 save_ggplot(
   sprintf(
-    "XXX_%s.png",
+    "how_likely_to_catch_line_%s.png",
     save_date
   )
 )
 
 # attitude_severe - q56
-
-XXX_summary <- single_reponse_summary(all_survey_results, XXX) %>%
-  mutate(
-    response = factor(
-      response,
-      levels = c("No", "Rarely", "Sometimes", "Often", "Always")
-    )
-  ) %>%
-  arrange(state, wave_date, response)
-
-
-plot_single_response_stack(
-  XXX_summary,
-  title = "XX behaviour",
-  subtitle = "Proportion of respondents answering\n'XX?'"
-)
-
-save_ggplot(
-  sprintf(
-    "XXX_stack_%s.png",
-    save_date
-  )
-)
-
-plot_single_response_line(
-  XXX_summary,
-  title = "XX behaviour",
-  subtitle = "Proportion of respondents answering\n'XX?'"
-)
-
-save_ggplot(
-  sprintf(
-    "XXX_%s.png",
-    save_date
-  )
-)
-
-# vaccinated - q224
-
-XXX_summary <- single_reponse_summary(all_survey_results, XXX) %>%
-  mutate(
-    response = factor(
-      response,
-      levels = c("No", "Rarely", "Sometimes", "Often", "Always")
-    )
-  ) %>%
-  arrange(state, wave_date, response)
-
-
-plot_single_response_stack(
-  XXX_summary,
-  title = "XX behaviour",
-  subtitle = "Proportion of respondents answering\n'XX?'"
-)
-
-save_ggplot(
-  sprintf(
-    "XXX_stack_%s.png",
-    save_date
-  )
-)
-
-plot_single_response_line(
-  XXX_summary,
-  title = "XX behaviour",
-  subtitle = "Proportion of respondents answering\n'XX?'"
-)
-
-save_ggplot(
-  sprintf(
-    "XXX_%s.png",
-    save_date
-  )
-)
-
-# informed_contact - q233
-
-XXX_summary <- single_reponse_summary(all_survey_results, XXX) %>%
-  mutate(
-    response = factor(
-      response,
-      levels = c("No", "Rarely", "Sometimes", "Often", "Always")
-    )
-  ) %>%
-  arrange(state, wave_date, response)
-
-
-plot_single_response_stack(
-  XXX_summary,
-  title = "XX behaviour",
-  subtitle = "Proportion of respondents answering\n'XX?'"
-)
-
-save_ggplot(
-  sprintf(
-    "XXX_stack_%s.png",
-    save_date
-  )
-)
-
-plot_single_response_line(
-  XXX_summary,
-  title = "XX behaviour",
-  subtitle = "Proportion of respondents answering\n'XX?'"
-)
-
-save_ggplot(
-  sprintf(
-    "XXX_%s.png",
-    save_date
-  )
-)
-
-# response_to_informed_contact - Q234 (this is dependant on response 1 in informed_contact, so should be otherwise NA can be analysed as a single response question 
-
-# Multiple responses
-
-
-# dependent responses
-# consider looking at #attitude_severe | how_likely_to_catch
-# guidelines_given_vaccinated - q225b | does level of vaccination effect willingness to follow guidelines
-
+# If you were to get Coronavirus, how severely do you think it would affect you? 
 attitude_severe_summary <- single_reponse_summary(all_survey_results, attitude_severe) %>%
   mutate(
     response = case_when(
@@ -1486,17 +1379,128 @@ attitude_severe_summary <- single_reponse_summary(all_survey_results, attitude_s
 plot_single_response_stack(
   attitude_severe_summary,
   title = "Attitudes to severity of COVID-19",
-  subtitle = "Proportion of respondents answering\n'If you were to get Coronavirus, how severely do you think it would affect you?'"
+  subtitle = "Proportion of respondents answering 'If you were to get Coronavirus, how severely\ndo you think it would affect you?'"
 )
 
 
+save_ggplot(
+  sprintf(
+    "attitude_severe_stack_%s.png",
+    save_date
+  )
+)
 
 
 plot_single_response_line(
   attitude_severe_summary,
   title = "Attitudes to severity of COVID-19",
-  subtitle = "Proportion of respondents answering\n'If you were to get Coronavirus, how severely do you think it would affect you?'"
+  subtitle = "Proportion of respondents answering 'If you were to get Coronavirus, how severely\ndo you think it would affect you?'"
 )
+
+
+save_ggplot(
+  sprintf(
+    "attitude_severe_line_%s.png",
+    save_date
+  )
+)
+
+# vaccinated - q224
+# Have you received a COVID-19 vaccination?
+
+vaccinated_summary <- single_reponse_summary(all_survey_results, vaccinated) %>%
+  mutate(
+    response = case_when(
+      str_ends(response, "first dose") ~ "First dose",
+      str_ends(response, "both doses") ~ "Second dose",
+      str_ends(response, "booster dose") ~ "Third dose",
+      response == "No" ~ "No"
+    ) %>%
+      factor(
+        levels = c("No", "First dose", "Second dose", "Third dose")
+      )
+  ) %>%
+  group_by(state, wave_date, response) %>%
+  summarise(
+    count = sum(count),
+    proportion = sum(proportion),
+    .groups = "drop"
+  ) %>%
+  arrange(state, wave_date, response)
+
+
+plot_single_response_stack(
+  vaccinated_summary,
+  title = "Vaccination",
+  subtitle = "Proportion of respondents answering 'Have you received a COVID-19 vaccination?'"
+)
+
+save_ggplot(
+  sprintf(
+    "vaccinated_stack_%s.png",
+    save_date
+  )
+)
+
+plot_single_response_line(
+  vaccinated_summary,
+  title = "Vaccination",
+  subtitle = "Proportion of respondents answering 'Have you received a COVID-19 vaccination?'"
+)
+
+save_ggplot(
+  sprintf(
+    "vaccinated_line_%s.png",
+    save_date
+  )
+)
+
+# informed_contact - q233
+
+XXX_summary <- single_reponse_summary(all_survey_results, XXX) %>%
+  mutate(
+    response = factor(
+      response,
+      levels = c("No", "Rarely", "Sometimes", "Often", "Always")
+    )
+  ) %>%
+  arrange(state, wave_date, response)
+
+
+plot_single_response_stack(
+  XXX_summary,
+  title = "XX behaviour",
+  subtitle = "Proportion of respondents answering\n'XX?'"
+)
+
+save_ggplot(
+  sprintf(
+    "XXX_stack_%s.png",
+    save_date
+  )
+)
+
+plot_single_response_line(
+  XXX_summary,
+  title = "XX behaviour",
+  subtitle = "Proportion of respondents answering\n'XX?'"
+)
+
+save_ggplot(
+  sprintf(
+    "XXX_line_%s.png",
+    save_date
+  )
+)
+
+# response_to_informed_contact - Q234 (this is dependant on response 1 in informed_contact, so should be otherwise NA can be analysed as a single response question 
+
+# Multiple responses
+
+
+# dependent responses
+# consider looking at #attitude_severe | how_likely_to_catch
+# guidelines_given_vaccinated - q225b | does level of vaccination effect willingness to follow guidelines
 
 ### template
 
