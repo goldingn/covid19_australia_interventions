@@ -1548,6 +1548,23 @@ save_ggplot(
 )
 
 
+response_to_informed_contact_summary %>%
+  group_by(state, wave_date) %>%
+  summarise(count = sum(count)) %>%
+  ggplot() +
+  geom_bar(
+    aes(
+      x = wave_date,
+      y = count
+    ),
+    stat = "identity"
+  ) +
+  facet_wrap(
+    ~state,
+    ncol = 2,
+    scales = "free_y"
+  )
+
 # Multiple responses
 
 
@@ -1556,14 +1573,15 @@ save_ggplot(
 # guidelines_given_vaccinated - q225b | does level of vaccination effect willingness to follow guidelines
 
 
-single_reponse_summary <- function(data, var){
+dependant_reponse_summary <- function(data, var1, var2){
   
   data %>%
     select(
       #wave,
       wave_date,
       state,
-      response = {{var}}
+      {{var1}},
+      {{var2}}
     ) %>% 
     filter(
       !is.na(response),
