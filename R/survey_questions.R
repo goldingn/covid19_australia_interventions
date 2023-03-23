@@ -1456,44 +1456,97 @@ save_ggplot(
 )
 
 # informed_contact - q233
-
-XXX_summary <- single_reponse_summary(all_survey_results, XXX) %>%
+# Have you been informed (by a Health department, workplace, colleague, friend or through any other means) that you were in contact with a confirmed COVID-19 case in the past week?  
+informed_contact_summary <- single_reponse_summary(all_survey_results, informed_contact) %>%
   mutate(
     response = factor(
       response,
-      levels = c("No", "Rarely", "Sometimes", "Often", "Always")
+      levels = c("Prefer not to say", "No", "Yes")
     )
   ) %>%
   arrange(state, wave_date, response)
 
 
 plot_single_response_stack(
-  XXX_summary,
-  title = "XX behaviour",
-  subtitle = "Proportion of respondents answering\n'XX?'"
+  informed_contact_summary,
+  title = "Contact with cases",
+  subtitle = "Proportion of respondents answering 'Have you been informed (by a Health\ndepartment, workplace, colleague, friend or through any other means) that\nyou were in contact with a confirmed COVID-19 case in the past week?'",
+  date_breaks = "2 months"
 )
 
 save_ggplot(
   sprintf(
-    "XXX_stack_%s.png",
+    "informed_contact_stack_%s.png",
     save_date
   )
 )
 
 plot_single_response_line(
-  XXX_summary,
-  title = "XX behaviour",
-  subtitle = "Proportion of respondents answering\n'XX?'"
+  informed_contact_summary,
+  title = "Contact with cases",
+  subtitle = "Proportion of respondents answering 'Have you been informed (by a Health\ndepartment, workplace, colleague, friend or through any other means) that\nyou were in contact with a confirmed COVID-19 case in the past week?'",
+  date_breaks = "2 months"
 )
 
 save_ggplot(
   sprintf(
-    "XXX_line_%s.png",
+    "informed_contact_line_%s.png",
     save_date
   )
 )
 
 # response_to_informed_contact - Q234 (this is dependant on response 1 in informed_contact, so should be otherwise NA can be analysed as a single response question 
+response_to_informed_contact_summary <- single_reponse_summary(all_survey_results, response_to_informed_contact) %>%
+  mutate(
+    response = case_when(
+      response == "I am completely isolating – not leaving home for any reason" ~ "Completely\nisolating",
+      response == "I am not trying to stay home" ~ "Not staying\nhome",
+      response == "I am staying home as much as I can, and only going out when I absolutely have to" ~ "Mostly\nisolating",
+      response == "I am still choosing to leave my home on a regular basis, but I am going out less than usual" ~ "Staying home\na little"
+    )
+  ) %>%
+  mutate(
+    response = factor(
+      response,
+      levels = c(
+        "Not staying\nhome",
+        "Staying home\na little",
+        "Mostly\nisolating",
+        "Completely\nisolating"
+      )
+    )
+  ) %>%
+  arrange(state, wave_date, response)
+
+
+plot_single_response_stack(
+  response_to_informed_contact_summary,
+  title = "Response to contact with cases",
+  subtitle = "Proportion of respondents answering 'Which of the following best describes\nthe approach you have been taking in the last week as a result of being in\ncontact with a confirmed COVID-19 case?'",
+  date_breaks = "2 months"
+)
+
+save_ggplot(
+  sprintf(
+    "response_to_informed_contact_stack_%s.png",
+    save_date
+  )
+)
+
+plot_single_response_line(
+  response_to_informed_contact_summary,
+  title = "Response to contact with cases",
+  subtitle = "Proportion of respondents answering 'Which of the following best describes\nthe approach you have been taking in the last week as a result of being in\ncontact with a confirmed COVID-19 case?'",
+  date_breaks = "2 months"
+)
+
+save_ggplot(
+  sprintf(
+    "response_to_informed_contact_line_%s.png",
+    save_date
+  )
+)
+
 
 # Multiple responses
 
@@ -1501,6 +1554,38 @@ save_ggplot(
 # dependent responses
 # consider looking at #attitude_severe | how_likely_to_catch
 # guidelines_given_vaccinated - q225b | does level of vaccination effect willingness to follow guidelines
+
+
+single_reponse_summary <- function(data, var){
+  
+  data %>%
+    select(
+      #wave,
+      wave_date,
+      state,
+      response = {{var}}
+    ) %>% 
+    filter(
+      !is.na(response),
+      !is.na(state)
+    )  %>%
+    group_by(state, wave_date, response) %>%
+    summarise(count = n()) %>%
+    ungroup %>%
+    complete(state, wave_date, response, fill = list(count = 0)) %>%
+    arrange(state, wave_date, response) %>%
+    group_by(state, wave_date) %>%
+    mutate(
+      n = sum(count),
+      proportion = count/n
+    ) %>%
+    ungroup %>%
+    select(-n)
+  
+}
+
+
+
 
 ### template
 
