@@ -2,7 +2,7 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 library(tibble)
-
+source("R/functions.R")
 # 
 # weeks <- 0:10
 # 
@@ -174,17 +174,17 @@ nweeks <- length(weekly_new_infections)
 
 #init matrix
 
+# 50% of the population nonimmune, 25% infected this week, 25% infected last week
+state <- c(0.5, 0.25, 0.25, rep(0, 9))
+
 this_state <- immunity_matrix_multiply(pre_calc_output = pre_calc_test,
-                                       state = c(1,rep(0,11)),
-                                       weekly_new_infections = 0,
+                                       state = state,
+                                       weekly_new_infections = 10,
                                        population = NSW_pop)
 
 
-immunity_states <- matrix()
-
-
-
-<- NA
+# initialise at a fully-susceptible population
+this_state <- c(1, rep(0, 11))
 
 
 for (iter in 1:nweeks){
@@ -196,7 +196,7 @@ for (iter in 1:nweeks){
   #print(iter)
 }
 this_state
-
+plot(this_state * NSW_pop)
 this_state*NSW_pop
 
 #check reinfection as % of total pop
