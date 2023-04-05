@@ -593,7 +593,11 @@ timeseries %>%
       immunity_type == "I" ~ "infection only",
       immunity_type == "V" ~ "vaccination only",
       immunity_type == "IV" ~ "infection and vaccination"
-    )
+    ),
+    immunity_type = factor(immunity_type, levels = c("infection and vaccination",
+                                                     "infection only",
+                                                     "vaccination only",
+                                                     "non-immune"))
   ) %>%
   group_by(immunity_type, time) %>%
   summarise(
@@ -664,3 +668,129 @@ dim(transition_matrix_nude)
 
 # August
 # calculate the relative probabilities of vaccination from AIR
+
+
+
+
+
+# need to construct these matrices for different types of immunity
+
+n_waning_states <- 26 # 6 months of waning, then plateau
+
+# get combinations of immune events. Names are types of immune event, numbers
+# are the possible numbers of those events that could have occurred for an
+# individual (except infections, where we don't distinguish multiple infections)
+states <- expand_grid(
+  subunit_monovalent = 0:2, # (astrazeneca no used as booster)
+  mrna_monovalent = 0:5, # (mrna available since first, and up to maximum doses)
+  mrna_bivalent = 0:1, # (mrna bivalent only available for 1 round so far)
+  omicron_infection = 0:1, # we only count infections once
+  non_omicron_infection = 0:1 # we only count infections once
+) %>%
+  # now map to how we encode these immunity types
+  mutate(
+    vaccine_doses = subunit_monovalent + mrna_monovalent + mrna_bivalent,
+    dominant_vaccine = case_when(
+      mrna_bivalent > 0 ~ "mrna_bivalent",
+      mrna_monovalent > 0 ~ "mrna_monovalent",
+      subunit_monovalent > 0 ~ "subunit_monovalent",
+      .default = "unvaccinated" 
+    ),
+    dose_count = case_when(
+      vaccine_doses >= 3 ~ "boosted",
+      vaccine_doses == 2 ~ "full",
+      vaccine_doses == 1 ~ "single",
+      .default = ""
+    ),
+    dominant_infection = case_when(
+      omicron_infection > 0 ~ "omicron",
+      non_omicron_infection > 0 ~ "non_omicron",
+      .default = "uninfected"
+    ),
+    vaccine_state = paste(
+      dominant_vaccine,
+      dose_count,
+      sep = "_"
+    ),
+    vaccine_state = gsub("_$", "", vaccine_state),
+    immunity_type = paste(
+      vaccine_state,
+      dominant_infection,
+      sep = "/"
+    )
+  ) %>%
+  select(immunity_type) %>%
+  distinct() %>%
+  expand_grid(
+    waning = c(0, seq_len(n_waning_states))
+  ) %>%
+  # no waning of nonimmunity
+  filter(
+    !(immunity_type == "unvaccinated/uninfected" & waning > 0)
+  ) %>%
+  mutate(
+    waning = paste(
+      waning,
+      "weeks",
+      sep = "_"
+    ),
+    immunity_state = paste(
+      immunity_type,
+      waning,
+      sep = "/"
+    ),
+    immunity_state = case_when(
+      immunity_state == "unvaccinated/uninfected/0_weeks" ~ "nonimmune",
+      .default = immunity_state
+    )
+  ) %>%
+  pull(immunity_state)
+
+# can name these better!
+length(states)
+head(states)
+tail(states)
+
+
+# now, need to set up transitions between types of immunity
+
+
+# set up fake population
+n_states <- length(states)
+
+n_population <- 1e6
+
+# proportion of the population in each state
+current_state_prop <- c(50, runif(n_states - 1))
+current_state_prop <- current_state_prop / sum(current_state_prop)
+
+# relative probability of being infected: e.g. RR of infection for each immunity type and level of waning, from VEs
+# should remain the same at each iteration since it's just based on the immunity model
+relative_probability_I <- runif(n_states)
+
+# relative probability of being vaccinated: e.g. from number of new vaccinations
+# and which groups is vaccinated. For all I-only states, should be the same as
+# susceptibles (the unvaccinated), for IV states should be the same as for V
+# states (with same waning) - should change at each iteration based on the AIR
+# data
+relative_probability_V <- runif(n_states)
+
+# total number of new infections and total number of new vaccinations
+n_new_vaccinations <- 2e4
+n_new_infections <- 1e4
+
+transition_matrix <- create_transition_matrix(
+  current_state_prop = current_state_prop,
+  relative_probability_V = relative_probability_V,
+  relative_probability_I = relative_probability_I,
+  n_new_vaccinations = n_new_vaccinations,
+  n_new_infections = n_new_infections,
+  n_population = 1e5,
+  n_waning_states = n_waning_states,
+  # manually-specified matrices of the inheritance structure between the four
+  # immunity types, for individuals being vaccinated, infected, and both
+  # vaccinated and infected
+  immunity_inheritance_vaccination = get_immunity_inheritance("vaccination"),
+  immunity_inheritance_infection = get_immunity_inheritance("infection"),
+  immunity_inheritance_vaccination_and_infection = get_immunity_inheritance("vaccination_and_infection")
+)
